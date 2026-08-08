@@ -1,0 +1,63 @@
+import { useState } from "react";
+import { AccommodationCard } from "../components/AccommodationCard";
+import { Lightbox } from "../components/Lightbox";
+import { SearchWidget } from "../components/SearchWidget";
+import { accommodations } from "../data/hotel";
+
+const hotelGallery = [
+  "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1400&q=86",
+  "https://images.unsplash.com/photo-1595576508898-0ad5c879a061?auto=format&fit=crop&w=1200&q=86",
+  "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=1200&q=86",
+  "https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1200&q=86",
+  "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=1200&q=86",
+  "https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=1200&q=86",
+];
+
+export function Accommodations() {
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const countLabel = `${accommodations.length} hébergements disponibles`;
+
+  return (
+    <>
+      <section className="accommodations-hero">
+        <div className="page-container">
+          <p className="eyebrow light">Séjourner au Rivage</p>
+          <h1>Nos hébergements</h1>
+          <p>Des chambres élégantes et lumineuses, pensées comme des refuges au cœur de Cannes.</p>
+        </div>
+      </section>
+
+      <section className="accommodations-search">
+        <div className="page-container search-stage">
+          <p>Vérifiez les disponibilités pour vos dates</p>
+          <SearchWidget demoDates />
+        </div>
+      </section>
+
+      <section className="catalog-band">
+        <div className="page-container">
+          <div className="catalog-intro">
+            <p className="eyebrow">La collection</p>
+            <h2>Choisissez votre chambre</h2>
+            <p>Chacun de nos hébergements a été conçu avec soin pour allier confort, élégance et caractère. Découvrez celui qui accompagnera le mieux votre séjour sur la Côte d'Azur.</p>
+          </div>
+          <p className="results-count">{countLabel}</p>
+          <div className="room-catalog-grid">
+            {accommodations.map((item) => <AccommodationCard key={item.id} accommodation={item} />)}
+          </div>
+        </div>
+      </section>
+
+      <section className="accommodations-gallery-band">
+        <div className="page-container">
+          <div className="center-heading"><p className="eyebrow">Photos</p><h2>Galerie de l'hôtel</h2></div>
+          <div className="accommodations-gallery">
+            {hotelGallery.map((image, index) => <button type="button" key={image} onClick={() => setLightboxIndex(index)} aria-label={`Agrandir la photo ${index + 1}`}><img src={image} alt={`Hôtel Rivage ${index + 1}`} /></button>)}
+          </div>
+        </div>
+      </section>
+
+      <Lightbox images={hotelGallery} index={lightboxIndex} alt="Hôtel Rivage" onClose={() => setLightboxIndex(null)} onChange={setLightboxIndex} />
+    </>
+  );
+}

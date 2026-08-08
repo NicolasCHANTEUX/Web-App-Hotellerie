@@ -1,0 +1,26 @@
+import { Link } from "react-router-dom";
+import { Accommodation } from "../data/hotel";
+
+export function AccommodationCard({ accommodation }: { accommodation: Accommodation }) {
+  return (
+    <article className="room-card">
+      <Link to={`/hebergements/${accommodation.slug}`} className="room-image">
+        <img src={accommodation.hero} alt={accommodation.name} />
+        <span>{accommodation.surface}</span>
+      </Link>
+      <div className="room-content">
+        <div>
+          <p className="room-category">{accommodation.category}</p>
+          <h3>{accommodation.name}</h3>
+          <p className="room-meta">{accommodation.capacity} voyageurs <span>•</span> {accommodation.rooms}</p>
+        </div>
+        <p className="room-description">{accommodation.shortDescription}</p>
+        <div className="room-tags">{accommodation.amenities.slice(0, 3).map((item) => <span key={item}>{item}</span>)}</div>
+        <div className="room-bottom">
+          <p><span>À partir de</span><strong>{accommodation.price} €</strong><small>/ nuit</small></p>
+          <Link className="room-cta" to={`/hebergements/${accommodation.slug}`}>Découvrir</Link>
+        </div>
+      </div>
+    </article>
+  );
+}

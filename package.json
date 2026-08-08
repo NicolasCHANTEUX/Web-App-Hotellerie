@@ -1,0 +1,26 @@
+{
+  "name": "hotel-figma-frontend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --config vite.config.mjs --configLoader native",
+    "build": "tsc -b && vite build --config vite.config.mjs --configLoader native",
+    "preview": "vite preview --config vite.config.mjs --configLoader native"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.1.12",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.1.1",
+    "tailwindcss": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5"
+  }
+}

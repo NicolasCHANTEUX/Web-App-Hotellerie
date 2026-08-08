@@ -1,0 +1,544 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum RoomStatus {
+  ACTIVE
+  OUT_OF_SERVICE
+  ARCHIVED
+}
+
+enum BookingStatus {
+  DRAFT
+  PENDING_PAYMENT
+  CONFIRMED
+  CANCELLED
+  EXPIRED
+  COMPLETED
+  NO_SHOW
+}
+
+enum BookingSource {
+  WEBSITE
+  PHONE
+  EMAIL
+  WALK_IN
+  ADMIN
+  CHANNEL
+}
+
+enum PricingUnit {
+  PER_PERSON_PER_NIGHT
+  PER_NIGHT
+  ONE_TIME
+}
+
+enum HoldStatus {
+  ACTIVE
+  CONVERTED
+  RELEASED
+  EXPIRED
+}
+
+enum AllocationStatus {
+  ACTIVE
+  RELEASED
+  EXPIRED
+}
+
+enum AllocationSource {
+  BOOKING
+  HOLD
+  BLOCK
+}
+
+enum BlockReason {
+  MAINTENANCE
+  OWNER_USE
+  HOUSEKEEPING
+  OTHER
+}
+
+enum PaymentProvider {
+  STRIPE
+  MANUAL
+}
+
+enum PaymentStatus {
+  REQUIRES_PAYMENT
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  PARTIALLY_REFUNDED
+  REFUNDED
+}
+
+enum PaymentKind {
+  CHARGE
+  REFUND
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PAID
+  VOID
+}
+
+enum AdminRole {
+  ADMIN
+  RECEPTION
+  ACCOUNTING
+  HOUSEKEEPING
+}
+
+model Property {
+  id           String   @id @default(uuid()) @db.Uuid
+  slug         String   @unique
+  name         String
+  legalName    String?
+  email        String
+  phone        String?
+  addressLine1 String
+  addressLine2 String?
+  postalCode   String
+  city         String
+  countryCode  String   @default("FR") @db.Char(2)
+  timezone     String   @default("Europe/Paris")
+  currency     String   @default("EUR") @db.Char(3)
+  checkInTime  String   @default("15:00")
+  checkOutTime String   @default("11:00")
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+
+  roomTypes          RoomType[]
+  rooms              Room[]
+  amenities          Amenity[]
+  extras             Extra[]
+  ratePlans          RatePlan[]
+  bookings           Booking[]
+  reservationHolds   ReservationHold[]
+  availabilityBlocks AvailabilityBlock[]
+  adminMemberships   AdminMembership[]
+  auditLogs          AuditLog[]
+
+  @@map("properties")
+}
+
+model RoomType {
+  id            String   @id @default(uuid()) @db.Uuid
+  propertyId    String   @db.Uuid
+  slug          String
+  name          String
+  shortName     String?
+  description   String
+  surfaceSqm    Int
+  maxAdults     Int
+  maxChildren   Int      @default(0)
+  maxGuests     Int
+  bedLabel      String
+  coverImageUrl String
+  gallery       Json?
+  displayOrder  Int      @default(0)
+  isPublished   Boolean  @default(true)
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
+
+  property         Property          @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  rooms            Room[]
+  amenities        RoomTypeAmenity[]
+  ratePlans        RatePlan[]
+  bookingRooms     BookingRoom[]
+  reservationHolds ReservationHold[]
+
+  @@unique([propertyId, slug])
+  @@index([propertyId, isPublished, displayOrder])
+  @@map("room_types")
+}
+
+model Room {
+  id         String     @id @default(uuid()) @db.Uuid
+  propertyId String     @db.Uuid
+  roomTypeId String     @db.Uuid
+  number     String
+  floor      Int?
+  status     RoomStatus @default(ACTIVE)
+  notes      String?
+  createdAt  DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime   @updatedAt @db.Timestamptz(3)
+
+  property           Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  roomType           RoomType            @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
+  bookingRooms       BookingRoom[]
+  reservationHolds   ReservationHold[]
+  availabilityBlocks AvailabilityBlock[]
+  allocations        RoomAllocation[]
+
+  @@unique([propertyId, number])
+  @@index([roomTypeId, status])
+  @@map("rooms")
+}
+
+model Amenity {
+  id         String   @id @default(uuid()) @db.Uuid
+  propertyId String   @db.Uuid
+  slug       String
+  label      String
+  icon       String?
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
+
+  property  Property          @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  roomTypes RoomTypeAmenity[]
+
+  @@unique([propertyId, slug])
+  @@map("amenities")
+}
+
+model RoomTypeAmenity {
+  roomTypeId String  @db.Uuid
+  amenityId  String  @db.Uuid
+  featured   Boolean @default(false)
+  sortOrder  Int     @default(0)
+
+  roomType RoomType @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
+  amenity  Amenity  @relation(fields: [amenityId], references: [id], onDelete: Cascade)
+
+  @@id([roomTypeId, amenityId])
+  @@map("room_type_amenities")
+}
+
+model RatePlan {
+  id                String    @id @default(uuid()) @db.Uuid
+  propertyId        String    @db.Uuid
+  roomTypeId        String    @db.Uuid
+  code              String
+  name              String
+  basePricePerNight Decimal   @db.Decimal(12, 2)
+  currency          String    @default("EUR") @db.Char(3)
+  taxRate           Decimal   @default(10) @db.Decimal(5, 2)
+  minNights         Int       @default(1)
+  refundable        Boolean   @default(true)
+  isActive          Boolean   @default(true)
+  validFrom         DateTime? @db.Date
+  validUntil        DateTime? @db.Date
+  createdAt         DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(3)
+
+  property     Property      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  roomType     RoomType      @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
+  bookingRooms BookingRoom[]
+
+  @@unique([propertyId, code])
+  @@index([roomTypeId, isActive])
+  @@map("rate_plans")
+}
+
+model Extra {
+  id           String      @id @default(uuid()) @db.Uuid
+  propertyId   String      @db.Uuid
+  code         String
+  name         String
+  description  String
+  price        Decimal     @db.Decimal(12, 2)
+  currency     String      @default("EUR") @db.Char(3)
+  pricingUnit  PricingUnit
+  isActive     Boolean     @default(true)
+  displayOrder Int         @default(0)
+  createdAt    DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime    @updatedAt @db.Timestamptz(3)
+
+  property      Property       @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  bookingExtras BookingExtra[]
+
+  @@unique([propertyId, code])
+  @@index([propertyId, isActive, displayOrder])
+  @@map("extras")
+}
+
+model Booking {
+  id                    String        @id @default(uuid()) @db.Uuid
+  propertyId            String        @db.Uuid
+  reference             String        @unique
+  status                BookingStatus @default(DRAFT)
+  source                BookingSource @default(WEBSITE)
+  checkIn               DateTime      @db.Date
+  checkOut              DateTime      @db.Date
+  adults                Int
+  children              Int           @default(0)
+  currency              String        @default("EUR") @db.Char(3)
+  accommodationSubtotal Decimal       @db.Decimal(12, 2)
+  extrasSubtotal        Decimal       @default(0) @db.Decimal(12, 2)
+  taxTotal              Decimal       @default(0) @db.Decimal(12, 2)
+  total                 Decimal       @db.Decimal(12, 2)
+  pricingSnapshot       Json
+  specialRequests       String?
+  confirmedAt           DateTime?     @db.Timestamptz(3)
+  cancelledAt           DateTime?     @db.Timestamptz(3)
+  createdAt             DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime      @updatedAt @db.Timestamptz(3)
+
+  property  Property         @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  rooms     BookingRoom[]
+  extras    BookingExtra[]
+  guests    Guest[]
+  payments  Payment[]
+  invoice   Invoice?
+  hold      ReservationHold?
+  auditLogs AuditLog[]
+
+  @@index([propertyId, status, checkIn, checkOut])
+  @@index([createdAt])
+  @@map("bookings")
+}
+
+model BookingRoom {
+  id                   String   @id @default(uuid()) @db.Uuid
+  bookingId            String   @db.Uuid
+  roomTypeId           String   @db.Uuid
+  roomId               String?  @db.Uuid
+  ratePlanId           String   @db.Uuid
+  roomTypeNameSnapshot String
+  roomNumberSnapshot   String?
+  nightlyPriceSnapshot Decimal  @db.Decimal(12, 2)
+  taxRateSnapshot      Decimal  @db.Decimal(5, 2)
+  lineTotal            Decimal  @db.Decimal(12, 2)
+  createdAt            DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime @updatedAt @db.Timestamptz(3)
+
+  booking    Booking         @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  roomType   RoomType        @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
+  room       Room?           @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  ratePlan   RatePlan        @relation(fields: [ratePlanId], references: [id], onDelete: Restrict)
+  allocation RoomAllocation?
+
+  @@index([bookingId])
+  @@index([roomTypeId])
+  @@index([roomId])
+  @@map("booking_rooms")
+}
+
+model BookingExtra {
+  id                  String      @id @default(uuid()) @db.Uuid
+  bookingId           String      @db.Uuid
+  extraId             String      @db.Uuid
+  nameSnapshot        String
+  unitPriceSnapshot   Decimal     @db.Decimal(12, 2)
+  pricingUnitSnapshot PricingUnit
+  quantity            Int
+  lineTotal           Decimal     @db.Decimal(12, 2)
+  createdAt           DateTime    @default(now()) @db.Timestamptz(3)
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  extra   Extra   @relation(fields: [extraId], references: [id], onDelete: Restrict)
+
+  @@unique([bookingId, extraId])
+  @@map("booking_extras")
+}
+
+model Guest {
+  id          String   @id @default(uuid()) @db.Uuid
+  bookingId   String   @db.Uuid
+  isPrimary   Boolean  @default(false)
+  firstName   String
+  lastName    String
+  email       String?
+  phone       String?
+  countryCode String?  @db.Char(2)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId, isPrimary])
+  @@index([email])
+  @@map("guests")
+}
+
+model ReservationHold {
+  id         String     @id @default(uuid()) @db.Uuid
+  propertyId String     @db.Uuid
+  roomTypeId String     @db.Uuid
+  roomId     String     @db.Uuid
+  bookingId  String?    @unique @db.Uuid
+  checkIn    DateTime   @db.Date
+  checkOut   DateTime   @db.Date
+  adults     Int
+  children   Int        @default(0)
+  status     HoldStatus @default(ACTIVE)
+  expiresAt  DateTime   @db.Timestamptz(3)
+  createdAt  DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime   @updatedAt @db.Timestamptz(3)
+
+  property   Property        @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  roomType   RoomType        @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
+  room       Room            @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  booking    Booking?        @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  allocation RoomAllocation?
+
+  @@index([propertyId, roomTypeId, status, expiresAt])
+  @@index([roomId, checkIn, checkOut])
+  @@map("reservation_holds")
+}
+
+model AvailabilityBlock {
+  id         String      @id @default(uuid()) @db.Uuid
+  propertyId String      @db.Uuid
+  roomId     String      @db.Uuid
+  checkIn    DateTime    @db.Date
+  checkOut   DateTime    @db.Date
+  reason     BlockReason
+  note       String?
+  createdAt  DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime    @updatedAt @db.Timestamptz(3)
+
+  property   Property        @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  room       Room            @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  allocation RoomAllocation?
+
+  @@index([propertyId, checkIn, checkOut])
+  @@index([roomId, checkIn, checkOut])
+  @@map("availability_blocks")
+}
+
+model RoomAllocation {
+  id                  String           @id @default(uuid()) @db.Uuid
+  roomId              String           @db.Uuid
+  bookingRoomId       String?          @unique @db.Uuid
+  reservationHoldId   String?          @unique @db.Uuid
+  availabilityBlockId String?          @unique @db.Uuid
+  source              AllocationSource
+  status              AllocationStatus @default(ACTIVE)
+  checkIn             DateTime         @db.Date
+  checkOut            DateTime         @db.Date
+  createdAt           DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime         @updatedAt @db.Timestamptz(3)
+
+  room              Room               @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  bookingRoom       BookingRoom?       @relation(fields: [bookingRoomId], references: [id], onDelete: Cascade)
+  reservationHold   ReservationHold?   @relation(fields: [reservationHoldId], references: [id], onDelete: Cascade)
+  availabilityBlock AvailabilityBlock? @relation(fields: [availabilityBlockId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, status, checkIn, checkOut])
+  @@map("room_allocations")
+}
+
+model Payment {
+  id                String          @id @default(uuid()) @db.Uuid
+  bookingId         String          @db.Uuid
+  parentPaymentId   String?         @db.Uuid
+  provider          PaymentProvider
+  providerReference String?         @unique
+  idempotencyKey    String          @unique
+  kind              PaymentKind     @default(CHARGE)
+  status            PaymentStatus   @default(REQUIRES_PAYMENT)
+  amount            Decimal         @db.Decimal(12, 2)
+  currency          String          @default("EUR") @db.Char(3)
+  failureReason     String?
+  processedAt       DateTime?       @db.Timestamptz(3)
+  createdAt         DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime        @updatedAt @db.Timestamptz(3)
+
+  booking       Booking   @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  parentPayment Payment?  @relation("PaymentRefunds", fields: [parentPaymentId], references: [id], onDelete: Restrict)
+  refunds       Payment[] @relation("PaymentRefunds")
+
+  @@index([bookingId, status])
+  @@map("payments")
+}
+
+model Invoice {
+  id               String        @id @default(uuid()) @db.Uuid
+  bookingId        String        @unique @db.Uuid
+  number           String        @unique
+  status           InvoiceStatus @default(DRAFT)
+  issuedAt         DateTime?     @db.Timestamptz(3)
+  dueAt            DateTime?     @db.Timestamptz(3)
+  currency         String        @default("EUR") @db.Char(3)
+  subtotal         Decimal       @db.Decimal(12, 2)
+  taxTotal         Decimal       @db.Decimal(12, 2)
+  total            Decimal       @db.Decimal(12, 2)
+  customerSnapshot Json
+  createdAt        DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime      @updatedAt @db.Timestamptz(3)
+
+  booking Booking       @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  lines   InvoiceLine[]
+
+  @@map("invoices")
+}
+
+model InvoiceLine {
+  id          String  @id @default(uuid()) @db.Uuid
+  invoiceId   String  @db.Uuid
+  description String
+  quantity    Decimal @db.Decimal(10, 2)
+  unitPrice   Decimal @db.Decimal(12, 2)
+  taxRate     Decimal @db.Decimal(5, 2)
+  lineTotal   Decimal @db.Decimal(12, 2)
+  sortOrder   Int     @default(0)
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId, sortOrder])
+  @@map("invoice_lines")
+}
+
+model AdminUser {
+  id          String    @id @default(uuid()) @db.Uuid
+  authSubject String    @unique
+  email       String    @unique
+  displayName String
+  isActive    Boolean   @default(true)
+  lastLoginAt DateTime? @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+
+  memberships AdminMembership[]
+  auditLogs   AuditLog[]
+
+  @@map("admin_users")
+}
+
+model AdminMembership {
+  adminUserId String    @db.Uuid
+  propertyId  String    @db.Uuid
+  role        AdminRole
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+
+  adminUser AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  property  Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@id([adminUserId, propertyId, role])
+  @@map("admin_memberships")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  propertyId  String   @db.Uuid
+  adminUserId String?  @db.Uuid
+  bookingId   String?  @db.Uuid
+  action      String
+  entityType  String
+  entityId    String
+  before      Json?
+  after       Json?
+  metadata    Json?
+  ipAddress   String?  @db.Inet
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  property  Property   @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  adminUser AdminUser? @relation(fields: [adminUserId], references: [id], onDelete: SetNull)
+  booking   Booking?   @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+
+  @@index([propertyId, createdAt])
+  @@index([entityType, entityId, createdAt])
+  @@index([bookingId, createdAt])
+  @@map("audit_logs")
+}
