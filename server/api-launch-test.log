@@ -1,0 +1,11 @@
+
+> hotel-rivage-server@0.1.0 dev
+> node --use-system-ca --watch --import tsx src/index.ts
+
+{"level":30,"time":1786234684973,"pid":2436,"hostname":"DESKTOP-G7FPTNN","msg":"Server listening at http://127.0.0.1:3001"}
+{"level":30,"time":1786234688391,"pid":2436,"hostname":"DESKTOP-G7FPTNN","reqId":"req-1","req":{"method":"GET","url":"/health","host":"127.0.0.1:3001","remoteAddress":"127.0.0.1","remotePort":50173},"msg":"incoming request"}
+{"level":30,"time":1786234688758,"pid":2436,"hostname":"DESKTOP-G7FPTNN","reqId":"req-1","res":{"statusCode":200},"responseTime":366.6649999999995,"msg":"request completed"}
+{"level":30,"time":1786234702236,"pid":2436,"hostname":"DESKTOP-G7FPTNN","reqId":"req-2","req":{"method":"GET","url":"/health","host":"127.0.0.1:3001","remoteAddress":"127.0.0.1","remotePort":50179},"msg":"incoming request"}
+{"level":30,"time":1786234702565,"pid":2436,"hostname":"DESKTOP-G7FPTNN","reqId":"req-2","res":{"statusCode":200},"responseTime":328.997800000001,"msg":"request completed"}
+{"level":30,"time":1786234714179,"pid":2436,"hostname":"DESKTOP-G7FPTNN","reqId":"req-3","req":{"method":"GET","url":"/health","host":"127.0.0.1:3001","remoteAddress":"127.0.0.1","remotePort":51116},"msg":"incoming request"}
+{"level":30,"time":1786234714472,"pid":2436,"hostname":"DESKTOP-G7FPTNN","reqId":"req-3","res":{"statusCode":200},"responseTime":292.3073000000004,"msg":"request completed"}

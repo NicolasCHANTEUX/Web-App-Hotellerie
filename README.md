@@ -1,28 +1,41 @@
-# Maison Kayart - Front-end hotelier
+# Hotel Rivage
 
-Projet React 19 + Vite + TypeScript + Tailwind CSS v4 reproduisant une maquette
-Figma Make hoteliere sous forme de front-end fonctionnel.
+Application hoteliere React 19 + Vite + TypeScript, reliee a une API Node/Fastify et a une base PostgreSQL Supabase.
 
-## Inclus
+## Fonctionnel
 
 - Pages Accueil, Hebergements, Detail, Reservation, Confirmation, Contact et Mentions legales.
-- Navigation responsive avec menu mobile.
-- Recherche de sejour simulee.
-- Galerie avec lightbox.
-- Tunnel de reservation en trois etapes.
-- Formulaires simules sans backend.
+- Catalogue, tarifs, equipements et options charges depuis Supabase.
+- Recherche de disponibilite selon les dates, la capacite et les chambres physiques occupees.
+- Etats de chargement, erreur, relance et absence de resultat.
+- Tunnel de reservation en cinq etapes.
+- Navigation responsive, formulaires, galerie et lightbox.
 
-## Lancer le projet
+La creation definitive de reservation et le paiement restent simules. Ils constituent le prochain sprint backend.
 
-```bash
+## Installation
+
+```powershell
 npm install
-npm run dev
+npm --prefix server install
 ```
 
-## Verifier la version de production
+La connexion Supabase est configuree dans `server/.env`, fichier ignore par Git. Le certificat public Supabase est conserve dans `server/certs`.
 
-```bash
-npm run build
+## Lancer toute l'application
+
+```powershell
+npm run dev:full
 ```
 
-Le projet n'inclut pas de backend reel, de paiement, ni de base de donnees.
+- Frontend : `http://127.0.0.1:5173`
+- API : `http://127.0.0.1:3001`
+- Sante API : `http://127.0.0.1:3001/health`
+
+## Verifier la production
+
+```powershell
+npm run build:all
+```
+
+Les details de la base et des migrations sont documentes dans `server/README.md`.

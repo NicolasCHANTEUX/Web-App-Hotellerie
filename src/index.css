@@ -450,6 +450,20 @@ img { display: block; }
 .prose-page h2 { margin-top: 32px; font-family: var(--font-serif); font-size: 32px; }
 .prose-page p { margin-top: 16px; color: var(--muted); line-height: 1.8; }
 
+.page-api-state { display: grid; min-height: 62vh; place-items: center; padding: 80px 24px; background: var(--paper); }
+.api-state { display: flex; min-height: 180px; align-items: center; justify-content: center; gap: 14px; border: 1px solid var(--line); border-radius: var(--radius-md); background: rgb(255 255 255 / 70%); padding: 34px; color: var(--muted); text-align: center; }
+.api-state p { max-width: 560px; margin: 0; line-height: 1.65; }
+.api-state > div { display: flex; justify-content: center; gap: 12px; }
+.api-state-error { flex-direction: column; }
+.booking-api-state { min-height: 150px; margin-bottom: 16px; }
+.loading-spinner { width: 20px; height: 20px; flex: 0 0 20px; border: 2px solid var(--line); border-top-color: var(--gold); border-radius: 50%; animation: loading-spin 750ms linear infinite; }
+
+@keyframes loading-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-spinner { animation-duration: 1.8s; }
+}
+
 @media (max-width: 900px) {
   .header-inner { width: calc(100% - 44px); grid-template-columns: 1fr auto; }
   .desktop-nav, .header-book { display: none; }

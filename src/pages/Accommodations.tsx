@@ -1,8 +1,9 @@
 import { useState } from "react";
+import { getRoomTypes } from "../api/hotel";
 import { AccommodationCard } from "../components/AccommodationCard";
 import { Lightbox } from "../components/Lightbox";
 import { SearchWidget } from "../components/SearchWidget";
-import { accommodations } from "../data/hotel";
+import { useRemoteData } from "../hooks/useRemoteData";
 
 const hotelGallery = [
   "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1400&q=86",
@@ -15,7 +16,9 @@ const hotelGallery = [
 
 export function Accommodations() {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
-  const countLabel = `${accommodations.length} hébergements disponibles`;
+  const { data: accommodations, loading, error, retry } = useRemoteData((signal) => getRoomTypes(signal), []);
+  const count = accommodations?.length ?? 0;
+  const countLabel = `${count} hébergement${count > 1 ? "s" : ""} disponible${count > 1 ? "s" : ""}`;
 
   return (
     <>
@@ -41,10 +44,13 @@ export function Accommodations() {
             <h2>Choisissez votre chambre</h2>
             <p>Chacun de nos hébergements a été conçu avec soin pour allier confort, élégance et caractère. Découvrez celui qui accompagnera le mieux votre séjour sur la Côte d'Azur.</p>
           </div>
-          <p className="results-count">{countLabel}</p>
-          <div className="room-catalog-grid">
+          {!loading && !error && <p className="results-count">{countLabel}</p>}
+          {loading && <div className="api-state" role="status"><span className="loading-spinner" />Chargement des hébergements...</div>}
+          {error && <div className="api-state api-state-error" role="alert"><p>{error}</p><button type="button" className="btn-secondary" onClick={retry}>Réessayer</button></div>}
+          {!loading && !error && accommodations && accommodations.length === 0 && <div className="api-state"><p>Aucun hébergement n'est publié pour le moment.</p></div>}
+          {accommodations && accommodations.length > 0 && <div className="room-catalog-grid">
             {accommodations.map((item) => <AccommodationCard key={item.id} accommodation={item} />)}
-          </div>
+          </div>}
         </div>
       </section>
 

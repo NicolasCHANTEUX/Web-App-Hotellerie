@@ -1,8 +1,10 @@
 import { Check, LockKeyhole } from "lucide-react";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { getAvailability, getExtras } from "../api/hotel";
 import { BookingStepper } from "../components/BookingStepper";
-import { Accommodation, accommodations } from "../data/hotel";
+import { useRemoteData } from "../hooks/useRemoteData";
+import { Accommodation, AvailabilityResult, BookingOption } from "../types/hotel";
 
 type Customer = {
   firstName: string;
@@ -13,26 +15,13 @@ type Customer = {
   specialRequest: string;
 };
 
-type PricingUnit = "PER_PERSON_PER_NIGHT" | "PER_NIGHT" | "ONE_TIME";
-
-type BookingOption = {
-  id: string;
-  name: string;
-  description: string;
-  price: number;
-  unit: PricingUnit;
-  priceLabel: string;
-};
-
-const bookingOptions: BookingOption[] = [
-  { id: "breakfast", name: "Petit-déjeuner", description: "Buffet maison chaque matin", price: 18, unit: "PER_PERSON_PER_NIGHT", priceLabel: "par personne / nuit" },
-  { id: "parking", name: "Parking privé", description: "Place sécurisée pour votre véhicule", price: 15, unit: "PER_NIGHT", priceLabel: "par nuit" },
-  { id: "early", name: "Arrivée anticipée", description: "Accès à la chambre dès 12h00", price: 30, unit: "ONE_TIME", priceLabel: "une fois" },
-  { id: "late", name: "Départ tardif", description: "Conservation de la chambre jusqu'à 14h00", price: 30, unit: "ONE_TIME", priceLabel: "une fois" },
-  { id: "baby", name: "Lit bébé", description: "Lit parapluie avec linge de lit", price: 10, unit: "PER_NIGHT", priceLabel: "par nuit" },
-];
-
 const emptyCustomer: Customer = { firstName: "", lastName: "", email: "", phone: "", country: "France", specialRequest: "" };
+
+function optionPriceLabel(option: BookingOption) {
+  if (option.unit === "PER_PERSON_PER_NIGHT") return "par personne / nuit";
+  if (option.unit === "PER_NIGHT") return "par nuit";
+  return "une fois";
+}
 
 function dateLabel(value: string) {
   if (!value) return "À définir";
@@ -62,16 +51,42 @@ export function Booking() {
   const [roomSlug, setRoomSlug] = useState(params.get("room") ?? "");
   const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
   const [customer, setCustomer] = useState<Customer>(emptyCustomer);
+  const [availability, setAvailability] = useState<AvailabilityResult | null>(null);
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [availabilityError, setAvailabilityError] = useState<string | null>(null);
+  const [availabilityRetry, setAvailabilityRetry] = useState(0);
+  const optionsQuery = useRemoteData((signal) => getExtras(signal), []);
+  const bookingOptions = optionsQuery.data ?? [];
 
-  const room = accommodations.find((item) => item.slug === roomSlug);
+  const availableRooms = availability?.roomTypes ?? [];
+  const room = availableRooms.find((item) => item.slug === roomSlug);
   const nights = numberOfNights(arrival, departure);
   const guests = adults + children;
-  const availableRooms = accommodations.filter((item) => item.capacity >= guests);
   const chosenOptions = bookingOptions.filter((item) => selectedOptions.includes(item.id));
   const roomSubtotal = room ? room.price * nights : 0;
   const optionsSubtotal = chosenOptions.reduce((sum, item) => sum + optionAmount(item, nights, guests), 0);
   const taxes = Math.round((roomSubtotal + optionsSubtotal) * 0.1);
   const total = roomSubtotal + optionsSubtotal + taxes;
+
+  useEffect(() => {
+    if (step !== 2) return;
+    const controller = new AbortController();
+    setAvailabilityLoading(true);
+    setAvailabilityError(null);
+    getAvailability({ arrival, departure, adults, children }, controller.signal)
+      .then((result) => {
+        setAvailability(result);
+        setRoomSlug((current) => result.roomTypes.some((item) => item.slug === current) ? current : "");
+        setAvailabilityLoading(false);
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setAvailability(null);
+        setAvailabilityError(error instanceof Error ? error.message : "La recherche est momentanément indisponible.");
+        setAvailabilityLoading(false);
+      });
+    return () => controller.abort();
+  }, [step, arrival, departure, adults, children, availabilityRetry]);
 
   function validateDates(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -137,22 +152,27 @@ export function Booking() {
             <div>
               <div className="criteria-bar"><strong>{dateLabel(arrival)} → {dateLabel(departure)} · {adults} adulte{adults > 1 ? "s" : ""}{children ? ` · ${children} enfant${children > 1 ? "s" : ""}` : ""}</strong><button type="button" onClick={() => setStep(1)}>Modifier</button></div>
               <div className="booking-section-heading"><h2>Hébergements disponibles</h2><p>{nights} nuit{nights > 1 ? "s" : ""} · {guests} voyageur{guests > 1 ? "s" : ""}</p></div>
-              <div className="booking-room-list">
+              {availabilityLoading && <div className="api-state booking-api-state" role="status"><span className="loading-spinner" />Vérification des disponibilités...</div>}
+              {availabilityError && <div className="api-state api-state-error booking-api-state" role="alert"><p>{availabilityError}</p><button type="button" className="btn-secondary" onClick={() => setAvailabilityRetry((value) => value + 1)}>Réessayer</button></div>}
+              {!availabilityLoading && !availabilityError && availableRooms.length === 0 && <div className="api-state booking-api-state"><p>Aucun hébergement ne peut accueillir ce séjour. Essayez d'autres dates ou un autre nombre de voyageurs.</p></div>}
+              {!availabilityLoading && !availabilityError && availableRooms.length > 0 && <div className="booking-room-list">
                 {availableRooms.map((item) => <RoomChoice key={item.id} room={item} nights={nights} selected={item.slug === roomSlug} onSelect={() => setRoomSlug(item.slug)} />)}
-              </div>
-              <div className="booking-nav"><button className="btn-secondary" type="button" onClick={() => setStep(1)}>← Modifier les dates</button><button className="btn-primary" type="button" disabled={!room} onClick={() => setStep(3)}>Continuer →</button></div>
+              </div>}
+              <div className="booking-nav"><button className="btn-secondary" type="button" onClick={() => setStep(1)}>← Modifier les dates</button><button className="btn-primary" type="button" disabled={!room || availabilityLoading} onClick={() => setStep(3)}>Continuer →</button></div>
             </div>
           )}
 
           {step === 3 && (
             <div className="booking-panel">
               <div className="booking-panel-heading"><h2>Options supplémentaires</h2><p>Toutes les options sont facultatives.</p></div>
-              <div className="booking-options">
+              {optionsQuery.loading && <div className="api-state booking-api-state" role="status"><span className="loading-spinner" />Chargement des options...</div>}
+              {optionsQuery.error && <div className="api-state api-state-error booking-api-state" role="alert"><p>{optionsQuery.error}</p><button type="button" className="btn-secondary" onClick={optionsQuery.retry}>Réessayer</button></div>}
+              {!optionsQuery.loading && !optionsQuery.error && <div className="booking-options">
                 {bookingOptions.map((option) => {
                   const checked = selectedOptions.includes(option.id);
-                  return <label className={`booking-option ${checked ? "selected" : ""}`} key={option.id}><input type="checkbox" checked={checked} onChange={() => toggleOption(option.id)} /><span className="fake-check">{checked && <Check />}</span><span className="option-copy"><strong>{option.name}</strong><small>{option.description}</small></span><span className="option-price"><strong>+{option.price} €</strong><small>{option.priceLabel}</small></span></label>;
+                  return <label className={`booking-option ${checked ? "selected" : ""}`} key={option.id}><input type="checkbox" checked={checked} onChange={() => toggleOption(option.id)} /><span className="fake-check">{checked && <Check />}</span><span className="option-copy"><strong>{option.name}</strong><small>{option.description}</small></span><span className="option-price"><strong>+{option.price} €</strong><small>{optionPriceLabel(option)}</small></span></label>;
                 })}
-              </div>
+              </div>}
               <div className="booking-nav"><button className="btn-secondary" type="button" onClick={() => setStep(2)}>← Retour</button><button className="btn-primary" type="button" onClick={() => setStep(4)}>Continuer →</button></div>
             </div>
           )}

@@ -1,15 +1,17 @@
 import { Check, Maximize2 } from "lucide-react";
 import { useState } from "react";
-import { Link, Navigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
+import { getRoomType } from "../api/hotel";
 import { Lightbox } from "../components/Lightbox";
-import { accommodations } from "../data/hotel";
+import { useRemoteData } from "../hooks/useRemoteData";
 
 export function AccommodationDetail() {
   const { slug } = useParams();
-  const accommodation = accommodations.find((item) => item.slug === slug);
+  const { data: accommodation, loading, error, retry } = useRemoteData((signal) => getRoomType(slug ?? "", signal), [slug]);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
-  if (!accommodation) return <Navigate to="/hebergements" replace />;
+  if (loading) return <section className="page-api-state"><div className="api-state" role="status"><span className="loading-spinner" />Chargement de l'hébergement...</div></section>;
+  if (error || !accommodation) return <section className="page-api-state"><div className="api-state api-state-error" role="alert"><p>{error ?? "Hébergement introuvable."}</p><div><button type="button" className="btn-secondary" onClick={retry}>Réessayer</button><Link className="btn-primary" to="/hebergements">Voir les hébergements</Link></div></div></section>;
 
   return (
     <>

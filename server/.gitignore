@@ -1,4 +1,7 @@
 .env
+.env.*
+!.env.example
 dist/
 src/generated/
 node_modules/
+.api-dev-state.json

@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Accommodation } from "../data/hotel";
+import { Accommodation } from "../types/hotel";
 
 export function AccommodationCard({ accommodation }: { accommodation: Accommodation }) {
   return (
