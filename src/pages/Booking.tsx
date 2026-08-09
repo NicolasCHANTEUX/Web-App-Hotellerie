@@ -1,6 +1,6 @@
 import { Check, LockKeyhole } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { getAvailability, getExtras } from "../api/hotel";
 import { BookingStepper } from "../components/BookingStepper";
 import { useRemoteData } from "../hooks/useRemoteData";
@@ -152,9 +152,9 @@ export function Booking() {
             <div>
               <div className="criteria-bar"><strong>{dateLabel(arrival)} → {dateLabel(departure)} · {adults} adulte{adults > 1 ? "s" : ""}{children ? ` · ${children} enfant${children > 1 ? "s" : ""}` : ""}</strong><button type="button" onClick={() => setStep(1)}>Modifier</button></div>
               <div className="booking-section-heading"><h2>Hébergements disponibles</h2><p>{nights} nuit{nights > 1 ? "s" : ""} · {guests} voyageur{guests > 1 ? "s" : ""}</p></div>
-              {availabilityLoading && <div className="api-state booking-api-state" role="status"><span className="loading-spinner" />Vérification des disponibilités...</div>}
+              {availabilityLoading && <div className="booking-room-list booking-room-skeletons" role="status" aria-label="Vérification des disponibilités"><span className="sr-only">Vérification des disponibilités...</span>{Array.from({ length: 4 }, (_, index) => <RoomChoiceSkeleton key={index} />)}</div>}
               {availabilityError && <div className="api-state api-state-error booking-api-state" role="alert"><p>{availabilityError}</p><button type="button" className="btn-secondary" onClick={() => setAvailabilityRetry((value) => value + 1)}>Réessayer</button></div>}
-              {!availabilityLoading && !availabilityError && availableRooms.length === 0 && <div className="api-state booking-api-state"><p>Aucun hébergement ne peut accueillir ce séjour. Essayez d'autres dates ou un autre nombre de voyageurs.</p></div>}
+              {!availabilityLoading && !availabilityError && availableRooms.length === 0 && <div className="booking-empty"><h3>Aucun hébergement disponible pour ces dates</h3><p>Modifiez votre séjour ou contactez-nous pour trouver la meilleure solution.</p><div><button type="button" className="btn-secondary" onClick={() => setStep(1)}>Modifier mes dates</button><Link className="btn-primary" to="/contact">Nous contacter</Link></div></div>}
               {!availabilityLoading && !availabilityError && availableRooms.length > 0 && <div className="booking-room-list">
                 {availableRooms.map((item) => <RoomChoice key={item.id} room={item} nights={nights} selected={item.slug === roomSlug} onSelect={() => setRoomSlug(item.slug)} />)}
               </div>}
@@ -201,7 +201,7 @@ export function Booking() {
                 <label>Date d'expiration *<input className="field" placeholder="MM/AA" pattern="(0[1-9]|1[0-2])/[0-9]{2}" autoComplete="cc-exp" required /></label>
                 <label>CVC *<input className="field" inputMode="numeric" placeholder="123" pattern="[0-9]{3,4}" autoComplete="cc-csc" required /></label>
               </div>
-              <div className="payment-total"><p><span>Montant à payer</span><small>TTC · Annulation gratuite jusqu'à 48h avant</small></p><strong>{total} €</strong></div>
+              <div className="payment-total"><p><span>Montant à payer</span><small>TTC · {room?.refundable ? "Annulation gratuite jusqu'à 48h avant" : "Tarif non remboursable"}</small></p><strong>{total} €</strong></div>
               <div className="booking-nav"><button className="btn-secondary" type="button" onClick={() => setStep(4)}>← Retour</button><button className="btn-primary" type="submit">Payer {total} €</button></div>
             </form>
           )}
@@ -215,12 +215,16 @@ export function Booking() {
 
 function RoomChoice({ room, nights, selected, onSelect }: { room: Accommodation; nights: number; selected: boolean; onSelect: () => void }) {
   return (
-    <button type="button" className={`booking-room ${selected ? "selected" : ""}`} onClick={onSelect} aria-pressed={selected}>
+    <button type="button" className={`booking-room ${selected ? "selected" : ""}`} onClick={onSelect} aria-pressed={selected} aria-label={`${selected ? "Hébergement sélectionné" : "Sélectionner"} : ${room.name}, ${room.price * nights} euros pour le séjour`}>
       <img src={room.hero} alt="" />
-      <span className="booking-room-copy"><strong>{room.name}</strong><small>{room.rooms} · {room.surface} · max {room.capacity} pers.</small><span>{room.amenities.slice(0, 3).map((item) => <em key={item}>{item}</em>)}</span></span>
+      <span className="booking-room-copy"><strong>{room.name}</strong><small>{room.rooms} · {room.surface} · max {room.capacity} pers.</small><span>{room.amenities.slice(0, 3).map((item) => <em key={item}>{item}</em>)}</span>{selected && <span className="room-selection-status"><Check />Sélectionnée</span>}</span>
       <span className="booking-room-price"><strong>{room.price * nights} €</strong><small>{room.price} € × {nights} nuit{nights > 1 ? "s" : ""}</small></span>
     </button>
   );
+}
+
+function RoomChoiceSkeleton() {
+  return <div className="booking-room booking-room-skeleton" aria-hidden="true"><span className="skeleton-block skeleton-image" /><span className="skeleton-copy"><span /><span /><span /></span><span className="skeleton-price"><span /><span /></span></div>;
 }
 
 function BookingSummary({ room, arrival, departure, adults, children, nights, options, roomSubtotal, optionsSubtotal, taxes, total }: { room?: Accommodation; arrival: string; departure: string; adults: number; children: number; nights: number; options: BookingOption[]; roomSubtotal: number; optionsSubtotal: number; taxes: number; total: number }) {
@@ -228,9 +232,9 @@ function BookingSummary({ room, arrival, departure, adults, children, nights, op
     <aside className="booking-recap">
       <h2>Récapitulatif</h2>
       {!room ? <div className="recap-placeholder">Aucun hébergement sélectionné</div> : <><img src={room.hero} alt={room.name} /><h3>{room.name}</h3><p className="recap-room-meta">{room.rooms} · {room.surface}</p></>}
-      <dl className="recap-details"><div><dt>Arrivée</dt><dd>{dateLabel(arrival)}</dd></div><div><dt>Départ</dt><dd>{dateLabel(departure)}</dd></div><div><dt>Durée</dt><dd>{nights} nuit{nights > 1 ? "s" : ""}</dd></div><div><dt>Voyageurs</dt><dd>{adults} ad.{children ? ` · ${children} enf.` : ""}</dd></div></dl>
+      <dl className="recap-details"><div><dt>Arrivée</dt><dd>{dateLabel(arrival)}</dd></div><div><dt>Départ</dt><dd>{dateLabel(departure)}</dd></div><div><dt>Durée</dt><dd>{nights} nuit{nights > 1 ? "s" : ""}</dd></div><div><dt>Voyageurs</dt><dd>{adults} adulte{adults > 1 ? "s" : ""}{children ? ` · ${children} enfant${children > 1 ? "s" : ""}` : ""}</dd></div></dl>
       {room && <div className="recap-pricing"><p><span>{room.name}</span><strong>{roomSubtotal} €</strong></p>{options.map((item) => <p key={item.id}><span>{item.name}</span><strong>{optionAmount(item, nights, adults + children)} €</strong></p>)}{optionsSubtotal > 0 && <p className="sr-only">Options : {optionsSubtotal} €</p>}<p><span>Taxes (10 %)</span><strong>{taxes} €</strong></p><p className="recap-total"><span>Total</span><strong>{total} €</strong></p></div>}
-      <p className="recap-security"><LockKeyhole />Paiement sécurisé · Annulation gratuite</p>
+      <p className="recap-security"><LockKeyhole />Paiement sécurisé · {room ? (room.refundable ? "Annulation gratuite" : "Tarif non remboursable") : "Conditions selon le tarif"}</p>
     </aside>
   );
 }

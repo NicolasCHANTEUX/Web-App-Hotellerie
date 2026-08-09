@@ -39,6 +39,7 @@ export function serializeRoomType(roomType: CatalogRoomType) {
     description: roomType.description,
     price: Number(rate.basePricePerNight),
     currency: rate.currency,
+    refundable: rate.refundable,
     capacity: roomType.maxGuests,
     maxAdults: roomType.maxAdults,
     maxChildren: roomType.maxChildren,

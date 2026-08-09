@@ -7,6 +7,7 @@ export type Accommodation = {
   description: string;
   price: number;
   currency: string;
+  refundable: boolean;
   capacity: number;
   maxAdults: number;
   maxChildren: number;
