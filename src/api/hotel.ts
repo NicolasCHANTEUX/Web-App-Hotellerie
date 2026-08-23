@@ -1,5 +1,5 @@
-import { apiGet } from "./client";
-import { Accommodation, AvailabilityResult, BookingOption } from "../types/hotel";
+import { apiGet, apiPost } from "./client";
+import { Accommodation, AvailabilityResult, BookingConfirmation, BookingOption, CreateBookingInput } from "../types/hotel";
 
 export function getRoomTypes(signal?: AbortSignal) {
   return apiGet<Accommodation[]>("/room-types", signal);
@@ -21,4 +21,8 @@ export function getAvailability(params: { arrival: string; departure: string; ad
     children: String(params.children),
   });
   return apiGet<AvailabilityResult>(`/availability?${query}`, signal);
+}
+
+export function createBooking(input: CreateBookingInput, idempotencyKey: string, signal?: AbortSignal) {
+  return apiPost<BookingConfirmation>("/bookings", input, signal, { "Idempotency-Key": idempotencyKey });
 }

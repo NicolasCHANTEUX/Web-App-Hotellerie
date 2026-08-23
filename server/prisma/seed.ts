@@ -19,7 +19,7 @@ const roomTypes = [
       "https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1400&q=82",
       "https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?auto=format&fit=crop&w=1400&q=82",
     ],
-    rooms: ["101", "102", "103"],
+    rooms: ["101", "102", "103", "104", "105", "106"],
     amenities: ["vue-jardin", "literie-premium", "produits-bain"],
   },
   {
@@ -39,7 +39,7 @@ const roomTypes = [
       "https://images.unsplash.com/photo-1566665797739-1674de7a421a?auto=format&fit=crop&w=1400&q=82",
       "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&w=1400&q=82",
     ],
-    rooms: ["201", "202", "203"],
+    rooms: ["201", "202", "203", "204", "205", "206"],
     amenities: ["espace-bureau", "douche-italienne", "wifi-fibre"],
   },
   {
@@ -59,7 +59,7 @@ const roomTypes = [
       "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1400&q=82",
       "https://images.unsplash.com/photo-1600566752355-35792bedcfea?auto=format&fit=crop&w=1400&q=82",
     ],
-    rooms: ["301", "302"],
+    rooms: ["301", "302", "303", "304"],
     amenities: ["coin-salon", "baignoire", "machine-cafe"],
   },
   {
@@ -79,7 +79,7 @@ const roomTypes = [
       "https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=1400&q=82",
       "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1400&q=82",
     ],
-    rooms: ["401"],
+    rooms: ["401", "402"],
     amenities: ["terrasse-privee", "salon-independant", "vue-panoramique"],
   },
 ] as const;
@@ -102,13 +102,20 @@ const amenities = [
 async function main() {
   const property = await prisma.property.upsert({
     where: { slug: "hotel-rivage" },
-    update: {},
+    update: {
+      name: "Hôtel Rivage",
+      email: "contact@hotel-rivage.fr",
+      phone: "+33 4 93 00 12 34",
+      addressLine1: "26 avenue des Pins",
+      postalCode: "06400",
+      city: "Cannes",
+    },
     create: {
       slug: "hotel-rivage",
       name: "Hôtel Rivage",
       email: "contact@hotel-rivage.fr",
       phone: "+33 4 93 00 12 34",
-      addressLine1: "24 avenue des Pins",
+      addressLine1: "26 avenue des Pins",
       postalCode: "06400",
       city: "Cannes",
     },

@@ -1,4 +1,4 @@
-const steps = ["Dates", "Hébergement", "Options", "Coordonnées", "Paiement"];
+const steps = ["Dates", "Hébergement", "Options", "Coordonnées", "Confirmation"];
 
 export function BookingStepper({ step }: { step: number }) {
   return (

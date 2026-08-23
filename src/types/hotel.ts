@@ -6,6 +6,7 @@ export type Accommodation = {
   shortDescription: string;
   description: string;
   price: number;
+  taxRate: number;
   currency: string;
   refundable: boolean;
   capacity: number;
@@ -42,4 +43,40 @@ export type AvailabilityResult = {
   };
   nights: number;
   roomTypes: Accommodation[];
+};
+
+export type CreateBookingInput = {
+  roomTypeId: string;
+  arrival: string;
+  departure: string;
+  adults: number;
+  children: number;
+  extraIds: string[];
+  expectedTotal: number;
+  guest: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    countryCode?: string;
+  };
+  specialRequests?: string;
+};
+
+export type BookingConfirmation = {
+  id: string;
+  reference: string;
+  status: "DRAFT" | "PENDING_PAYMENT" | "CONFIRMED" | "CANCELLED" | "EXPIRED" | "COMPLETED" | "NO_SHOW";
+  room: {
+    name: string;
+  };
+  arrival: string;
+  departure: string;
+  adults: number;
+  children: number;
+  options: string[];
+  total: number;
+  currency: string;
+  email: string;
+  holdExpiresAt: string;
 };

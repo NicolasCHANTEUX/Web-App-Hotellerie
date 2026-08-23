@@ -8,10 +8,11 @@ Application hoteliere React 19 + Vite + TypeScript, reliee a une API Node/Fastif
 - Catalogue, tarifs, equipements et options charges depuis Supabase.
 - Recherche de disponibilite selon les dates, la capacite et les chambres physiques occupees.
 - Etats de chargement, erreur, relance et absence de resultat.
-- Tunnel de reservation en cinq etapes.
+- Tunnel de reservation en cinq etapes avec creation serveur au statut `PENDING_PAYMENT`.
+- Espace administrateur protege avec reservations et cartes de chambres, filtrees par periode et disponibilite.
 - Navigation responsive, formulaires, galerie et lightbox.
 
-La creation definitive de reservation et le paiement restent simules. Ils constituent le prochain sprint backend.
+Le paiement en ligne n'est pas encore branche : les reservations sont enregistrees, mais leur reglement reste a finaliser hors ligne.
 
 ## Installation
 

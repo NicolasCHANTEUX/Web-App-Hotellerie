@@ -4,22 +4,27 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --use-system-ca --watch --import tsx src/index.ts",
+    "dev": "node --watch --import tsx src/index.ts",
     "build": "tsc",
-    "start": "node --use-system-ca dist/index.js",
+    "start": "node dist/index.js",
     "db:format": "prisma format",
     "db:validate": "prisma validate",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
+    "db:seed:demo": "tsx prisma/seed-demo.ts",
+    "admin:provision": "tsx src/scripts/provision-admin.ts",
+    "test": "node --import tsx --test src/modules/booking/booking.validation.test.ts src/modules/booking/booking.idempotency.test.ts src/modules/booking/booking.pricing.test.ts src/modules/admin/admin.privacy.test.ts src/modules/admin/admin.room-query.test.ts src/modules/admin/admin.room-update.test.ts src/modules/admin/admin.room-create-delete.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",
+    "@fastify/rate-limit": "^10.0.0",
     "@prisma/adapter-pg": "^7.0.0",
     "@prisma/client": "^7.0.0",
     "dotenv": "^17.0.0",
     "fastify": "^5.11.3",
+    "hotel-figma-frontend": "file:..",
     "pg": "^8.16.0"
   },
   "devDependencies": {

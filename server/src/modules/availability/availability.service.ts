@@ -26,6 +26,7 @@ export async function searchAvailability(input: AvailabilityInput) {
       ratePlans: {
         where: {
           isActive: true,
+          minNights: { lte: nights },
           AND: [
             { OR: [{ validFrom: null }, { validFrom: { lte: input.arrival } }] },
             { OR: [{ validUntil: null }, { validUntil: { gte: input.departure } }] },

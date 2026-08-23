@@ -9,6 +9,7 @@
     "build": "tsc -b && vite build --config vite.config.mjs --configLoader native",
     "build:all": "npm --prefix server run build && npm run build",
     "smoke:render": "npm run build && node scripts/smoke-render.mjs",
+    "smoke:admin": "npm run build && node scripts/smoke-admin-render.mjs",
     "preview": "vite preview --config vite.config.mjs --configLoader native"
   },
   "dependencies": {

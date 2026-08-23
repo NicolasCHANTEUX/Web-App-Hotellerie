@@ -1,7 +1,7 @@
 import { Check, LockKeyhole } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { getAvailability, getExtras } from "../api/hotel";
+import { createBooking, getAvailability, getExtras } from "../api/hotel";
 import { BookingStepper } from "../components/BookingStepper";
 import { useRemoteData } from "../hooks/useRemoteData";
 import { Accommodation, AvailabilityResult, BookingOption } from "../types/hotel";
@@ -16,6 +16,33 @@ type Customer = {
 };
 
 const emptyCustomer: Customer = { firstName: "", lastName: "", email: "", phone: "", country: "France", specialRequest: "" };
+
+const countryCodes: Record<string, string> = {
+  France: "FR",
+  Belgique: "BE",
+  Suisse: "CH",
+  Luxembourg: "LU",
+};
+
+function dateInputValue(daysFromToday: number) {
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  date.setDate(date.getDate() + daysFromToday);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function dateAfter(value: string, days = 1) {
+  const date = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return dateInputValue(days);
+  date.setDate(date.getDate() + days);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
 function optionPriceLabel(option: BookingOption) {
   if (option.unit === "PER_PERSON_PER_NIGHT") return "par personne / nuit";
@@ -44,8 +71,8 @@ export function Booking() {
   const navigate = useNavigate();
   const hasSearch = Boolean(params.get("arrival") && params.get("departure") && params.get("step") === "2");
   const [step, setStep] = useState(hasSearch ? 2 : 1);
-  const [arrival, setArrival] = useState(params.get("arrival") ?? "2026-08-08");
-  const [departure, setDeparture] = useState(params.get("departure") ?? "2026-08-09");
+  const [arrival, setArrival] = useState(params.get("arrival") ?? dateInputValue(1));
+  const [departure, setDeparture] = useState(params.get("departure") ?? dateInputValue(2));
   const [adults, setAdults] = useState(Number(params.get("adults") ?? 2));
   const [children, setChildren] = useState(Number(params.get("children") ?? 0));
   const [roomSlug, setRoomSlug] = useState(params.get("room") ?? "");
@@ -55,6 +82,10 @@ export function Booking() {
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
   const [availabilityRetry, setAvailabilityRetry] = useState(0);
+  const [dateError, setDateError] = useState<string | null>(null);
+  const [bookingSubmitting, setBookingSubmitting] = useState(false);
+  const [bookingError, setBookingError] = useState<string | null>(null);
+  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
   const optionsQuery = useRemoteData((signal) => getExtras(signal), []);
   const bookingOptions = optionsQuery.data ?? [];
 
@@ -65,7 +96,8 @@ export function Booking() {
   const chosenOptions = bookingOptions.filter((item) => selectedOptions.includes(item.id));
   const roomSubtotal = room ? room.price * nights : 0;
   const optionsSubtotal = chosenOptions.reduce((sum, item) => sum + optionAmount(item, nights, guests), 0);
-  const taxes = Math.round((roomSubtotal + optionsSubtotal) * 0.1);
+  const taxRate = room?.taxRate ?? 0;
+  const taxes = Math.round((roomSubtotal + optionsSubtotal) * taxRate) / 100;
   const total = roomSubtotal + optionsSubtotal + taxes;
 
   useEffect(() => {
@@ -90,7 +122,15 @@ export function Booking() {
 
   function validateDates(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (Date.parse(departure) <= Date.parse(arrival)) return;
+    if (arrival < dateInputValue(0)) {
+      setDateError("La date d'arrivée ne peut pas être dans le passé.");
+      return;
+    }
+    if (Date.parse(departure) <= Date.parse(arrival)) {
+      setDateError("Le départ doit avoir lieu au moins un jour après l'arrivée.");
+      return;
+    }
+    setDateError(null);
     setStep(2);
   }
 
@@ -107,21 +147,63 @@ export function Booking() {
     setStep(5);
   }
 
-  function completePayment(event: FormEvent<HTMLFormElement>) {
+  async function completeBooking(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    navigate("/confirmation", {
-      state: {
-        reference: `RVG-${String(Date.now()).slice(-6)}`,
-        room: room?.name,
+    if (!room || bookingSubmitting) return;
+
+    setBookingSubmitting(true);
+    setBookingError(null);
+    try {
+      const booking = await createBooking({
+        roomTypeId: room.id,
         arrival,
         departure,
         adults,
         children,
-        options: chosenOptions.map((item) => item.name),
-        total,
-        email: customer.email,
-      },
-    });
+        extraIds: selectedOptions,
+        expectedTotal: Math.round(total * 100),
+        guest: {
+          firstName: customer.firstName,
+          lastName: customer.lastName,
+          email: customer.email,
+          phone: customer.phone,
+          countryCode: countryCodes[customer.country],
+        },
+        specialRequests: customer.specialRequest.trim() || undefined,
+      }, idempotencyKey);
+
+      if (booking.status !== "PENDING_PAYMENT" && booking.status !== "CONFIRMED") {
+        setBookingError("Cette demande n'est plus active. Relancez la recherche pour réserver à nouveau.");
+        setIdempotencyKey(crypto.randomUUID());
+        setBookingSubmitting(false);
+        return;
+      }
+
+      const confirmationState = {
+        reference: booking.reference,
+        status: booking.status,
+        room: booking.room.name,
+        arrival: booking.arrival,
+        departure: booking.departure,
+        adults: booking.adults,
+        children: booking.children,
+        options: booking.options,
+        total: booking.total,
+        currency: booking.currency,
+        email: booking.email,
+        holdExpiresAt: booking.holdExpiresAt,
+      };
+      sessionStorage.setItem("rivage:latest-confirmation", JSON.stringify({
+        ...confirmationState,
+        email: undefined,
+      }));
+      navigate("/confirmation", {
+        state: confirmationState,
+      });
+    } catch (error) {
+      setBookingError(error instanceof Error ? error.message : "La réservation n'a pas pu être enregistrée.");
+      setBookingSubmitting(false);
+    }
   }
 
   return (
@@ -139,11 +221,12 @@ export function Booking() {
             <form className="booking-panel booking-dates" onSubmit={validateDates}>
               <div className="booking-panel-heading"><h2>Dates et voyageurs</h2><p>Commençons par préparer votre séjour.</p></div>
               <div className="booking-form-grid">
-                <label>Arrivée<input className="field" type="date" value={arrival} onChange={(event) => setArrival(event.target.value)} required /></label>
-                <label>Départ<input className="field" type="date" value={departure} min={arrival} onChange={(event) => setDeparture(event.target.value)} required /></label>
+                <label>Arrivée<input className="field" type="date" min={dateInputValue(0)} value={arrival} onChange={(event) => { const nextArrival = event.target.value; setArrival(nextArrival); setDateError(null); if (departure <= nextArrival) setDeparture(dateAfter(nextArrival)); }} required /></label>
+                <label>Départ<input className="field" type="date" value={departure} min={dateAfter(arrival)} onChange={(event) => { setDeparture(event.target.value); setDateError(null); }} required /></label>
                 <label>Adultes<input className="field" type="number" min="1" max="4" value={adults} onChange={(event) => setAdults(Number(event.target.value))} required /></label>
                 <label>Enfants<input className="field" type="number" min="0" max="3" value={children} onChange={(event) => setChildren(Number(event.target.value))} /></label>
               </div>
+              {dateError && <p className="booking-submit-error" role="alert">{dateError}</p>}
               <div className="booking-nav booking-nav-end"><button className="btn-primary" type="submit">Rechercher les hébergements →</button></div>
             </form>
           )}
@@ -186,28 +269,28 @@ export function Booking() {
                 <label>Email *<input className="field" type="email" value={customer.email} onChange={(event) => updateCustomer("email", event.target.value)} required /></label>
                 <label>Téléphone *<input className="field" type="tel" pattern="[+0-9 ()-]{8,}" value={customer.phone} onChange={(event) => updateCustomer("phone", event.target.value)} required /></label>
                 <label className="booking-field-wide">Pays<select className="field" value={customer.country} onChange={(event) => updateCustomer("country", event.target.value)}><option>France</option><option>Belgique</option><option>Suisse</option><option>Luxembourg</option><option>Autre</option></select></label>
-                <label className="booking-field-wide">Demande particulière <span>Facultatif</span><textarea className="field" rows={5} placeholder="Chambre haute, anniversaire, allergie alimentaire..." value={customer.specialRequest} onChange={(event) => updateCustomer("specialRequest", event.target.value)} /></label>
+                <label className="booking-field-wide">Demande particulière <span>Facultatif</span><textarea className="field" rows={5} placeholder="Chambre haute, anniversaire, arrivée tardive..." value={customer.specialRequest} onChange={(event) => updateCustomer("specialRequest", event.target.value)} /></label>
               </div>
+              <p className="booking-privacy-note">Ces informations servent à traiter votre demande. N'indiquez aucune donnée sensible. <Link to="/mentions-legales">Consulter la notice de confidentialité</Link>.</p>
               <div className="booking-nav"><button className="btn-secondary" type="button" onClick={() => setStep(3)}>← Retour</button><button className="btn-primary" type="submit">Continuer →</button></div>
             </form>
           )}
 
           {step === 5 && (
-            <form className="booking-panel" onSubmit={completePayment}>
-              <div className="booking-panel-heading secure-heading"><h2>Paiement sécurisé</h2><LockKeyhole /><p>Simulation front-end : aucune donnée bancaire n'est transmise ou enregistrée.</p></div>
-              <div className="booking-form-grid payment-grid">
-                <label className="booking-field-wide">Nom du titulaire *<input className="field" placeholder="Prénom Nom" autoComplete="cc-name" required /></label>
-                <label className="booking-field-wide">Numéro de carte *<input className="field" inputMode="numeric" placeholder="1234 5678 9012 3456" pattern="[0-9 ]{16,19}" autoComplete="cc-number" required /></label>
-                <label>Date d'expiration *<input className="field" placeholder="MM/AA" pattern="(0[1-9]|1[0-2])/[0-9]{2}" autoComplete="cc-exp" required /></label>
-                <label>CVC *<input className="field" inputMode="numeric" placeholder="123" pattern="[0-9]{3,4}" autoComplete="cc-csc" required /></label>
+            <form className="booking-panel" onSubmit={completeBooking}>
+              <div className="booking-panel-heading secure-heading"><h2>Confirmer votre demande</h2><LockKeyhole /><p>Votre demande sera enregistrée en attente de confirmation manuelle par l'hôtel. Aucun paiement en ligne n'est demandé.</p></div>
+              <div className="booking-submit-note">
+                <strong>Vos dates et votre chambre sont prêtes à être enregistrées.</strong>
+                <p>Cette option sur la chambre sera maintenue pendant 24 h, dans l'attente de la confirmation de l'hôtel.</p>
               </div>
-              <div className="payment-total"><p><span>Montant à payer</span><small>TTC · {room?.refundable ? "Annulation gratuite jusqu'à 48h avant" : "Tarif non remboursable"}</small></p><strong>{total} €</strong></div>
-              <div className="booking-nav"><button className="btn-secondary" type="button" onClick={() => setStep(4)}>← Retour</button><button className="btn-primary" type="submit">Payer {total} €</button></div>
+              <div className="payment-total"><p><span>Montant du séjour</span><small>TTC · confirmation manuelle par l'hôtel</small></p><strong>{total} €</strong></div>
+              {bookingError && <p className="booking-submit-error" role="alert">{bookingError}</p>}
+              <div className="booking-nav"><button className="btn-secondary" type="button" disabled={bookingSubmitting} onClick={() => setStep(4)}>← Retour</button><button className="btn-primary" type="submit" disabled={bookingSubmitting}>{bookingSubmitting ? "Enregistrement..." : "Enregistrer ma réservation"}</button></div>
             </form>
           )}
         </div>
 
-        <BookingSummary room={room} arrival={arrival} departure={departure} adults={adults} children={children} nights={nights} options={chosenOptions} roomSubtotal={roomSubtotal} optionsSubtotal={optionsSubtotal} taxes={taxes} total={total} />
+        <BookingSummary room={room} arrival={arrival} departure={departure} adults={adults} children={children} nights={nights} options={chosenOptions} roomSubtotal={roomSubtotal} optionsSubtotal={optionsSubtotal} taxRate={taxRate} taxes={taxes} total={total} />
       </div>
     </section>
   );
@@ -227,14 +310,14 @@ function RoomChoiceSkeleton() {
   return <div className="booking-room booking-room-skeleton" aria-hidden="true"><span className="skeleton-block skeleton-image" /><span className="skeleton-copy"><span /><span /><span /></span><span className="skeleton-price"><span /><span /></span></div>;
 }
 
-function BookingSummary({ room, arrival, departure, adults, children, nights, options, roomSubtotal, optionsSubtotal, taxes, total }: { room?: Accommodation; arrival: string; departure: string; adults: number; children: number; nights: number; options: BookingOption[]; roomSubtotal: number; optionsSubtotal: number; taxes: number; total: number }) {
+function BookingSummary({ room, arrival, departure, adults, children, nights, options, roomSubtotal, optionsSubtotal, taxRate, taxes, total }: { room?: Accommodation; arrival: string; departure: string; adults: number; children: number; nights: number; options: BookingOption[]; roomSubtotal: number; optionsSubtotal: number; taxRate: number; taxes: number; total: number }) {
   return (
     <aside className="booking-recap">
       <h2>Récapitulatif</h2>
       {!room ? <div className="recap-placeholder">Aucun hébergement sélectionné</div> : <><img src={room.hero} alt={room.name} /><h3>{room.name}</h3><p className="recap-room-meta">{room.rooms} · {room.surface}</p></>}
       <dl className="recap-details"><div><dt>Arrivée</dt><dd>{dateLabel(arrival)}</dd></div><div><dt>Départ</dt><dd>{dateLabel(departure)}</dd></div><div><dt>Durée</dt><dd>{nights} nuit{nights > 1 ? "s" : ""}</dd></div><div><dt>Voyageurs</dt><dd>{adults} adulte{adults > 1 ? "s" : ""}{children ? ` · ${children} enfant${children > 1 ? "s" : ""}` : ""}</dd></div></dl>
-      {room && <div className="recap-pricing"><p><span>{room.name}</span><strong>{roomSubtotal} €</strong></p>{options.map((item) => <p key={item.id}><span>{item.name}</span><strong>{optionAmount(item, nights, adults + children)} €</strong></p>)}{optionsSubtotal > 0 && <p className="sr-only">Options : {optionsSubtotal} €</p>}<p><span>Taxes (10 %)</span><strong>{taxes} €</strong></p><p className="recap-total"><span>Total</span><strong>{total} €</strong></p></div>}
-      <p className="recap-security"><LockKeyhole />Paiement sécurisé · {room ? (room.refundable ? "Annulation gratuite" : "Tarif non remboursable") : "Conditions selon le tarif"}</p>
+      {room && <div className="recap-pricing"><p><span>{room.name}</span><strong>{roomSubtotal} €</strong></p>{options.map((item) => <p key={item.id}><span>{item.name}</span><strong>{optionAmount(item, nights, adults + children)} €</strong></p>)}{optionsSubtotal > 0 && <p className="sr-only">Options : {optionsSubtotal} €</p>}<p><span>Taxes ({taxRate} %)</span><strong>{taxes} €</strong></p><p className="recap-total"><span>Total</span><strong>{total} €</strong></p></div>}
+      <p className="recap-security"><LockKeyhole />Demande sécurisée · confirmation par l'hôtel</p>
     </aside>
   );
 }
