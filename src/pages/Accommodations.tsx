@@ -19,6 +19,10 @@ export function Accommodations() {
   const { data: accommodations, loading, error, retry } = useRemoteData((signal) => getRoomTypes(signal), []);
   const count = accommodations?.length ?? 0;
   const countLabel = `${count} hébergement${count > 1 ? "s" : ""} disponible${count > 1 ? "s" : ""}`;
+  const catalogGallery = accommodations
+    ? [...new Set(accommodations.flatMap((accommodation) => accommodation.gallery).filter(Boolean))].slice(0, 6)
+    : [];
+  const displayedGallery = catalogGallery.length ? catalogGallery : hotelGallery;
 
   return (
     <>
@@ -58,12 +62,12 @@ export function Accommodations() {
         <div className="page-container">
           <div className="center-heading"><p className="eyebrow">Photos</p><h2>Galerie de l'hôtel</h2></div>
           <div className="accommodations-gallery">
-            {hotelGallery.map((image, index) => <button type="button" key={image} onClick={() => setLightboxIndex(index)} aria-label={`Agrandir la photo ${index + 1}`}><img src={image} alt={`Hôtel Rivage ${index + 1}`} /></button>)}
+            {displayedGallery.map((image, index) => <button type="button" key={image} onClick={() => setLightboxIndex(index)} aria-label={`Agrandir la photo ${index + 1}`}><img src={image} alt={`Hébergement de l'Hôtel Rivage ${index + 1}`} /></button>)}
           </div>
         </div>
       </section>
 
-      <Lightbox images={hotelGallery} index={lightboxIndex} alt="Hôtel Rivage" onClose={() => setLightboxIndex(null)} onChange={setLightboxIndex} />
+      <Lightbox images={displayedGallery} index={lightboxIndex} alt="Hôtel Rivage" onClose={() => setLightboxIndex(null)} onChange={setLightboxIndex} />
     </>
   );
 }

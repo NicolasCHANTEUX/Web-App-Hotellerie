@@ -195,6 +195,49 @@ export type AdminRoom = {
   } | null;
 };
 
+export type AdminRoomType = {
+  id: string;
+  slug: string;
+  name: string;
+  shortName: string | null;
+  description: string;
+  surfaceSqm: number;
+  maxAdults: number;
+  maxChildren: number;
+  maxGuests: number;
+  bedLabel: string;
+  coverImageUrl: string;
+  displayOrder: number;
+  isPublished: boolean;
+  price: number;
+  currency: string;
+  taxRate: number;
+  refundable: boolean;
+  amenities: string[];
+  roomCount: number;
+  canDelete: boolean;
+  updatedAt: string;
+};
+
+export type AdminRoomTypeInput = {
+  name: string;
+  shortName: string | null;
+  description: string;
+  surfaceSqm: number;
+  maxAdults: number;
+  maxChildren: number;
+  maxGuests: number;
+  bedLabel: string;
+  coverImageUrl: string;
+  displayOrder: number;
+  isPublished: boolean;
+  price: number;
+  taxRate: number;
+  amenities: string[];
+};
+
+export type UpdateAdminRoomTypeInput = AdminRoomTypeInput & { updatedAt: string };
+
 export type AdminRoomEditable = Pick<AdminRoom, "id" | "number" | "floor" | "status" | "notes" | "updatedAt" | "roomType">;
 
 export type UpdateAdminRoomInput = {
@@ -319,6 +362,34 @@ export function getAdminRooms(filters: RoomFilters, accessToken: string, signal?
   return adminRequest<PaginatedAdminResult<AdminRoom, AdminRoomSummary>>(
     `/admin/rooms${queryString(filters)}`,
     { signal },
+    accessToken,
+  );
+}
+
+export function getAdminRoomTypes(accessToken: string, signal?: AbortSignal) {
+  return adminRequest<AdminRoomType[]>("/admin/room-types", { signal }, accessToken);
+}
+
+export function createAdminRoomType(input: AdminRoomTypeInput, accessToken: string, signal?: AbortSignal) {
+  return adminRequest<AdminRoomType>(
+    "/admin/room-types",
+    { method: "POST", body: JSON.stringify(input), signal },
+    accessToken,
+  );
+}
+
+export function updateAdminRoomType(id: string, input: UpdateAdminRoomTypeInput, accessToken: string, signal?: AbortSignal) {
+  return adminRequest<AdminRoomType>(
+    `/admin/room-types/${encodeURIComponent(id)}`,
+    { method: "PATCH", body: JSON.stringify(input), signal },
+    accessToken,
+  );
+}
+
+export function deleteAdminRoomType(id: string, updatedAt: string, accessToken: string, signal?: AbortSignal) {
+  return adminRequest<{ id: string }>(
+    `/admin/room-types/${encodeURIComponent(id)}`,
+    { method: "DELETE", body: JSON.stringify({ updatedAt }), signal },
     accessToken,
   );
 }

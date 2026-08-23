@@ -1,4 +1,5 @@
-import { CalendarPlus, CheckCircle2 } from "lucide-react";
+import { CalendarPlus, CheckCircle2, Download } from "lucide-react";
+import { useState } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
 
 type ConfirmationState = {
@@ -41,8 +42,17 @@ function dateTimeLabel(value?: string) {
   }).format(new Date(value));
 }
 
+function amountLabel(total?: number, currency?: string) {
+  return new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: currency || "EUR",
+  }).format(total ?? 0);
+}
+
 export function Confirmation() {
   const location = useLocation();
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
   const navigationState = (location.state as ConfirmationState | null) ?? {};
   const booking = navigationState.reference ? navigationState : readStoredConfirmation();
 
@@ -73,6 +83,85 @@ export function Confirmation() {
     URL.revokeObjectURL(url);
   }
 
+  async function downloadConfirmationPdf() {
+    if (!booking.reference || downloadingPdf) return;
+    setDownloadingPdf(true);
+    setPdfError(null);
+    try {
+      const { jsPDF } = await import("jspdf");
+      const documentPdf = new jsPDF({ unit: "mm", format: "a4" });
+      const pageWidth = documentPdf.internal.pageSize.getWidth();
+      const margin = 22;
+      const contentWidth = pageWidth - margin * 2;
+      const statusLabel = isConfirmed ? "Réservation confirmée" : "Demande en attente de confirmation";
+      const optionsLabel = booking.options?.length ? booking.options.join(", ") : "Aucune option";
+      const rows = [
+        ["Hébergement", booking.room ?? "Hôtel Rivage"],
+        ["Dates", `${dateLabel(booking.arrival)} - ${dateLabel(booking.departure)}`],
+        ["Voyageurs", `${booking.adults ?? 2} adulte(s)${booking.children ? ` - ${booking.children} enfant(s)` : ""}`],
+        ["Options", optionsLabel],
+        ["Montant du séjour", amountLabel(booking.total, booking.currency)],
+        ...(!isConfirmed ? [["Maintien de la chambre", `Jusqu'au ${dateTimeLabel(booking.holdExpiresAt)}`]] : []),
+      ];
+
+      documentPdf.setFillColor(43, 39, 34);
+      documentPdf.rect(0, 0, pageWidth, 48, "F");
+      documentPdf.setTextColor(255, 255, 255);
+      documentPdf.setFont("helvetica", "bold");
+      documentPdf.setFontSize(21);
+      documentPdf.text("Hôtel Rivage", margin, 23);
+      documentPdf.setFont("helvetica", "normal");
+      documentPdf.setFontSize(10);
+      documentPdf.text("Confirmation de séjour", margin, 32);
+
+      documentPdf.setTextColor(146, 112, 71);
+      documentPdf.setFont("helvetica", "bold");
+      documentPdf.setFontSize(10);
+      documentPdf.text(statusLabel.toUpperCase(), margin, 67);
+      documentPdf.setTextColor(43, 39, 34);
+      documentPdf.setFontSize(20);
+      documentPdf.text(booking.reference, margin, 78, { maxWidth: contentWidth });
+
+      let cursorY = 96;
+      for (const [label, rawValue] of rows) {
+        const value = String(rawValue);
+        const wrappedValue = documentPdf.splitTextToSize(value, contentWidth - 48) as string[];
+        const rowHeight = Math.max(13, wrappedValue.length * 5 + 7);
+        documentPdf.setDrawColor(226, 220, 212);
+        documentPdf.line(margin, cursorY - 5, pageWidth - margin, cursorY - 5);
+        documentPdf.setFont("helvetica", "normal");
+        documentPdf.setFontSize(9);
+        documentPdf.setTextColor(113, 104, 94);
+        documentPdf.text(label, margin, cursorY + 2);
+        documentPdf.setFont("helvetica", "bold");
+        documentPdf.setTextColor(43, 39, 34);
+        documentPdf.text(wrappedValue, margin + 48, cursorY + 2);
+        cursorY += rowHeight;
+      }
+
+      documentPdf.setDrawColor(226, 220, 212);
+      documentPdf.line(margin, cursorY - 5, pageWidth - margin, cursorY - 5);
+      documentPdf.setFillColor(242, 236, 227);
+      documentPdf.roundedRect(margin, cursorY + 7, contentWidth, 30, 2, 2, "F");
+      documentPdf.setFont("helvetica", "bold");
+      documentPdf.setTextColor(43, 39, 34);
+      documentPdf.setFontSize(11);
+      documentPdf.text(isConfirmed ? "Votre séjour est confirmé." : "Votre demande a bien été enregistrée.", margin + 8, cursorY + 19);
+      documentPdf.setFont("helvetica", "normal");
+      documentPdf.setFontSize(9);
+      documentPdf.setTextColor(113, 104, 94);
+      documentPdf.text("26 avenue des Pins, 06400 Cannes - contact@hotel-rivage.fr", margin + 8, cursorY + 28);
+      documentPdf.setFontSize(8);
+      documentPdf.text("Document généré depuis le site de l'Hôtel Rivage.", margin, 282);
+
+      documentPdf.save(`hotel-rivage-${booking.reference.replace(/[^a-z0-9-]/gi, "-")}.pdf`);
+    } catch {
+      setPdfError("Le PDF n’a pas pu être généré. Réessayez dans quelques instants.");
+    } finally {
+      setDownloadingPdf(false);
+    }
+  }
+
   return (
     <section className="confirmation-page">
       <div className="confirmation-card">
@@ -88,10 +177,15 @@ export function Confirmation() {
           <div><dt>Dates</dt><dd>{dateLabel(booking.arrival)} → {dateLabel(booking.departure)}</dd></div>
           <div><dt>Voyageurs</dt><dd>{booking.adults ?? 2} adulte(s){booking.children ? ` · ${booking.children} enfant(s)` : ""}</dd></div>
           <div><dt>Options</dt><dd>{booking.options?.length ? booking.options.join(", ") : "Aucune option"}</dd></div>
-          <div><dt>Montant du séjour</dt><dd>{booking.total ?? 0} {booking.currency === "EUR" || !booking.currency ? "€" : booking.currency}</dd></div>
+          <div><dt>Montant du séjour</dt><dd>{amountLabel(booking.total, booking.currency)}</dd></div>
           {!isConfirmed && <div><dt>Maintien de la chambre</dt><dd>Jusqu'au {dateTimeLabel(booking.holdExpiresAt)}</dd></div>}
         </dl>
-        <div className="confirmation-actions"><button className="btn-secondary" type="button" disabled={!booking.arrival || !booking.departure} onClick={downloadCalendarEvent}><CalendarPlus />Ajouter au calendrier</button><Link className="btn-primary" to="/">Retour à l'accueil</Link></div>
+        {pdfError && <p className="confirmation-download-error" role="alert">{pdfError}</p>}
+        <div className="confirmation-actions">
+          <button className="btn-secondary" type="button" disabled={downloadingPdf} onClick={downloadConfirmationPdf}><Download />{downloadingPdf ? "Préparation…" : "Télécharger le PDF"}</button>
+          <button className="btn-secondary" type="button" disabled={!booking.arrival || !booking.departure} onClick={downloadCalendarEvent}><CalendarPlus />Ajouter au calendrier</button>
+          <Link className="btn-primary" to="/">Retour à l'accueil</Link>
+        </div>
       </div>
     </section>
   );

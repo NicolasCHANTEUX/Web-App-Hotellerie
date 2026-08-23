@@ -11,9 +11,11 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { getRoomTypes } from "../api/hotel";
 import { Lightbox } from "../components/Lightbox";
 import { SearchWidget } from "../components/SearchWidget";
 import { StayCta } from "../components/StayCta";
+import { useRemoteData } from "../hooks/useRemoteData";
 
 const heroImage = "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1800&q=88";
 
@@ -59,6 +61,12 @@ const faqs = [
 
 export function Home() {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const { data: roomTypes } = useRemoteData((signal) => getRoomTypes(signal), []);
+  const catalogImages = roomTypes
+    ? [...new Set(roomTypes.map((roomType) => roomType.hero).filter(Boolean))].slice(0, 3)
+    : [];
+  const stayImages = catalogImages.length ? catalogImages : hotelImages;
+  const roomTypeCount = roomTypes?.length;
 
   return (
     <>
@@ -98,11 +106,11 @@ export function Home() {
           <div className="stays-copy">
             <p className="eyebrow">Hébergements</p>
             <h2>Des chambres tournées vers la lumière</h2>
-            <p>Trois atmosphères, une même attention portée au calme, aux matières naturelles et à la douceur méditerranéenne.</p>
+            <p>{roomTypeCount ? `${roomTypeCount} atmosphère${roomTypeCount > 1 ? "s" : ""}, une même attention portée au calme, aux matières naturelles et à la douceur méditerranéenne.` : "Des atmosphères singulières, une même attention portée au calme, aux matières naturelles et à la douceur méditerranéenne."}</p>
             <Link className="text-link" to="/hebergements">Découvrir nos hébergements <span>→</span></Link>
           </div>
           <div className="stays-gallery">
-            {hotelImages.map((image, index) => <button type="button" key={image} onClick={() => setLightboxIndex(index)} aria-label={`Agrandir la photo ${index + 1}`}><img src={image} alt={`Aperçu de l'Hôtel Rivage ${index + 1}`} /></button>)}
+            {stayImages.map((image, index) => <button type="button" key={image} onClick={() => setLightboxIndex(index)} aria-label={`Agrandir la photo ${index + 1}`}><img src={image} alt={`Aperçu des hébergements de l'Hôtel Rivage ${index + 1}`} /></button>)}
           </div>
         </div>
       </section>
@@ -137,7 +145,7 @@ export function Home() {
 
       <StayCta />
 
-      <Lightbox images={hotelImages} index={lightboxIndex} alt="Hôtel Rivage" onClose={() => setLightboxIndex(null)} onChange={setLightboxIndex} />
+      <Lightbox images={stayImages} index={lightboxIndex} alt="Hôtel Rivage" onClose={() => setLightboxIndex(null)} onChange={setLightboxIndex} />
     </>
   );
 }

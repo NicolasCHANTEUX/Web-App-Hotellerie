@@ -14,7 +14,7 @@
     "db:seed": "prisma db seed",
     "db:seed:demo": "tsx prisma/seed-demo.ts",
     "admin:provision": "tsx src/scripts/provision-admin.ts",
-    "test": "node --import tsx --test src/modules/booking/booking.validation.test.ts src/modules/booking/booking.idempotency.test.ts src/modules/booking/booking.pricing.test.ts src/modules/admin/admin.privacy.test.ts src/modules/admin/admin.room-query.test.ts src/modules/admin/admin.room-update.test.ts src/modules/admin/admin.room-create-delete.test.ts",
+    "test": "node --import tsx --test src/modules/booking/booking.validation.test.ts src/modules/booking/booking.idempotency.test.ts src/modules/booking/booking.pricing.test.ts src/modules/admin/admin.privacy.test.ts src/modules/admin/admin.room-query.test.ts src/modules/admin/admin.room-update.test.ts src/modules/admin/admin.room-create-delete.test.ts src/modules/admin/admin.room-type.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

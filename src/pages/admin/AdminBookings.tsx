@@ -15,7 +15,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { useDeferredValue, useEffect, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useId, useRef, useState } from "react";
 import {
   AdminApiError,
   AdminBooking,
@@ -43,7 +43,7 @@ import {
   stayNights,
 } from "../../admin/ui";
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 5;
 
 const bookingStatuses: BookingStatus[] = [
   "CONFIRMED",
@@ -165,7 +165,7 @@ export function AdminBookings() {
                 <tbody>
                   {result.items.map((booking) => (
                     <tr key={booking.id}>
-                      <td><button type="button" className="admin-reference" onClick={() => setSelectedBookingId(booking.id)}>{booking.reference}</button><small>{formatDate(booking.createdAt)}</small></td>
+                      <td className="admin-reference-cell"><button type="button" className="admin-reference" title={booking.reference} onClick={() => setSelectedBookingId(booking.id)}>{booking.reference}</button><small>{formatDate(booking.createdAt)}</small></td>
                       <td><strong>{guestName(booking)}</strong><small>{booking.guest?.email ?? "—"}</small></td>
                       <td><strong>{formatDate(booking.checkIn)} → {formatDate(booking.checkOut)}</strong><small>{stayNights(booking.checkIn, booking.checkOut)} nuit(s) · {booking.adults + booking.children} voyageur(s)</small></td>
                       <td><span className="admin-room-label"><BedDouble />{roomsLabel(booking)}</span></td>
@@ -207,22 +207,36 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [confirming, setConfirming] = useState(false);
+  const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const confirmationOpenRef = useRef(false);
+  const confirmingRef = useRef(false);
   const drawerRef = useRef<HTMLElement>(null);
+  const confirmationDialogRef = useRef<HTMLDivElement>(null);
+  const confirmationTriggerRef = useRef<HTMLButtonElement>(null);
+  const confirmationCancelRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const confirmationTitleId = useId();
+  const confirmationDescriptionId = useId();
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     document.body.style.overflow = "hidden";
-    closeButtonRef.current?.focus();
+    const focusFrame = window.requestAnimationFrame(() => closeButtonRef.current?.focus());
     const handleKeyboard = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        onClose();
+        event.preventDefault();
+        if (confirmationOpenRef.current) {
+          dismissConfirmation();
+        } else {
+          onClose();
+        }
         return;
       }
-      if (event.key !== "Tab" || !drawerRef.current) return;
-      const focusable = [...drawerRef.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')];
+      const focusRoot = confirmationOpenRef.current ? confirmationDialogRef.current : drawerRef.current;
+      if (event.key !== "Tab" || !focusRoot) return;
+      const focusable = [...focusRoot.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')];
       if (!focusable.length) return;
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
@@ -236,6 +250,7 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
     };
     window.addEventListener("keydown", handleKeyboard);
     return () => {
+      window.cancelAnimationFrame(focusFrame);
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeyboard);
       previousFocus?.focus();
@@ -261,21 +276,34 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
     return () => controller.abort();
   }, [accessToken, id, logout, retryKey]);
 
+  function openConfirmation() {
+    if (!booking || confirmingRef.current) return;
+    setActionError(null);
+    confirmationOpenRef.current = true;
+    setConfirmationOpen(true);
+    window.requestAnimationFrame(() => confirmationCancelRef.current?.focus());
+  }
+
+  function dismissConfirmation() {
+    if (confirmingRef.current) return;
+    confirmationOpenRef.current = false;
+    setConfirmationOpen(false);
+    setActionError(null);
+    window.requestAnimationFrame(() => confirmationTriggerRef.current?.focus());
+  }
+
   async function confirmBooking() {
-    if (!accessToken || confirming || !booking) return;
-    const accepted = window.confirm([
-      `Confirmer la réservation ${booking.reference} ?`,
-      `${formatDate(booking.checkIn)} → ${formatDate(booking.checkOut)}`,
-      roomsLabel(booking),
-      "Cette action attribuera la chambre et mettra la réservation au statut confirmé.",
-    ].join("\n"));
-    if (!accepted) return;
+    if (!accessToken || confirmingRef.current || !booking) return;
+    confirmingRef.current = true;
     setConfirming(true);
     setActionError(null);
     try {
       const confirmed = await confirmAdminBooking(id, accessToken);
+      confirmationOpenRef.current = false;
+      setConfirmationOpen(false);
       setBooking(confirmed);
       onChanged();
+      window.requestAnimationFrame(() => closeButtonRef.current?.focus());
     } catch (nextError) {
       if (nextError instanceof AdminApiError && nextError.status === 401) {
         logout();
@@ -283,28 +311,28 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
       }
       setActionError(nextError instanceof Error ? nextError.message : "La confirmation a échoué.");
     } finally {
+      confirmingRef.current = false;
       setConfirming(false);
     }
   }
 
   return (
     <div className="admin-drawer-layer">
-      <button type="button" className="admin-drawer-backdrop" aria-label="Fermer le détail" onClick={onClose} />
+      <button type="button" className="admin-drawer-backdrop" aria-label="Fermer le détail" disabled={confirmationOpen} aria-hidden={confirmationOpen || undefined} onClick={onClose} />
       <aside ref={drawerRef} className="admin-drawer" role="dialog" aria-modal="true" aria-labelledby="booking-detail-title">
-        <header className="admin-drawer-head">
+        <header className="admin-drawer-head" inert={confirmationOpen || undefined} aria-hidden={confirmationOpen || undefined}>
           <div><p>Détail de la réservation</p><h2 id="booking-detail-title">{booking?.reference ?? "Chargement…"}</h2></div>
           <button ref={closeButtonRef} type="button" onClick={onClose} aria-label="Fermer"><X /></button>
         </header>
 
-        <div className="admin-drawer-body">
+        <div className="admin-drawer-body" inert={confirmationOpen || undefined} aria-hidden={confirmationOpen || undefined}>
           {loading && <AdminTableSkeleton columns={2} rows={7} />}
           {error && <AdminErrorState message={error} retry={() => setRetryKey((value) => value + 1)} />}
           {!loading && booking && (
             <>
               <div className="admin-detail-statuses"><StatusBadge status={booking.status} kind="booking" />{booking.paymentStatus ? <StatusBadge status={booking.paymentStatus} kind="payment" /> : <span className="admin-status admin-status-neutral"><i />Paiement non initié</span>}</div>
               {booking.hold && <div className={`admin-hold-notice ${booking.hold.isActive ? "is-active" : ""}`}><CalendarCheck /><span><strong>{booking.hold.isActive ? "Chambre optionnée" : "Option terminée"}</strong><small>{booking.hold.isActive ? `À confirmer avant le ${formatDateTime(booking.hold.expiresAt, propertyTimeZone)}` : `Échéance : ${formatDateTime(booking.hold.expiresAt, propertyTimeZone)}`} · heure locale de l’hôtel</small></span></div>}
-              {booking.status === "PENDING_PAYMENT" && booking.hold?.isActive && <button type="button" className="admin-confirm-booking" disabled={confirming} onClick={confirmBooking}><CircleCheck />{confirming ? "Confirmation…" : "Confirmer manuellement la réservation"}</button>}
-              {actionError && <p className="admin-action-error" role="alert">{actionError}</p>}
+              {booking.status === "PENDING_PAYMENT" && booking.hold?.isActive && <button ref={confirmationTriggerRef} type="button" className="admin-confirm-booking" disabled={confirming} aria-haspopup="dialog" onClick={openConfirmation}><CircleCheck />Confirmer manuellement la réservation</button>}
 
               <section className="admin-detail-section">
                 <h3><UserRound />Client principal</h3>
@@ -349,6 +377,46 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
             </>
           )}
         </div>
+
+        {confirmationOpen && booking && (
+          <div className="admin-booking-confirm-layer">
+            <div
+              ref={confirmationDialogRef}
+              className="admin-booking-confirm-dialog"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby={confirmationTitleId}
+              aria-describedby={confirmationDescriptionId}
+              aria-busy={confirming}
+            >
+              <span className="admin-booking-confirm-icon" aria-hidden="true"><CircleCheck /></span>
+              <div className="admin-booking-confirm-copy">
+                <p>Validation du séjour</p>
+                <h3 id={confirmationTitleId}>Confirmer cette réservation ?</h3>
+                <span className="admin-booking-confirm-reference" title={booking.reference}>{booking.reference}</span>
+              </div>
+
+              <dl className="admin-booking-confirm-summary">
+                <div><dt>Séjour</dt><dd>{formatDate(booking.checkIn)} → {formatDate(booking.checkOut)}</dd></div>
+                <div><dt>Chambre</dt><dd>{roomsLabel(booking)}</dd></div>
+              </dl>
+
+              <p id={confirmationDescriptionId} className="admin-booking-confirm-description">
+                La chambre optionnée sera attribuée à ce séjour et la réservation passera au statut « Confirmée ».
+              </p>
+
+              {actionError && <p className="admin-booking-confirm-error" role="alert">{actionError}</p>}
+
+              <div className="admin-booking-confirm-actions">
+                <button ref={confirmationCancelRef} type="button" disabled={confirming} onClick={dismissConfirmation}>Annuler</button>
+                <button type="button" className="primary" disabled={confirming} onClick={confirmBooking}>
+                  {confirming ? <span className="admin-spinner light" /> : <CircleCheck />}
+                  {confirming ? "Confirmation…" : "Confirmer la réservation"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </aside>
     </div>
   );

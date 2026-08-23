@@ -17,6 +17,17 @@ import {
   parseAdminRoomDeleteBody,
 } from "./admin.room-create-delete.js";
 import {
+  parseAdminRoomTypeCreateBody,
+  parseAdminRoomTypeDeleteBody,
+  parseAdminRoomTypeUpdateBody,
+} from "./admin.room-type.js";
+import {
+  createAdminRoomType,
+  deleteAdminRoomType,
+  listAdminRoomTypes,
+  updateAdminRoomType,
+} from "./admin.room-type.service.js";
+import {
   confirmAdminBooking,
   createAdminRoom,
   deleteAdminRoom,
@@ -47,6 +58,10 @@ type BookingParams = {
 };
 
 type RoomParams = {
+  id: string;
+};
+
+type RoomTypeParams = {
   id: string;
 };
 
@@ -270,6 +285,86 @@ export async function adminRoutes(app: FastifyInstance) {
       handleAdminRoute(reply, async () => ({
         data: await listAdminRooms(resolveMembership(request), parseRoomQuery(request.query)),
       })),
+  );
+
+  app.get(
+    "/admin/room-types",
+    { preHandler: authenticateAdmin },
+    async (request, reply) =>
+      handleAdminRoute(reply, async () => {
+        const membership = requireRoomManagementPermission(resolveMembership(request));
+        return { data: await listAdminRoomTypes(membership.propertyId) };
+      }),
+  );
+
+  app.post<{ Body: unknown }>(
+    "/admin/room-types",
+    {
+      preHandler: authenticateAdmin,
+      config: { rateLimit: { max: 20, timeWindow: "15 minutes" } },
+    },
+    async (request, reply) =>
+      handleAdminRoute(reply, async () => {
+        const membership = requireRoomManagementPermission(resolveMembership(request));
+        const context = requireAdminContext(request);
+        const roomType = await createAdminRoomType(
+          membership,
+          context.user.id,
+          parseAdminRoomTypeCreateBody(request.body),
+          request.ip,
+        );
+        return reply.code(201).send({ data: roomType });
+      }),
+  );
+
+  app.patch<{ Params: RoomTypeParams; Body: unknown }>(
+    "/admin/room-types/:id",
+    {
+      preHandler: authenticateAdmin,
+      config: { rateLimit: { max: 40, timeWindow: "15 minutes" } },
+    },
+    async (request, reply) =>
+      handleAdminRoute(reply, async () => {
+        if (!uuidPattern.test(request.params.id)) {
+          throw new AdminApiError(400, "INVALID_ROOM_TYPE_ID", "L’identifiant du type de chambre est invalide.");
+        }
+        const membership = requireRoomManagementPermission(resolveMembership(request));
+        const context = requireAdminContext(request);
+        return {
+          data: await updateAdminRoomType(
+            membership,
+            context.user.id,
+            request.params.id,
+            parseAdminRoomTypeUpdateBody(request.body),
+            request.ip,
+          ),
+        };
+      }),
+  );
+
+  app.delete<{ Params: RoomTypeParams; Body: unknown }>(
+    "/admin/room-types/:id",
+    {
+      preHandler: authenticateAdmin,
+      config: { rateLimit: { max: 15, timeWindow: "15 minutes" } },
+    },
+    async (request, reply) =>
+      handleAdminRoute(reply, async () => {
+        if (!uuidPattern.test(request.params.id)) {
+          throw new AdminApiError(400, "INVALID_ROOM_TYPE_ID", "L’identifiant du type de chambre est invalide.");
+        }
+        const membership = requireRoomManagementPermission(resolveMembership(request));
+        const context = requireAdminContext(request);
+        return {
+          data: await deleteAdminRoomType(
+            membership,
+            context.user.id,
+            request.params.id,
+            parseAdminRoomTypeDeleteBody(request.body),
+            request.ip,
+          ),
+        };
+      }),
   );
 
   app.post<{ Body: unknown }>(

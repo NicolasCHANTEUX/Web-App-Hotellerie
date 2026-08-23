@@ -98,7 +98,6 @@ export function AdminLayout() {
             <span className="admin-topbar-separator" />
             <span className="admin-topbar-role">{profile ? roleLabels[profile.membership.role] : ""}</span>
           </div>
-          <button type="button" className="admin-topbar-logout" onClick={logout}><LogOut /><span>Se déconnecter</span></button>
         </header>
         <main className="admin-main">
           <Outlet />

@@ -34,7 +34,7 @@ export function serializeRoomType(roomType: CatalogRoomType) {
     id: roomType.id,
     slug: roomType.slug,
     name: roomType.name,
-    category: categoryFor(roomType.slug),
+    category: roomType.shortName?.trim() || categoryFor(roomType.slug),
     shortDescription: roomType.description,
     description: roomType.description,
     price: Number(rate.basePricePerNight),

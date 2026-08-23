@@ -6,6 +6,7 @@ import {
   CircleOff,
   Eye,
   Filter,
+  Layers3,
   Pencil,
   Plus,
   Search,
@@ -42,6 +43,7 @@ import {
   formatDateTime,
   roomStatusLabel,
 } from "../../admin/ui";
+import { AdminRoomTypesDialog } from "./AdminRoomTypesDialog";
 
 const PAGE_SIZE = 20;
 const roomStatuses: RoomStatus[] = ["ACTIVE", "OUT_OF_SERVICE", "ARCHIVED"];
@@ -119,6 +121,7 @@ export function AdminRooms() {
   const [error, setError] = useState<string | null>(null);
   const [selectedRoom, setSelectedRoom] = useState<AdminRoom | null>(null);
   const [creatingRoom, setCreatingRoom] = useState(false);
+  const [managingRoomTypes, setManagingRoomTypes] = useState(false);
   const [roomAnnouncement, setRoomAnnouncement] = useState("");
   const roomPanelHeadingRef = useRef<HTMLHeadingElement>(null);
 
@@ -202,15 +205,18 @@ export function AdminRooms() {
         eyebrow="Inventaire physique"
         title="Chambres"
         action={canManageRooms ? (
-          <button
-            type="button"
-            className="admin-room-create-button"
-            disabled={loading || roomTypes.length === 0}
-            title={roomTypes.length === 0 ? "Aucun type de chambre n’est disponible." : undefined}
-            onClick={() => setCreatingRoom(true)}
-          >
-            <Plus />Nouvelle chambre
-          </button>
+          <div className="admin-room-page-actions">
+            <button type="button" className="admin-room-types-button" onClick={() => setManagingRoomTypes(true)}><Layers3 />Gérer les types</button>
+            <button
+              type="button"
+              className="admin-room-create-button"
+              disabled={loading || roomTypes.length === 0}
+              title={roomTypes.length === 0 ? "Créez d’abord un type de chambre." : undefined}
+              onClick={() => setCreatingRoom(true)}
+            >
+              <Plus />Nouvelle chambre
+            </button>
+          </div>
         ) : undefined}
       />
       <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">{roomAnnouncement}</p>
@@ -335,6 +341,16 @@ export function AdminRooms() {
             setRetryKey((value) => value + 1);
             setRoomAnnouncement("La nouvelle chambre a été créée.");
             window.requestAnimationFrame(() => roomPanelHeadingRef.current?.focus());
+          }}
+        />
+      )}
+
+      {managingRoomTypes && canManageRooms && (
+        <AdminRoomTypesDialog
+          onClose={() => setManagingRoomTypes(false)}
+          onChanged={() => {
+            setPage(1);
+            setRetryKey((value) => value + 1);
           }}
         />
       )}
@@ -811,6 +827,7 @@ function RoomDialog({ room, roomTypes, timeZone, canEdit, onClose, onSaved, onDe
   const deleteDialogRef = useRef<HTMLDivElement>(null);
   const continueEditingRef = useRef<HTMLButtonElement>(null);
   const deleteTriggerRef = useRef<HTMLButtonElement>(null);
+  const restoreDeleteFocusRef = useRef(false);
   const deleteCancelRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const numberInputRef = useRef<HTMLInputElement>(null);
@@ -875,6 +892,12 @@ function RoomDialog({ room, roomTypes, timeZone, canEdit, onClose, onSaved, onDe
     };
   }, [canEdit, onClose]);
 
+  useEffect(() => {
+    if (confirmDelete || !restoreDeleteFocusRef.current) return;
+    restoreDeleteFocusRef.current = false;
+    deleteTriggerRef.current?.focus();
+  }, [confirmDelete]);
+
   function requestClose() {
     if (pendingRef.current) return;
     if (canEdit && dirtyRef.current) {
@@ -903,11 +926,11 @@ function RoomDialog({ room, roomTypes, timeZone, canEdit, onClose, onSaved, onDe
 
   function dismissDeletePrompt() {
     if (pendingRef.current) return;
+    restoreDeleteFocusRef.current = true;
     deleteOpenRef.current = false;
     setConfirmDelete(false);
     setDeleteConfirmation("");
     setDeleteError(null);
-    window.requestAnimationFrame(() => deleteTriggerRef.current?.focus());
   }
 
   async function submitRoom(event: FormEvent<HTMLFormElement>) {
@@ -994,11 +1017,6 @@ function RoomDialog({ room, roomTypes, timeZone, canEdit, onClose, onSaved, onDe
         </header>
 
         <div className="admin-room-dialog-body" inert={nestedDialogOpen || undefined} aria-hidden={nestedDialogOpen || undefined}>
-          <div className="admin-room-dialog-summary">
-            <div><strong>{room.roomType.name}</strong><span><Building2 />{floorLabel(room.floor)}</span></div>
-            <StatusBadge status={room.status} kind="room" />
-          </div>
-
           <section className="admin-room-dialog-section" aria-labelledby={`${titleId}-planning`}>
             <h3 id={`${titleId}-planning`}><CalendarClock />Planning</h3>
             <div className="admin-room-dialog-occupancies">
