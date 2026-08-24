@@ -1,4 +1,6 @@
+import { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
+import { priceTaxRule, roundMoney } from "../booking/booking.pricing.js";
 import { serializeRoomType } from "../catalog/catalog.service.js";
 
 export type AvailabilityInput = {
@@ -22,6 +24,22 @@ export async function searchAvailability(input: AvailabilityInput) {
     },
     orderBy: { displayOrder: "asc" },
     include: {
+      property: {
+        select: {
+          currency: true,
+          taxRules: {
+            where: {
+              isActive: true,
+              kind: "TOURIST_TAX",
+              AND: [
+                { OR: [{ validFrom: null }, { validFrom: { lte: input.arrival } }] },
+                { OR: [{ validUntil: null }, { validUntil: { gte: input.departure } }] },
+              ],
+            },
+            orderBy: [{ priority: "asc" }, { code: "asc" }],
+          },
+        },
+      },
       amenities: { orderBy: { sortOrder: "asc" }, include: { amenity: true } },
       ratePlans: {
         where: {
@@ -61,10 +79,22 @@ export async function searchAvailability(input: AvailabilityInput) {
     if (!roomType.rooms.length) return [];
     const serialized = serializeRoomType(roomType);
     if (!serialized) return [];
+    const accommodationSubtotal = new Prisma.Decimal(serialized.price).mul(nights);
+    const touristTaxTotal = roundMoney(
+      roomType.property.taxRules
+        .filter((rule) => rule.currency === null || rule.currency === roomType.property.currency)
+        .reduce(
+          (total, rule) => total.add(
+            priceTaxRule(rule, accommodationSubtotal, nights, input.adults, input.children).amount,
+          ),
+          new Prisma.Decimal(0),
+        ),
+    );
     return [{
       ...serialized,
       availableUnits: roomType.rooms.length,
       totalPrice: serialized.price * nights,
+      touristTaxTotal: Number(touristTaxTotal),
     }];
   });
 

@@ -387,6 +387,7 @@ export async function getAdminBooking(propertyId: string, bookingId: string) {
     currency: booking.currency,
     accommodationSubtotal: Number(booking.accommodationSubtotal),
     extrasSubtotal: Number(booking.extrasSubtotal),
+    touristTaxTotal: Number(booking.touristTaxTotal),
     taxTotal: Number(booking.taxTotal),
     total: Number(booking.total),
     specialRequests: booking.specialRequests,

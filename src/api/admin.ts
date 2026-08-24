@@ -135,6 +135,7 @@ export type AdminBooking = {
 export type AdminBookingDetail = AdminBooking & {
   accommodationSubtotal: number;
   extrasSubtotal: number;
+  touristTaxTotal: number;
   taxTotal: number;
   specialRequests: string | null;
   confirmedAt: string | null;

@@ -1,0 +1,25 @@
+# Local secrets
+.env
+.env.*
+!.env.example
+server/.env
+server/.env.*
+!server/.env.example
+
+# Dependencies and generated caches
+node_modules/
+server/node_modules/
+*.tsbuildinfo
+.vite/
+
+# Build outputs
+dist/
+server/dist/
+
+# Local development runtime
+server/.api-dev-state.json
+
+# Logs and operating-system files
+*.log
+.DS_Store
+Thumbs.db

@@ -5,14 +5,18 @@ import { resolve } from "node:path";
 const statePath = resolve("server", ".api-dev-state.json");
 
 async function readHealth() {
-  try {
-    const response = await fetch("http://127.0.0.1:3001/health", {
-      signal: AbortSignal.timeout(1_500),
-    });
-    return response.ok ? response.json() : null;
-  } catch {
-    return null;
+  for (const endpoint of ["health/live", "health"]) {
+    try {
+      const response = await fetch(`http://127.0.0.1:3001/${endpoint}`, {
+        signal: AbortSignal.timeout(1_500),
+      });
+      const body = await response.json().catch(() => null);
+      if (body?.service) return body;
+    } catch {
+      // Try the legacy endpoint before deciding that no API is running.
+    }
   }
+  return null;
 }
 
 const health = await readHealth();
@@ -39,7 +43,11 @@ if (state.service !== health.service || state.pid !== health.pid) {
   process.exit(1);
 }
 
-const targetPid = Number(state.parentPid || state.pid);
+const targetPid = Number(state.stackPid || state.parentPid || state.pid);
+if (!Number.isInteger(targetPid) || targetPid <= 0) {
+  console.error("Le fichier d'état de l'API contient un identifiant de processus invalide. Aucun processus n'a été arrêté.");
+  process.exit(1);
+}
 if (process.platform === "win32") {
   spawnSync("taskkill", ["/PID", String(targetPid), "/T", "/F"], { stdio: "ignore" });
 } else {

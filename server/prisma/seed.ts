@@ -1,5 +1,12 @@
+import { createHash } from "node:crypto";
 import { PricingUnit } from "../src/generated/prisma/client.js";
 import { prisma } from "../src/lib/prisma.js";
+
+const bookingTermsBody = [
+  "La demande est enregistrée sous réserve de confirmation par l'hôtel.",
+  "La chambre est optionnée pendant 24 heures.",
+  "Les conditions d'annulation applicables sont celles affichées et acceptées au moment de la demande.",
+].join("\n");
 
 const roomTypes = [
   {
@@ -122,6 +129,34 @@ async function main() {
   });
 
   const amenityBySlug = new Map<string, string>();
+
+  await prisma.contractTermsVersion.upsert({
+    where: {
+      propertyId_code_version: {
+        propertyId: property.id,
+        code: "BOOKING_TERMS",
+        version: 1,
+      },
+    },
+    update: {
+      title: "Conditions de réservation",
+      body: bookingTermsBody,
+      checksumSha256: createHash("sha256").update(bookingTermsBody).digest("hex"),
+      cancellationPolicy: { type: "MANUAL_CONFIRMATION", refundable: true },
+      isActive: true,
+    },
+    create: {
+      propertyId: property.id,
+      code: "BOOKING_TERMS",
+      version: 1,
+      title: "Conditions de réservation",
+      body: bookingTermsBody,
+      checksumSha256: createHash("sha256").update(bookingTermsBody).digest("hex"),
+      cancellationPolicy: { type: "MANUAL_CONFIRMATION", refundable: true },
+      effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
+    },
+  });
+
   for (const [slug, label] of amenities) {
     const amenity = await prisma.amenity.upsert({
       where: { propertyId_slug: { propertyId: property.id, slug } },
@@ -209,8 +244,8 @@ async function main() {
   for (const [displayOrder, [code, name, description, price, pricingUnit]] of extras.entries()) {
     await prisma.extra.upsert({
       where: { propertyId_code: { propertyId: property.id, code } },
-      update: { name, description, price, pricingUnit, displayOrder },
-      create: { propertyId: property.id, code, name, description, price, pricingUnit, displayOrder },
+      update: { name, description, price, pricingUnit, taxRate: 10, displayOrder },
+      create: { propertyId: property.id, code, name, description, price, pricingUnit, taxRate: 10, displayOrder },
     });
   }
 }

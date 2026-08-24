@@ -66,6 +66,10 @@ function optionAmount(option: BookingOption, nights: number, guests: number) {
   return option.price;
 }
 
+function roundAmount(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
 export function Booking() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -97,8 +101,15 @@ export function Booking() {
   const roomSubtotal = room ? room.price * nights : 0;
   const optionsSubtotal = chosenOptions.reduce((sum, item) => sum + optionAmount(item, nights, guests), 0);
   const taxRate = room?.taxRate ?? 0;
-  const taxes = Math.round((roomSubtotal + optionsSubtotal) * taxRate) / 100;
-  const total = roomSubtotal + optionsSubtotal + taxes;
+  const accommodationTax = roundAmount(roomSubtotal * taxRate / 100);
+  const optionsTax = chosenOptions.reduce((sum, item) => {
+    const optionTaxRate = item.taxRate ?? taxRate;
+    return sum + roundAmount(optionAmount(item, nights, guests) * optionTaxRate / 100);
+  }, 0);
+  const vatTaxes = roundAmount(accommodationTax + optionsTax);
+  const touristTax = room?.touristTaxTotal ?? 0;
+  const taxes = roundAmount(vatTaxes + touristTax);
+  const total = roundAmount(roomSubtotal + optionsSubtotal + taxes);
 
   useEffect(() => {
     if (step !== 2) return;
@@ -290,7 +301,7 @@ export function Booking() {
           )}
         </div>
 
-        <BookingSummary room={room} arrival={arrival} departure={departure} adults={adults} children={children} nights={nights} options={chosenOptions} roomSubtotal={roomSubtotal} optionsSubtotal={optionsSubtotal} taxRate={taxRate} taxes={taxes} total={total} />
+        <BookingSummary room={room} arrival={arrival} departure={departure} adults={adults} children={children} nights={nights} options={chosenOptions} roomSubtotal={roomSubtotal} optionsSubtotal={optionsSubtotal} vatTaxes={vatTaxes} touristTax={touristTax} total={total} />
       </div>
     </section>
   );
@@ -310,13 +321,13 @@ function RoomChoiceSkeleton() {
   return <div className="booking-room booking-room-skeleton" aria-hidden="true"><span className="skeleton-block skeleton-image" /><span className="skeleton-copy"><span /><span /><span /></span><span className="skeleton-price"><span /><span /></span></div>;
 }
 
-function BookingSummary({ room, arrival, departure, adults, children, nights, options, roomSubtotal, optionsSubtotal, taxRate, taxes, total }: { room?: Accommodation; arrival: string; departure: string; adults: number; children: number; nights: number; options: BookingOption[]; roomSubtotal: number; optionsSubtotal: number; taxRate: number; taxes: number; total: number }) {
+function BookingSummary({ room, arrival, departure, adults, children, nights, options, roomSubtotal, optionsSubtotal, vatTaxes, touristTax, total }: { room?: Accommodation; arrival: string; departure: string; adults: number; children: number; nights: number; options: BookingOption[]; roomSubtotal: number; optionsSubtotal: number; vatTaxes: number; touristTax: number; total: number }) {
   return (
     <aside className="booking-recap">
       <h2>Récapitulatif</h2>
       {!room ? <div className="recap-placeholder">Aucun hébergement sélectionné</div> : <><img src={room.hero} alt={room.name} /><h3>{room.name}</h3><p className="recap-room-meta">{room.rooms} · {room.surface}</p></>}
       <dl className="recap-details"><div><dt>Arrivée</dt><dd>{dateLabel(arrival)}</dd></div><div><dt>Départ</dt><dd>{dateLabel(departure)}</dd></div><div><dt>Durée</dt><dd>{nights} nuit{nights > 1 ? "s" : ""}</dd></div><div><dt>Voyageurs</dt><dd>{adults} adulte{adults > 1 ? "s" : ""}{children ? ` · ${children} enfant${children > 1 ? "s" : ""}` : ""}</dd></div></dl>
-      {room && <div className="recap-pricing"><p><span>{room.name}</span><strong>{roomSubtotal} €</strong></p>{options.map((item) => <p key={item.id}><span>{item.name}</span><strong>{optionAmount(item, nights, adults + children)} €</strong></p>)}{optionsSubtotal > 0 && <p className="sr-only">Options : {optionsSubtotal} €</p>}<p><span>Taxes ({taxRate} %)</span><strong>{taxes} €</strong></p><p className="recap-total"><span>Total</span><strong>{total} €</strong></p></div>}
+      {room && <div className="recap-pricing"><p><span>{room.name}</span><strong>{roomSubtotal} €</strong></p>{options.map((item) => <p key={item.id}><span>{item.name}</span><strong>{optionAmount(item, nights, adults + children)} €</strong></p>)}{optionsSubtotal > 0 && <p className="sr-only">Options : {optionsSubtotal} €</p>}<p><span>TVA</span><strong>{vatTaxes} €</strong></p>{touristTax > 0 && <p><span>Taxe de séjour</span><strong>{touristTax} €</strong></p>}<p className="recap-total"><span>Total</span><strong>{total} €</strong></p></div>}
       <p className="recap-security"><LockKeyhole />Demande sécurisée · confirmation par l'hôtel</p>
     </aside>
   );

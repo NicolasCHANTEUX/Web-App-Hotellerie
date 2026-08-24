@@ -1,0 +1,82 @@
+import { Prisma } from "../generated/prisma/client.js";
+import { prisma } from "../lib/prisma.js";
+
+const requiredTables = [
+  "properties",
+  "room_types",
+  "rooms",
+  "amenities",
+  "room_type_amenities",
+  "rate_plans",
+  "extras",
+  "bookings",
+  "booking_rooms",
+  "booking_extras",
+  "guests",
+  "reservation_holds",
+  "availability_blocks",
+  "room_allocations",
+  "payments",
+  "invoices",
+  "invoice_lines",
+  "admin_users",
+  "admin_memberships",
+  "audit_logs",
+] as const;
+
+const requiredConstraints = [
+  "room_allocations_no_active_overlap",
+  "room_allocations_exactly_one_source",
+  "bookings_valid_stay",
+  "bookings_valid_guests",
+  "bookings_non_negative_amounts",
+] as const;
+
+async function main() {
+  const tables = await prisma.$queryRaw<Array<{ table_name: string }>>`
+    SELECT table_name
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+      AND table_name IN (${Prisma.join([...requiredTables])})
+  `;
+  const constraints = await prisma.$queryRaw<Array<{ constraint_name: string }>>`
+    SELECT conname AS constraint_name
+    FROM pg_constraint
+    WHERE conname IN (${Prisma.join([...requiredConstraints])})
+  `;
+  const rlsTables = await prisma.$queryRaw<Array<{ table_name: string }>>`
+    SELECT c.relname AS table_name
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+      AND c.relkind = 'r'
+      AND c.relrowsecurity = true
+      AND c.relname IN (${Prisma.join([...requiredTables])})
+  `;
+
+  const presentTables = new Set(tables.map((item) => item.table_name));
+  const presentConstraints = new Set(constraints.map((item) => item.constraint_name));
+  const presentRls = new Set(rlsTables.map((item) => item.table_name));
+  const missingTables = requiredTables.filter((name) => !presentTables.has(name));
+  const missingConstraints = requiredConstraints.filter((name) => !presentConstraints.has(name));
+  const missingRls = requiredTables.filter((name) => !presentRls.has(name));
+
+  console.log(JSON.stringify({
+    requiredTables: requiredTables.length,
+    presentTables: presentTables.size,
+    missingTables,
+    missingConstraints,
+    missingRls,
+  }, null, 2));
+
+  if (missingTables.length || missingConstraints.length || missingRls.length) {
+    process.exitCode = 1;
+  }
+}
+
+main()
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  })
+  .finally(() => prisma.$disconnect());

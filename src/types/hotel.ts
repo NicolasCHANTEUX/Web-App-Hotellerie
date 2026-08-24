@@ -20,6 +20,7 @@ export type Accommodation = {
   amenities: string[];
   availableUnits?: number;
   totalPrice?: number;
+  touristTaxTotal?: number;
 };
 
 export type PricingUnit = "PER_PERSON_PER_NIGHT" | "PER_NIGHT" | "ONE_TIME";
@@ -30,6 +31,7 @@ export type BookingOption = {
   name: string;
   description: string;
   price: number;
+  taxRate: number | null;
   currency: string;
   unit: PricingUnit;
 };

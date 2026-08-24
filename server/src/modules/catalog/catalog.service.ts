@@ -86,6 +86,7 @@ export async function listExtras() {
     name: extra.name,
     description: extra.description,
     price: Number(extra.price),
+    taxRate: extra.taxRate === null ? null : Number(extra.taxRate),
     currency: extra.currency,
     unit: extra.pricingUnit,
   }));

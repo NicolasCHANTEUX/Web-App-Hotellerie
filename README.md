@@ -29,9 +29,18 @@ La connexion Supabase est configuree dans `server/.env`, fichier ignore par Git.
 npm run dev:full
 ```
 
+Cette commande remplace automatiquement une ancienne instance du projet, attend que l'API soit prete, puis lance Vite. Elle utilise toujours les ports fixes ci-dessous afin d'eviter une instance frontend inutilisable sur `5174`.
+
 - Frontend : `http://127.0.0.1:5173`
 - API : `http://127.0.0.1:3001`
 - Sante API : `http://127.0.0.1:3001/health`
+- Processus API : `http://127.0.0.1:3001/health/live`
+
+Pour arreter proprement toute la pile depuis un autre terminal :
+
+```powershell
+npm run dev:stop
+```
 
 ## Verifier la production
 

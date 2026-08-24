@@ -9,7 +9,22 @@ import { bookingRoutes } from "./modules/booking/booking.routes.js";
 import { catalogRoutes } from "./modules/catalog/catalog.routes.js";
 
 export async function buildApp() {
-  const app = Fastify({ logger: true, trustProxy: env.trustProxy });
+  const app = Fastify({
+    logger: {
+      redact: {
+        paths: [
+          "req.headers.authorization",
+          "req.headers.cookie",
+          "res.headers['set-cookie']",
+          "req.body.password",
+          "req.body.accessToken",
+          "req.body.refreshToken",
+        ],
+        censor: "[REDACTED]",
+      },
+    },
+    trustProxy: env.trustProxy,
+  });
 
   await app.register(cors, {
     origin(origin, callback) {
@@ -29,6 +44,12 @@ export async function buildApp() {
   });
 
   app.get("/", async (_request, reply) => reply.redirect(env.frontendUrl));
+
+  app.get("/health/live", async () => ({
+    service: "hotel-rivage-api",
+    status: "up",
+    pid: process.pid,
+  }));
 
   app.get("/health", async () => {
     await prisma.property.count();

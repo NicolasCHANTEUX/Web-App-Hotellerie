@@ -366,7 +366,8 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
                 <dl className="admin-pricing-lines">
                   <div><dt>Hébergement</dt><dd>{formatMoney(booking.accommodationSubtotal, booking.currency)}</dd></div>
                   <div><dt>Options</dt><dd>{formatMoney(booking.extrasSubtotal, booking.currency)}</dd></div>
-                  <div><dt>Taxes</dt><dd>{formatMoney(booking.taxTotal, booking.currency)}</dd></div>
+                  <div><dt>TVA</dt><dd>{formatMoney(booking.taxTotal - booking.touristTaxTotal, booking.currency)}</dd></div>
+                  {booking.touristTaxTotal > 0 && <div><dt>Taxe de séjour</dt><dd>{formatMoney(booking.touristTaxTotal, booking.currency)}</dd></div>}
                   <div className="total"><dt>Total</dt><dd>{formatMoney(booking.total, booking.currency)}</dd></div>
                 </dl>
               </section>

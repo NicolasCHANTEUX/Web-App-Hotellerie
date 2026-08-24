@@ -91,6 +91,45 @@ enum InvoiceStatus {
   VOID
 }
 
+enum TaxKind {
+  VAT
+  TOURIST_TAX
+  OTHER
+}
+
+enum TaxCalculationMode {
+  PERCENTAGE
+  PER_ADULT_PER_NIGHT
+  PER_PERSON_PER_NIGHT
+  PER_NIGHT
+  PER_STAY
+}
+
+enum InvoiceDocumentType {
+  INVOICE
+  CREDIT_NOTE
+}
+
+enum PaymentEventStatus {
+  RECEIVED
+  PROCESSED
+  IGNORED
+  FAILED
+}
+
+enum StoredFileKind {
+  ROOM_TYPE_COVER
+  ROOM_TYPE_GALLERY
+  INVOICE_PDF
+  CREDIT_NOTE_PDF
+  ADMIN_DOCUMENT
+}
+
+enum StoredFileVisibility {
+  PUBLIC
+  PRIVATE
+}
+
 enum AdminRole {
   ADMIN
   RECEPTION
@@ -125,6 +164,13 @@ model Property {
   bookings           Booking[]
   reservationHolds   ReservationHold[]
   availabilityBlocks AvailabilityBlock[]
+  taxRules           TaxRule[]
+  contractTerms      ContractTermsVersion[]
+  payments           Payment[]
+  paymentEvents      PaymentProviderEvent[]
+  invoices           Invoice[]
+  invoiceSequences   InvoiceSequence[]
+  storedFiles        StoredFile[]
   adminMemberships   AdminMembership[]
   auditLogs          AuditLog[]
 
@@ -156,6 +202,7 @@ model RoomType {
   ratePlans        RatePlan[]
   bookingRooms     BookingRoom[]
   reservationHolds ReservationHold[]
+  storedFiles      StoredFile[]
 
   @@unique([propertyId, slug])
   @@index([propertyId, isPublished, displayOrder])
@@ -249,6 +296,7 @@ model Extra {
   price        Decimal     @db.Decimal(12, 2)
   currency     String      @default("EUR") @db.Char(3)
   pricingUnit  PricingUnit
+  taxRate      Decimal?    @db.Decimal(5, 2)
   isActive     Boolean     @default(true)
   displayOrder Int         @default(0)
   createdAt    DateTime    @default(now()) @db.Timestamptz(3)
@@ -263,37 +311,47 @@ model Extra {
 }
 
 model Booking {
-  id                    String        @id @default(uuid()) @db.Uuid
-  propertyId            String        @db.Uuid
-  reference             String        @unique
-  status                BookingStatus @default(DRAFT)
-  source                BookingSource @default(WEBSITE)
-  checkIn               DateTime      @db.Date
-  checkOut              DateTime      @db.Date
-  adults                Int
-  children              Int           @default(0)
-  currency              String        @default("EUR") @db.Char(3)
-  accommodationSubtotal Decimal       @db.Decimal(12, 2)
-  extrasSubtotal        Decimal       @default(0) @db.Decimal(12, 2)
-  taxTotal              Decimal       @default(0) @db.Decimal(12, 2)
-  total                 Decimal       @db.Decimal(12, 2)
-  pricingSnapshot       Json
-  specialRequests       String?
-  confirmedAt           DateTime?     @db.Timestamptz(3)
-  cancelledAt           DateTime?     @db.Timestamptz(3)
-  createdAt             DateTime      @default(now()) @db.Timestamptz(3)
-  updatedAt             DateTime      @updatedAt @db.Timestamptz(3)
+  id                      String        @id @default(uuid()) @db.Uuid
+  propertyId              String        @db.Uuid
+  reference               String        @unique
+  status                  BookingStatus @default(DRAFT)
+  source                  BookingSource @default(WEBSITE)
+  checkIn                 DateTime      @db.Date
+  checkOut                DateTime      @db.Date
+  adults                  Int
+  children                Int           @default(0)
+  currency                String        @default("EUR") @db.Char(3)
+  accommodationSubtotal   Decimal       @db.Decimal(12, 2)
+  extrasSubtotal          Decimal       @default(0) @db.Decimal(12, 2)
+  touristTaxTotal         Decimal       @default(0) @db.Decimal(12, 2)
+  taxTotal                Decimal       @default(0) @db.Decimal(12, 2)
+  total                   Decimal       @db.Decimal(12, 2)
+  pricingSnapshot         Json
+  termsVersionId          String?       @db.Uuid
+  termsSnapshot           Json?
+  specialRequests         String?
+  confirmedAt             DateTime?     @db.Timestamptz(3)
+  cancelledAt             DateTime?     @db.Timestamptz(3)
+  archivedAt              DateTime?     @db.Timestamptz(3)
+  anonymizedAt            DateTime?     @db.Timestamptz(3)
+  personalDataRetainUntil DateTime?     @db.Timestamptz(3)
+  createdAt               DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime      @updatedAt @db.Timestamptz(3)
 
-  property  Property         @relation(fields: [propertyId], references: [id], onDelete: Restrict)
-  rooms     BookingRoom[]
-  extras    BookingExtra[]
-  guests    Guest[]
-  payments  Payment[]
-  invoice   Invoice?
-  hold      ReservationHold?
-  auditLogs AuditLog[]
+  property     Property              @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  termsVersion ContractTermsVersion? @relation(fields: [termsVersionId], references: [id], onDelete: Restrict)
+  rooms        BookingRoom[]
+  extras       BookingExtra[]
+  guests       Guest[]
+  taxLines     BookingTaxLine[]
+  payments     Payment[]
+  invoices     Invoice[]
+  storedFiles  StoredFile[]
+  hold         ReservationHold?
+  auditLogs    AuditLog[]
 
   @@index([propertyId, status, checkIn, checkOut])
+  @@index([termsVersionId])
   @@index([createdAt])
   @@map("bookings")
 }
@@ -308,6 +366,7 @@ model BookingRoom {
   roomNumberSnapshot   String?
   nightlyPriceSnapshot Decimal  @db.Decimal(12, 2)
   taxRateSnapshot      Decimal  @db.Decimal(5, 2)
+  taxAmountSnapshot    Decimal  @default(0) @db.Decimal(12, 2)
   lineTotal            Decimal  @db.Decimal(12, 2)
   createdAt            DateTime @default(now()) @db.Timestamptz(3)
   updatedAt            DateTime @updatedAt @db.Timestamptz(3)
@@ -331,6 +390,8 @@ model BookingExtra {
   nameSnapshot        String
   unitPriceSnapshot   Decimal     @db.Decimal(12, 2)
   pricingUnitSnapshot PricingUnit
+  taxRateSnapshot     Decimal?    @db.Decimal(5, 2)
+  taxAmountSnapshot   Decimal     @default(0) @db.Decimal(12, 2)
   quantity            Int
   lineTotal           Decimal     @db.Decimal(12, 2)
   createdAt           DateTime    @default(now()) @db.Timestamptz(3)
@@ -340,6 +401,78 @@ model BookingExtra {
 
   @@unique([bookingId, extraId])
   @@map("booking_extras")
+}
+
+model TaxRule {
+  id              String             @id @default(uuid()) @db.Uuid
+  propertyId      String             @db.Uuid
+  code            String
+  label           String
+  kind            TaxKind
+  calculationMode TaxCalculationMode
+  rate            Decimal?           @db.Decimal(5, 2)
+  amount          Decimal?           @db.Decimal(12, 2)
+  currency        String?            @db.Char(3)
+  isActive        Boolean            @default(true)
+  validFrom       DateTime?          @db.Date
+  validUntil      DateTime?          @db.Date
+  priority        Int                @default(0)
+  metadata        Json?
+  createdAt       DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime           @updatedAt @db.Timestamptz(3)
+
+  property Property         @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  taxLines BookingTaxLine[]
+
+  @@unique([propertyId, code])
+  @@index([propertyId, kind, isActive, validFrom, validUntil])
+  @@map("tax_rules")
+}
+
+model BookingTaxLine {
+  id                      String             @id @default(uuid()) @db.Uuid
+  bookingId               String             @db.Uuid
+  taxRuleId               String?            @db.Uuid
+  kind                    TaxKind
+  labelSnapshot           String
+  calculationModeSnapshot TaxCalculationMode
+  rateSnapshot            Decimal?           @db.Decimal(5, 2)
+  unitAmountSnapshot      Decimal?           @db.Decimal(12, 2)
+  quantitySnapshot        Decimal            @default(1) @db.Decimal(12, 2)
+  taxableBase             Decimal            @default(0) @db.Decimal(12, 2)
+  amount                  Decimal            @db.Decimal(12, 2)
+  metadataSnapshot        Json?
+  sortOrder               Int                @default(0)
+  createdAt               DateTime           @default(now()) @db.Timestamptz(3)
+
+  booking Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  taxRule TaxRule? @relation(fields: [taxRuleId], references: [id], onDelete: SetNull)
+
+  @@index([bookingId, sortOrder])
+  @@index([taxRuleId])
+  @@map("booking_tax_lines")
+}
+
+model ContractTermsVersion {
+  id                 String    @id @default(uuid()) @db.Uuid
+  propertyId         String    @db.Uuid
+  code               String
+  version            Int
+  title              String
+  body               String
+  checksumSha256     String
+  cancellationPolicy Json?
+  effectiveFrom      DateTime  @db.Timestamptz(3)
+  effectiveUntil     DateTime? @db.Timestamptz(3)
+  isActive           Boolean   @default(true)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(3)
+
+  property Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  bookings Booking[]
+
+  @@unique([propertyId, code, version])
+  @@index([propertyId, code, isActive, effectiveFrom, effectiveUntil], map: "contract_terms_versions_propertyId_code_isActive_effective_idx")
+  @@map("contract_terms_versions")
 }
 
 model Guest {
@@ -431,6 +564,7 @@ model RoomAllocation {
 
 model Payment {
   id                String          @id @default(uuid()) @db.Uuid
+  propertyId        String          @db.Uuid
   bookingId         String          @db.Uuid
   parentPaymentId   String?         @db.Uuid
   provider          PaymentProvider
@@ -440,38 +574,98 @@ model Payment {
   status            PaymentStatus   @default(REQUIRES_PAYMENT)
   amount            Decimal         @db.Decimal(12, 2)
   currency          String          @default("EUR") @db.Char(3)
+  paymentMethodType String?
+  cardBrand         String?
+  cardLast4         String?         @db.Char(4)
   failureReason     String?
   processedAt       DateTime?       @db.Timestamptz(3)
   createdAt         DateTime        @default(now()) @db.Timestamptz(3)
   updatedAt         DateTime        @updatedAt @db.Timestamptz(3)
 
-  booking       Booking   @relation(fields: [bookingId], references: [id], onDelete: Restrict)
-  parentPayment Payment?  @relation("PaymentRefunds", fields: [parentPaymentId], references: [id], onDelete: Restrict)
-  refunds       Payment[] @relation("PaymentRefunds")
+  property       Property               @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  booking        Booking                @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  parentPayment  Payment?               @relation("PaymentRefunds", fields: [parentPaymentId], references: [id], onDelete: Restrict)
+  refunds        Payment[]              @relation("PaymentRefunds")
+  providerEvents PaymentProviderEvent[]
 
   @@index([bookingId, status])
+  @@index([propertyId, createdAt])
   @@map("payments")
 }
 
+model PaymentProviderEvent {
+  id              String             @id @default(uuid()) @db.Uuid
+  propertyId      String             @db.Uuid
+  paymentId       String?            @db.Uuid
+  provider        PaymentProvider
+  providerEventId String
+  eventType       String
+  status          PaymentEventStatus @default(RECEIVED)
+  payloadHash     String
+  livemode        Boolean?
+  receivedAt      DateTime           @default(now()) @db.Timestamptz(3)
+  processedAt     DateTime?          @db.Timestamptz(3)
+  errorMessage    String?
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  payment  Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, providerEventId])
+  @@index([propertyId, receivedAt])
+  @@index([paymentId, receivedAt])
+  @@map("payment_provider_events")
+}
+
 model Invoice {
-  id               String        @id @default(uuid()) @db.Uuid
-  bookingId        String        @unique @db.Uuid
-  number           String        @unique
-  status           InvoiceStatus @default(DRAFT)
-  issuedAt         DateTime?     @db.Timestamptz(3)
-  dueAt            DateTime?     @db.Timestamptz(3)
-  currency         String        @default("EUR") @db.Char(3)
-  subtotal         Decimal       @db.Decimal(12, 2)
-  taxTotal         Decimal       @db.Decimal(12, 2)
-  total            Decimal       @db.Decimal(12, 2)
-  customerSnapshot Json
-  createdAt        DateTime      @default(now()) @db.Timestamptz(3)
-  updatedAt        DateTime      @updatedAt @db.Timestamptz(3)
+  id                String              @id @default(uuid()) @db.Uuid
+  propertyId        String              @db.Uuid
+  bookingId         String              @db.Uuid
+  originalInvoiceId String?             @db.Uuid
+  storedFileId      String?             @unique @db.Uuid
+  number            String
+  documentType      InvoiceDocumentType @default(INVOICE)
+  status            InvoiceStatus       @default(DRAFT)
+  issuedAt          DateTime?           @db.Timestamptz(3)
+  dueAt             DateTime?           @db.Timestamptz(3)
+  serviceDate       DateTime?           @db.Date
+  currency          String              @default("EUR") @db.Char(3)
+  subtotal          Decimal             @db.Decimal(12, 2)
+  taxTotal          Decimal             @db.Decimal(12, 2)
+  total             Decimal             @db.Decimal(12, 2)
+  issuerSnapshot    Json
+  customerSnapshot  Json
+  creditReason      String?
+  archivedAt        DateTime?           @db.Timestamptz(3)
+  createdAt         DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime            @updatedAt @db.Timestamptz(3)
 
-  booking Booking       @relation(fields: [bookingId], references: [id], onDelete: Restrict)
-  lines   InvoiceLine[]
+  property        Property      @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  booking         Booking       @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  originalInvoice Invoice?      @relation("InvoiceCreditNotes", fields: [originalInvoiceId], references: [id], onDelete: Restrict)
+  creditNotes     Invoice[]     @relation("InvoiceCreditNotes")
+  storedFile      StoredFile?   @relation(fields: [storedFileId], references: [id], onDelete: SetNull)
+  lines           InvoiceLine[]
 
+  @@unique([propertyId, number])
+  @@index([bookingId, createdAt])
+  @@index([originalInvoiceId])
   @@map("invoices")
+}
+
+model InvoiceSequence {
+  id           String              @id @default(uuid()) @db.Uuid
+  propertyId   String              @db.Uuid
+  documentType InvoiceDocumentType
+  calendarYear Int
+  prefix       String
+  lastNumber   Int                 @default(0)
+  createdAt    DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime            @updatedAt @db.Timestamptz(3)
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+
+  @@unique([propertyId, documentType, calendarYear])
+  @@map("invoice_sequences")
 }
 
 model InvoiceLine {
@@ -481,6 +675,8 @@ model InvoiceLine {
   quantity    Decimal @db.Decimal(10, 2)
   unitPrice   Decimal @db.Decimal(12, 2)
   taxRate     Decimal @db.Decimal(5, 2)
+  subtotal    Decimal @db.Decimal(12, 2)
+  taxAmount   Decimal @default(0) @db.Decimal(12, 2)
   lineTotal   Decimal @db.Decimal(12, 2)
   sortOrder   Int     @default(0)
 
@@ -488,6 +684,36 @@ model InvoiceLine {
 
   @@index([invoiceId, sortOrder])
   @@map("invoice_lines")
+}
+
+model StoredFile {
+  id             String               @id @default(uuid()) @db.Uuid
+  propertyId     String               @db.Uuid
+  roomTypeId     String?              @db.Uuid
+  bookingId      String?              @db.Uuid
+  kind           StoredFileKind
+  visibility     StoredFileVisibility @default(PRIVATE)
+  bucket         String
+  objectKey      String
+  publicUrl      String?
+  mimeType       String
+  sizeBytes      Int
+  checksumSha256 String
+  altText        String?
+  sortOrder      Int                  @default(0)
+  createdAt      DateTime             @default(now()) @db.Timestamptz(3)
+  deletedAt      DateTime?            @db.Timestamptz(3)
+
+  property Property  @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  roomType RoomType? @relation(fields: [roomTypeId], references: [id], onDelete: SetNull)
+  booking  Booking?  @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  invoice  Invoice?
+
+  @@unique([bucket, objectKey])
+  @@index([propertyId, kind, createdAt])
+  @@index([roomTypeId, sortOrder])
+  @@index([bookingId, createdAt])
+  @@map("stored_files")
 }
 
 model AdminUser {

@@ -121,14 +121,34 @@ async function seedBooking(propertyId: string, fixture: DemoBooking) {
         currency: ratePlan.currency,
         accommodationSubtotal,
         extrasSubtotal: 0,
+        touristTaxTotal: 0,
         taxTotal,
         total,
         pricingSnapshot: {
+          version: 2,
           demo: true,
           nights,
           roomType: room.roomType.name,
           nightlyPrice: Number(ratePlan.basePricePerNight),
           taxRate: Number(ratePlan.taxRate),
+          touristTaxTotal: 0,
+          taxTotal,
+          total,
+        },
+        termsSnapshot: {
+          source: "DEMO_FIXTURE",
+          refundable: ratePlan.refundable,
+        },
+        taxLines: {
+          create: {
+            kind: "VAT",
+            labelSnapshot: "TVA hébergement",
+            calculationModeSnapshot: "PERCENTAGE",
+            rateSnapshot: ratePlan.taxRate,
+            quantitySnapshot: 1,
+            taxableBase: accommodationSubtotal,
+            amount: taxTotal,
+          },
         },
         confirmedAt: fixture.status === BookingStatus.CONFIRMED || fixture.status === BookingStatus.COMPLETED
           ? new Date()
@@ -147,6 +167,7 @@ async function seedBooking(propertyId: string, fixture: DemoBooking) {
         roomNumberSnapshot: isPending ? null : room.number,
         nightlyPriceSnapshot: ratePlan.basePricePerNight,
         taxRateSnapshot: ratePlan.taxRate,
+        taxAmountSnapshot: taxTotal,
         lineTotal: accommodationSubtotal,
       },
     });

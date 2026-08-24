@@ -16,18 +16,38 @@ Renseigner dans `.env` la chaine PostgreSQL disponible dans `Supabase Dashboard 
 
 ## Appliquer la base
 
-La migration initiale est deja generee dans `prisma/migrations`. Elle inclut les contraintes PostgreSQL de dates, de montants et de non-chevauchement des chambres physiques :
+Les migrations sont versionnees dans `prisma/migrations`. La migration initiale inclut les contraintes PostgreSQL de dates, de montants et de non-chevauchement des chambres physiques. La migration `business_foundation_v2` ajoute le detail fiscal, les conditions contractuelles figees, la facturation multi-documents, les evenements de paiement et les metadonnees de stockage :
+
+Sur une base locale ou de developpement isolee :
 
 ```powershell
-npx prisma migrate dev
+npm run db:migrate
 npm run db:seed
 ```
+
+Sur une base Supabase partagee, faire d'abord une sauvegarde puis appliquer uniquement les migrations versionnees :
+
+```powershell
+npm run db:migrate:status
+npm run db:migrate:deploy
+```
+
+Le lancement `dev:full` ne migre jamais la base automatiquement. Le code v2 ne doit etre demarre contre Supabase qu'apres l'application de `20260824120000_business_foundation_v2`.
+
+Si une base creee avant l'adoption de Prisma Migrate contient deja le schema initial mais que `db:migrate:status` annonce encore `20260808193000_init`, verifier d'abord le socle sans aucune ecriture :
+
+```powershell
+npm run db:migrate:baseline-check
+```
+
+La commande controle les 20 tables initiales, les contraintes critiques et RLS. Ce n'est qu'apres un resultat sans element manquant que la migration initiale peut etre marquee comme deja appliquee avec `npx prisma migrate resolve --applied 20260808193000_init`. Ne jamais utiliser `resolve` pour masquer une migration partiellement appliquee.
 
 Sans chaine PostgreSQL, les memes fichiers peuvent etre executes dans le SQL Editor Supabase, dans cet ordre :
 
 1. `supabase/migrations/20260808193000_init.sql`
-2. `supabase/seed.sql`
-3. `supabase/verify.sql` pour controler l'installation
+2. `supabase/migrations/20260824120000_business_foundation_v2.sql`
+3. `supabase/seed.sql`
+4. `supabase/verify.sql` pour controler l'installation
 
 La migration active RLS sur toutes les tables sans creer de politique publique. Les appels REST publics sont donc refuses par defaut jusqu'a l'ajout volontaire de politiques.
 
@@ -39,6 +59,7 @@ npm run dev
 
 Routes disponibles :
 
+- `GET /health/live` (processus API disponible, sans interroger PostgreSQL)
 - `GET /health`
 - `GET /room-types`
 - `GET /room-types/:slug`
@@ -97,6 +118,10 @@ La suppression utilise elle aussi `updatedAt` comme verrou optimiste :
 Une chambre n'est supprimee physiquement que si elle n'a jamais ete reliee a une reservation, une option, un blocage de disponibilite ou une allocation, meme passee. Sinon l'API renvoie `409 ROOM_HAS_HISTORY` et demande de l'archiver. Aucune donnee metier n'est supprimee en cascade. Les creations et suppressions sont transactionnelles et produisent respectivement les actions `ROOM_CREATED` et `ROOM_DELETED` dans `AuditLog`.
 
 Une demande publique cree une option de chambre de 24 heures au statut `PENDING_PAYMENT`. La reception peut la confirmer manuellement depuis le detail : le hold est alors converti en allocation de reservation et l'action est journalisee. Les holds expires sont liberes et passent au statut `EXPIRED` lors des lectures ou creations suivantes.
+
+Chaque nouvelle reservation conserve maintenant une ventilation fiscale immuable (`BookingTaxLine`) et une copie des conditions acceptees. Le taux d'une option peut differer de celui de la chambre; lorsqu'il n'est pas renseigne, le taux du plan tarifaire reste utilise pour conserver le comportement historique. Une taxe de sejour n'entre dans le prix que si une `TaxRule` active et valide pour toute la periode a ete configuree. Les pages client, l'API et l'admin utilisent alors la meme ventilation et le meme arrondi par ligne.
+
+Le modele de facturation accepte plusieurs documents par reservation, les avoirs rattaches a leur facture d'origine et une sequence annuelle par etablissement. `StoredFile` ne contient que des metadonnees et une cle d'objet : les factures et documents prives devront etre servis via une URL signee de courte duree, jamais via un bucket public. `PaymentProviderEvent` conserve l'identifiant fournisseur et une empreinte de payload, pas le contenu bancaire brut.
 
 ## Premier acces administrateur
 
