@@ -440,10 +440,10 @@ export function recordManualAdminPayment(id: string, paymentMethodType: string, 
   );
 }
 
-export function refundAdminPayment(id: string, paymentId: string, amount: number | undefined, reason: string, accessToken: string, signal?: AbortSignal) {
+export function refundAdminPayment(id: string, paymentId: string, amount: number | undefined, reason: string, idempotencyKey: string, accessToken: string, signal?: AbortSignal) {
   return adminRequest<{ paymentId: string; invoiceId: string; invoiceNumber: string }>(
     `/admin/bookings/${encodeURIComponent(id)}/refunds`,
-    { method: "POST", body: JSON.stringify({ paymentId, ...(amount === undefined ? {} : { amount }), reason }), headers: { "Idempotency-Key": `refund:${crypto.randomUUID()}` }, signal },
+    { method: "POST", body: JSON.stringify({ paymentId, ...(amount === undefined ? {} : { amount }), reason }), headers: { "Idempotency-Key": idempotencyKey }, signal },
     accessToken,
   );
 }

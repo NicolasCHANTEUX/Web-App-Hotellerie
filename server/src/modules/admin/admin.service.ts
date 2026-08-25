@@ -202,16 +202,17 @@ function serializeGuest(
     countryCode: string | null;
     isPrimary: boolean;
   } | undefined,
+  includeContactDetails = true,
 ) {
   if (!guest) return null;
   return {
-    id: guest.id,
+    ...(includeContactDetails ? { id: guest.id } : {}),
     firstName: guest.firstName,
     lastName: guest.lastName,
     name: guestName(guest),
-    email: guest.email,
-    phone: guest.phone,
-    countryCode: guest.countryCode,
+    email: includeContactDetails ? guest.email : null,
+    phone: includeContactDetails ? guest.phone : null,
+    countryCode: includeContactDetails ? guest.countryCode : null,
     isPrimary: guest.isPrimary,
   };
 }
@@ -221,6 +222,7 @@ export function bookingWhere(
   input: BookingFilters,
   today: Date,
   includeStatus = true,
+  includeContactSearch = true,
 ): Prisma.BookingWhereInput {
   const search = input.search?.trim();
   return {
@@ -239,8 +241,10 @@ export function bookingWhere(
                   OR: [
                     { firstName: { contains: search, mode: "insensitive" } },
                     { lastName: { contains: search, mode: "insensitive" } },
-                    { email: { contains: search, mode: "insensitive" } },
-                    { phone: { contains: search, mode: "insensitive" } },
+                    ...(includeContactSearch ? [
+                      { email: { contains: search, mode: "insensitive" as const } },
+                      { phone: { contains: search, mode: "insensitive" as const } },
+                    ] : []),
                   ],
                 },
               },
@@ -274,7 +278,7 @@ function fetchBookingPage(where: Prisma.BookingWhereInput, input: BookingListInp
 
 type BookingListRecord = Awaited<ReturnType<typeof fetchBookingPage>>[number];
 
-function serializeBookingListItem(booking: BookingListRecord) {
+function serializeBookingListItem(booking: BookingListRecord, includeContactDetails: boolean) {
   return {
     id: booking.id,
     reference: booking.reference,
@@ -287,7 +291,7 @@ function serializeBookingListItem(booking: BookingListRecord) {
     total: Number(booking.total),
     currency: booking.currency,
     createdAt: booking.createdAt.toISOString(),
-    guest: serializeGuest(booking.guests[0]),
+    guest: serializeGuest(booking.guests[0], includeContactDetails),
     rooms: booking.rooms.map((bookingRoom, index) => ({
       id: bookingRoom.id,
       roomTypeId: bookingRoom.roomType.id,
@@ -331,8 +335,9 @@ export async function listAdminBookings(
 ) {
   await expirePropertyHolds(membership.propertyId);
   const today = propertyDate(membership.property.timezone);
-  const where = bookingWhere(membership.propertyId, input, today);
-  const summaryWhere = bookingWhere(membership.propertyId, input, today, false);
+  const includeContactDetails = membership.role !== "ACCOUNTING";
+  const where = bookingWhere(membership.propertyId, input, today, true, includeContactDetails);
+  const summaryWhere = bookingWhere(membership.propertyId, input, today, false, includeContactDetails);
   const operationalStatuses: BookingStatus[] = [
     BookingStatus.PENDING_PAYMENT,
     BookingStatus.CONFIRMED,
@@ -364,7 +369,7 @@ export async function listAdminBookings(
   for (const group of statusGroups) byStatus[group.status] = group._count._all;
 
   return {
-    items: bookings.map(serializeBookingListItem),
+    items: bookings.map((booking) => serializeBookingListItem(booking, includeContactDetails)),
     page: input.page,
     pageSize: input.pageSize,
     total,
@@ -378,7 +383,7 @@ export async function listAdminBookings(
   };
 }
 
-export async function getAdminBooking(propertyId: string, bookingId: string) {
+export async function getAdminBooking(propertyId: string, bookingId: string, includeContactDetails = true) {
   await expirePropertyHolds(propertyId);
   const booking = await prisma.booking.findFirst({
     where: { id: bookingId, propertyId },
@@ -402,19 +407,19 @@ export async function getAdminBooking(propertyId: string, bookingId: string) {
     touristTaxTotal: Number(booking.touristTaxTotal),
     taxTotal: Number(booking.taxTotal),
     total: Number(booking.total),
-    specialRequests: booking.specialRequests,
+    specialRequests: includeContactDetails ? booking.specialRequests : null,
     confirmedAt: isoTimestamp(booking.confirmedAt),
     cancelledAt: isoTimestamp(booking.cancelledAt),
     createdAt: booking.createdAt.toISOString(),
     updatedAt: booking.updatedAt.toISOString(),
-    guest: serializeGuest(booking.guests[0]),
+    guest: serializeGuest(booking.guests[0], includeContactDetails),
     paymentStatus: booking.payments[0]?.status ?? null,
     hold: booking.hold ? {
       status: booking.hold.status,
       expiresAt: booking.hold.expiresAt.toISOString(),
       isActive: booking.hold.status === "ACTIVE" && booking.hold.expiresAt > new Date(),
     } : null,
-    guests: booking.guests.map((guest) => serializeGuest(guest)!),
+    guests: booking.guests.map((guest) => serializeGuest(guest, includeContactDetails)!),
     rooms: booking.rooms.map((bookingRoom, index) => ({
       id: bookingRoom.id,
       roomTypeId: bookingRoom.roomType.id,

@@ -55,6 +55,51 @@ const bookingPage = {
   summary: { total: 1, byStatus: { CONFIRMED: 1 }, arrivalsToday: 1, departuresToday: 0 },
 };
 
+const accountingBookingPage = {
+  ...bookingPage,
+  items: bookingPage.items.map((booking) => ({
+    ...booking,
+    guest: booking.guest ? { firstName: booking.guest.firstName, lastName: booking.guest.lastName } : null,
+  })),
+};
+
+const accountingBookingDetail = {
+  ...accountingBookingPage.items[0],
+  priceTaxMode: "INCLUSIVE",
+  accommodationSubtotal: 400,
+  extrasSubtotal: 20,
+  touristTaxTotal: 4,
+  taxTotal: 40,
+  specialRequests: null,
+  confirmedAt: "2026-08-10T10:05:00Z",
+  cancelledAt: null,
+  updatedAt: "2026-08-10T10:05:00Z",
+  guests: [{ firstName: "Sophie", lastName: "Martin", isPrimary: true }],
+  rooms: [{
+    id: "booking-room-1",
+    roomTypeId: "room-type-elegance",
+    roomId: "room-201",
+    roomTypeName: "Chambre Élégance",
+    roomNumber: "201",
+    nightlyPrice: 200,
+    taxRate: 10,
+    lineTotal: 400,
+  }],
+  extras: [{ id: "booking-extra-1", name: "Petit-déjeuner", unitPrice: 10, pricingUnit: "PER_PERSON", quantity: 2, lineTotal: 20 }],
+  payments: [{
+    id: "payment-1",
+    parentPaymentId: null,
+    provider: "MANUAL",
+    kind: "CHARGE",
+    status: "SUCCEEDED",
+    amount: 424,
+    currency: "EUR",
+    paymentMethodType: "Carte sur place",
+    processedAt: "2026-08-10T10:05:00Z",
+    createdAt: "2026-08-10T10:05:00Z",
+  }],
+};
+
 const roomPage = {
   items: [{
     id: "room-101",
@@ -156,6 +201,7 @@ async function renderAdmin(pathname, {
   roomDialogAction = null,
   roomCreateAction = null,
   roomDeleteAction = null,
+  bookingDetailAction = false,
   patchError = null,
   postError = null,
   deleteError = null,
@@ -168,6 +214,7 @@ async function renderAdmin(pathname, {
   let roomDeletePayload = null;
   let roomPostRequests = 0;
   let roomDeleteRequests = 0;
+  let availableBookingRoomRequests = 0;
   window.document.body.innerHTML = '<div id="root"></div>';
   if (withToken) {
     window.sessionStorage.setItem("rivage.admin.accessToken", "smoke-test-token");
@@ -197,7 +244,26 @@ async function renderAdmin(pathname, {
     const url = String(input);
     requests.push(url);
     if (url.endsWith("/admin/me") && profile) return jsonResponse({ data: profile });
-    if (url.includes("/admin/bookings?")) return jsonResponse({ data: bookingPage });
+    if (url.includes("/admin/bookings?")) {
+      return jsonResponse({ data: profile?.membership.role === "ACCOUNTING" ? accountingBookingPage : bookingPage });
+    }
+    if (url.endsWith("/admin/bookings/booking-1/invoices")) {
+      return jsonResponse({ data: [{
+        id: "invoice-1",
+        number: "FAC-2026-000001",
+        documentType: "INVOICE",
+        status: "PAID",
+        issuedAt: "2026-08-10T10:05:00Z",
+        currency: "EUR",
+        total: 424,
+        originalInvoiceId: null,
+      }] });
+    }
+    if (url.endsWith("/admin/bookings/booking-1/available-rooms")) {
+      availableBookingRoomRequests += 1;
+      return jsonResponse({ data: [] });
+    }
+    if (url.endsWith("/admin/bookings/booking-1")) return jsonResponse({ data: accountingBookingDetail });
     if (url.includes("/admin/rooms?")) {
       roomGetRequests += 1;
       return jsonResponse({ data: roomPageForRequest(url, { stalePeriod: staleRoomPeriod }) });
@@ -264,6 +330,13 @@ async function renderAdmin(pathname, {
     departureInput.dispatchEvent(new window.Event("input", { bubbles: true }));
     departureInput.dispatchEvent(new window.Event("change", { bubbles: true }));
     await new Promise((resolveDelay) => setTimeout(resolveDelay, 220));
+  }
+
+  if (bookingDetailAction) {
+    const detailTrigger = window.document.querySelector(".admin-reference");
+    assert.ok(detailTrigger, "A booking detail trigger should render.");
+    detailTrigger.click();
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 180));
   }
 
   const roomDialogObservation = {
@@ -486,6 +559,16 @@ async function renderAdmin(pathname, {
     roomDelete: roomDeleteObservation,
     createButtons: window.document.querySelectorAll(".admin-room-create-button").length,
     deleteButtons: window.document.querySelectorAll(".admin-room-delete-trigger").length,
+    bookingDetail: {
+      opened: Boolean(window.document.querySelector(".admin-drawer")),
+      contactLinks: window.document.querySelectorAll(".admin-detail-client a").length,
+      confirmationActions: window.document.querySelectorAll(".admin-confirm-booking").length,
+      roomAssignmentActions: window.document.querySelectorAll(".admin-booking-room-assignment").length,
+      lifecycleActions: window.document.querySelectorAll(".admin-booking-lifecycle").length,
+      invoiceDocuments: window.document.querySelectorAll(".admin-invoice-list button").length,
+      refundActions: window.document.querySelectorAll(".admin-billing-action.secondary").length,
+      availableRoomRequests: availableBookingRoomRequests,
+    },
     queriedPeriod: period ? requests.some((url) => {
       const requestUrl = new URL(url, "http://localhost:5173");
       return requestUrl.searchParams.get("from") === period.from
@@ -663,9 +746,25 @@ const housekeepingProtectedRoute = await renderAdmin("/admin/reservations", { pr
 assert.equal(housekeepingProtectedRoute.pathname, "/admin/chambres");
 
 const accountingProtectedRoute = await renderAdmin("/admin/reservations", { profile: accountingProfile, withToken: true });
-assert.equal(accountingProtectedRoute.pathname, "/admin/chambres");
+assert.equal(accountingProtectedRoute.pathname, "/admin/reservations");
+assert.match(accountingProtectedRoute.text, /Suivi financier/);
+assert.doesNotMatch(accountingProtectedRoute.text, /sophie@example.com/);
+
+const accountingBookingDetailView = await renderAdmin("/admin/reservations", {
+  profile: accountingProfile,
+  withToken: true,
+  bookingDetailAction: true,
+});
+assert.equal(accountingBookingDetailView.bookingDetail.opened, true);
+assert.equal(accountingBookingDetailView.bookingDetail.contactLinks, 0);
+assert.equal(accountingBookingDetailView.bookingDetail.confirmationActions, 0);
+assert.equal(accountingBookingDetailView.bookingDetail.roomAssignmentActions, 0);
+assert.equal(accountingBookingDetailView.bookingDetail.lifecycleActions, 0);
+assert.equal(accountingBookingDetailView.bookingDetail.availableRoomRequests, 0);
+assert.equal(accountingBookingDetailView.bookingDetail.invoiceDocuments, 1);
+assert.equal(accountingBookingDetailView.bookingDetail.refundActions, 1);
 
 console.log(JSON.stringify({
   rendered: true,
-  checks: ["login", "auth-guard", "bookings", "room-card-semantics", "room-readonly-dialog", "room-edit-patch", "room-dirty-confirmation", "room-conflict-message", "room-create", "room-create-conflict", "room-delete", "room-delete-history", "room-period-availability", "stale-period-guard", "housekeeping-navigation", "housekeeping-guard", "accounting-guard"],
+  checks: ["login", "auth-guard", "bookings", "room-card-semantics", "room-readonly-dialog", "room-edit-patch", "room-dirty-confirmation", "room-conflict-message", "room-create", "room-create-conflict", "room-delete", "room-delete-history", "room-period-availability", "stale-period-guard", "housekeeping-navigation", "housekeeping-guard", "accounting-financial-view", "accounting-operational-guard"],
 }));

@@ -50,6 +50,11 @@ export function Legal() {
           directement identifiantes restent disponibles pour l'intégrité de l'historique.
         </p>
         <p>
+          Les messages envoyés depuis le formulaire de contact sont conservés pendant trois ans à
+          compter de leur réception, puis leur identité, leurs coordonnées et leur contenu sont
+          anonymisés par la procédure de conservation de l'établissement.
+        </p>
+        <p>
           Vous pouvez demander l'accès, la rectification, la limitation ou, lorsque la loi le permet,
           l'effacement et la portabilité de vos données en écrivant à contact@hotel-rivage.fr. Vous
           pouvez également saisir la CNIL. N'indiquez aucune donnée sensible dans la demande

@@ -1,56 +1,59 @@
-# Architecture Hotel Rivage
+# Architecture Hôtel Rivage
 
-## Principes
+## Vue d'ensemble
 
-- PostgreSQL est la source de verite pour les chambres, disponibilites, reservations, paiements et documents comptables.
-- Les controles critiques sont appliques deux fois : validation applicative pour les messages utilisateur, contrainte PostgreSQL pour l'integrite concurrente.
-- Les donnees historiques sont figees dans des snapshots. Modifier un tarif, une taxe ou des conditions ne reecrit jamais une reservation ou une facture existante.
-- Toute requete administrateur est rattachee a un `Property` par `AdminMembership`.
-- Les tables exposees par Supabase ont RLS activee sans politique publique.
+L'application est un monolithe modulaire TypeScript : React/Vite pour le site et l'administration, Fastify pour l'API et PostgreSQL/Supabase comme source de vérité. Prisma décrit le modèle et les migrations SQL conservent les contraintes PostgreSQL que le schéma seul ne peut pas exprimer.
 
-## Reservation et disponibilite
+Les principaux modules backend sont :
 
-Une demande publique est creee dans une transaction `SERIALIZABLE`. Le backend recalcule le prix, choisit une chambre physique libre et cree un `ReservationHold`, puis un `RoomAllocation`. La contrainte d'exclusion PostgreSQL interdit deux allocations actives qui se chevauchent sur une meme chambre.
+- `catalog` : types de chambres, équipements, options, tarifs et promotions ;
+- `availability` : chambres physiques, holds, allocations et blocages ;
+- `booking` : devis TTC, création idempotente et instantanés contractuels ;
+- `payments` et `billing` : Stripe, règlements manuels, remboursements, factures et avoirs PDF ;
+- `notifications` : outbox transactionnelle et livraison asynchrone ;
+- `contact` : réception persistée des demandes publiques ;
+- `admin` : authentification, autorisations, réservations, chambres et catalogue ;
+- `media` : couvertures envoyées dans Supabase Storage ;
+- `privacy` : échéances de conservation et anonymisation contrôlée.
 
-Les intervalles hoteliers utilisent la convention `[arrivee, depart)` : le jour d'arrivee occupe la chambre, le jour de depart est reutilisable.
+## Réservation et disponibilité
 
-## Prix, taxes et conditions
+Les périodes hôtelières utilisent toujours l'intervalle semi-ouvert `[arrivée, départ)`. Une sortie et une entrée le même jour sont donc compatibles.
 
-`RatePlan.taxRate` reste le taux de l'hebergement. `Extra.taxRate` permet un taux propre a une option et utilise le taux du plan tarifaire lorsqu'il est absent. `TaxRule` porte les taxes additionnelles versionnees dans le temps, notamment la taxe de sejour.
+Une demande publique est traitée dans une transaction `SERIALIZABLE`. Le serveur recalcule le montant, choisit une chambre physique libre, crée un `ReservationHold`, son `RoomAllocation`, puis la réservation `PENDING_PAYMENT`. La contrainte d'exclusion PostgreSQL empêche deux allocations actives de se chevaucher sur une même chambre. Les reprises après conflit sont bornées et idempotentes.
 
-Lors de la creation :
+Les noms, tarifs, taxes, conditions et options sont figés dans des instantanés. Une modification ultérieure du catalogue ne réécrit jamais une réservation historique.
 
-1. chaque montant est calcule et arrondi par ligne ;
-2. la ventilation est ecrite dans `BookingTaxLine` ;
-3. les montants sont recopies dans `BookingRoom` et `BookingExtra` ;
-4. le detail complet est conserve dans `Booking.pricingSnapshot` version 2 ;
-5. les conditions applicables sont copiees dans `Booking.termsSnapshot` et, si disponible, rattachees a `ContractTermsVersion`.
+## Prix, taxes et promotions
 
-Une ancienne reservation conserve ses totaux. La migration v2 cree seulement une ventilation de reprise a partir de ses snapshots existants.
+Le navigateur affiche le devis retourné par le serveur et ne calcule pas le montant contractuel. Les chambres et options sont configurées en prix TTC. La TVA incluse est ventilée par ligne ; les taxes additionnelles, notamment la taxe de séjour, sont détaillées puis incluses dans le total avant validation.
 
-## Paiement
+Les promotions sont rattachées aux types de chambres, bornées dans le temps et évaluées pour toute la période du séjour. Les réservations conservent le prix de référence, la réduction et le prix effectivement accepté.
 
-`Payment` est rattache directement a l'etablissement et a la reservation. Il peut conserver le type de moyen de paiement, la marque et les quatre derniers chiffres, mais jamais le numero complet ni le cryptogramme.
+## Paiements et facturation
 
-`PaymentProviderEvent` assure l'idempotence des futurs webhooks par `(provider, providerEventId)`. Seuls le type, l'etat de traitement et le hash du payload sont conserves. Le payload bancaire brut n'est pas archive dans la base applicative.
+Le mode manuel fonctionne sans prestataire externe. Lorsque Stripe est configuré, l'API crée une session Checkout et le webhook signé devient la source de vérité du paiement. `PaymentProviderEvent` garantit l'idempotence des événements et ne conserve qu'une empreinte du payload bancaire.
 
-## Facturation et fichiers
+Les paiements réussis peuvent émettre une facture numérotée. Les remboursements créent un paiement inverse et un avoir distinct rattaché à la facture originale. Les documents sont générés côté serveur depuis leurs instantanés immuables.
 
-Une reservation peut avoir plusieurs `Invoice` : factures et avoirs. Un avoir reference sa facture d'origine. `InvoiceSequence` reserve une sequence par etablissement, type de document et annee afin que la numerotation puisse etre attribuee transactionnellement.
+## Messages et notifications
 
-Les coordonnees emetteur et client sont figees sur le document. `StoredFile` reference un objet de stockage par bucket et cle. Les images publiques peuvent avoir une URL publique; les factures et documents administratifs restent prives et devront etre telecharges par URL signee temporaire.
+Les notifications sont écrites dans la même transaction que l'événement métier. Un worker les livre ensuite via le fournisseur configuré ; une panne d'e-mail ne peut donc pas annuler une réservation, un paiement ou une demande de contact.
 
-## Vie privee et exploitation
+Le formulaire public `POST /contact-requests` valide strictement les champs, exige le consentement, limite les tentatives, protège les reprises par clé d'idempotence et conserve chaque demande en base avant de notifier l'adresse de l'établissement.
 
-`archivedAt`, `anonymizedAt` et `personalDataRetainUntil` preparent une politique de cycle de vie explicite sans supprimer automatiquement des donnees tant que cette politique n'est pas approuvee et testee. Les en-tetes d'authentification, cookies et secrets de connexion sont masques dans les logs Fastify.
+## Administration et sécurité
 
-Les actions de gestion sensibles doivent produire un `AuditLog`. La prochaine tranche doit ajouter les services d'exploitation (blocages de chambre, annulation/no-show, encaissements et remboursements) avant d'ouvrir les mutations correspondantes dans l'admin.
+Les routes `/admin/*` exigent un jeton Supabase Auth et une `AdminMembership` active. Les autorisations sont contrôlées côté serveur ; l'interface ne constitue jamais la barrière de sécurité. Les mutations sensibles utilisent un verrou optimiste lorsque nécessaire et écrivent un `AuditLog`.
 
-## Deploiement de la migration v2
+Les tables applicatives ont RLS activée sans politique publique. Les secrets, jetons et mots de passe sont masqués dans les logs. Le rate limiting protège les créations de réservation, les connexions et les demandes de contact.
 
-La migration est preparee dans :
+## Conservation des données
 
-- `server/prisma/migrations/20260824120000_business_foundation_v2/migration.sql` ;
-- `server/supabase/migrations/20260824120000_business_foundation_v2.sql`.
+Les données de réservation suivent l'échéance comptable configurée, actuellement dix ans. Les demandes de contact sont conservées trois ans. La commande d'anonymisation reste en aperçu par défaut et ne modifie la base qu'avec `--apply`.
 
-Elle doit d'abord etre testee sur une branche ou une copie de la base, avec sauvegarde et verification de `server/supabase/verify.sql`. Elle n'est pas appliquee automatiquement par le lancement local du projet.
+## Déploiement
+
+Les migrations et le démarrage de l'API sont séparés. Une livraison applique d'abord `npm --prefix server run db:migrate:deploy`, puis démarre l'image construite depuis `server/Dockerfile`. Les validations locales et CI utilisent `npm run verify`.
+
+La procédure complète, les variables d'environnement et le retour arrière sont documentés dans [deployment.md](./deployment.md).

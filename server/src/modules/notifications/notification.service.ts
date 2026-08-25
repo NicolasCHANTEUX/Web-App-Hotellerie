@@ -17,6 +17,11 @@ export type NotificationPayload = {
   holdExpiresAt?: string;
   reason?: string;
   invoiceNumber?: string;
+  contactName?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  contactSubject?: string;
+  contactMessage?: string;
 };
 
 type NotificationTransaction = Pick<Prisma.TransactionClient, "notification">;
@@ -48,17 +53,32 @@ function date(value: string | undefined) {
   }).format(parsed);
 }
 
-export function notificationSubject(template: NotificationTemplate, reference: string) {
+export function notificationSubject(template: NotificationTemplate, payload: NotificationPayload) {
   switch (template) {
-    case "BOOKING_OPTIONED": return `Votre demande de réservation ${reference}`;
-    case "BOOKING_CONFIRMED": return `Votre réservation ${reference} est confirmée`;
-    case "BOOKING_CANCELLED": return `Votre réservation ${reference} est annulée`;
-    case "PAYMENT_SUCCEEDED": return `Paiement reçu pour la réservation ${reference}`;
-    case "PAYMENT_REFUNDED": return `Remboursement de la réservation ${reference}`;
+    case "BOOKING_OPTIONED": return `Votre demande de réservation ${payload.reference}`;
+    case "BOOKING_CONFIRMED": return `Votre réservation ${payload.reference} est confirmée`;
+    case "BOOKING_CANCELLED": return `Votre réservation ${payload.reference} est annulée`;
+    case "PAYMENT_SUCCEEDED": return `Paiement reçu pour la réservation ${payload.reference}`;
+    case "PAYMENT_REFUNDED": return `Remboursement de la réservation ${payload.reference}`;
+    case "CONTACT_REQUEST_RECEIVED": return `Nouveau message — ${payload.contactSubject ?? "Site internet"}`;
   }
 }
 
 export function renderNotification(template: NotificationTemplate, payload: NotificationPayload) {
+  if (template === "CONTACT_REQUEST_RECEIVED") {
+    const headline = "Nouveau message depuis le site";
+    const paragraphs = [
+      `Nom : ${payload.contactName ?? "Non renseigné"}`,
+      `Email : ${payload.contactEmail ?? "Non renseigné"}`,
+      payload.contactPhone ? `Téléphone : ${payload.contactPhone}` : null,
+      `Sujet : ${payload.contactSubject ?? "Autre demande"}`,
+      payload.contactMessage ?? "Message vide",
+    ].filter((value): value is string => Boolean(value));
+    const text = paragraphs.join("\n\n");
+    const html = `<!doctype html><html lang="fr"><body style="margin:0;background:#f4f0ea;color:#28231e;font-family:Arial,sans-serif"><div style="max-width:620px;margin:0 auto;padding:32px 20px"><div style="background:#fff;border:1px solid #ded4c8;border-radius:14px;padding:32px"><p style="margin:0 0 24px;color:#9a7345;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase">Hôtel Rivage</p><h1 style="margin:0 0 24px;font-family:Georgia,serif;font-size:30px;font-weight:500">${headline}</h1>${paragraphs.map((paragraph) => `<p style="margin:0 0 16px;line-height:1.65;white-space:pre-wrap">${escapeHtml(paragraph)}</p>`).join("")}</div></div></body></html>`;
+    return { subject: notificationSubject(template, payload), text, html };
+  }
+
   const greeting = payload.firstName ? `Bonjour ${payload.firstName},` : "Bonjour,";
   const stay = payload.arrival && payload.departure
     ? `Séjour du ${date(payload.arrival)} au ${date(payload.departure)}${payload.roomName ? ` - ${payload.roomName}` : ""}.`
@@ -94,7 +114,34 @@ export function renderNotification(template: NotificationTemplate, payload: Noti
     .filter((value): value is string => Boolean(value));
   const text = paragraphs.join("\n\n");
   const html = `<!doctype html><html lang="fr"><body style="margin:0;background:#f4f0ea;color:#28231e;font-family:Arial,sans-serif"><div style="max-width:620px;margin:0 auto;padding:32px 20px"><div style="background:#fff;border:1px solid #ded4c8;border-radius:14px;padding:32px"><p style="margin:0 0 24px;color:#9a7345;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase">Hôtel Rivage</p><h1 style="margin:0 0 24px;font-family:Georgia,serif;font-size:30px;font-weight:500">${escapeHtml(headline)}</h1>${paragraphs.map((paragraph) => `<p style="margin:0 0 16px;line-height:1.65">${escapeHtml(paragraph)}</p>`).join("")}<p style="margin:28px 0 0;color:#776f66;font-size:12px">Message automatique - merci de ne pas transmettre votre référence de réservation.</p></div></div></body></html>`;
-  return { subject: notificationSubject(template, payload.reference), text, html };
+  return { subject: notificationSubject(template, payload), text, html };
+}
+
+export async function enqueueNotification(
+  transaction: NotificationTransaction,
+  input: {
+    propertyId: string;
+    bookingId?: string;
+    recipient: string;
+    template: NotificationTemplate;
+    idempotencyKey: string;
+    payload: NotificationPayload;
+  },
+) {
+  const rendered = renderNotification(input.template, input.payload);
+  return transaction.notification.upsert({
+    where: { idempotencyKey: input.idempotencyKey },
+    update: {},
+    create: {
+      propertyId: input.propertyId,
+      ...(input.bookingId ? { bookingId: input.bookingId } : {}),
+      recipient: input.recipient.trim().toLowerCase(),
+      template: input.template,
+      subject: rendered.subject,
+      payload: input.payload as Prisma.InputJsonValue,
+      idempotencyKey: input.idempotencyKey,
+    },
+  });
 }
 
 export async function enqueueBookingNotification(
@@ -108,30 +155,17 @@ export async function enqueueBookingNotification(
     payload: NotificationPayload;
   },
 ) {
-  const rendered = renderNotification(input.template, input.payload);
-  return transaction.notification.upsert({
-    where: { idempotencyKey: input.idempotencyKey },
-    update: {},
-    create: {
-      propertyId: input.propertyId,
-      bookingId: input.bookingId,
-      recipient: input.recipient.trim().toLowerCase(),
-      template: input.template,
-      subject: rendered.subject,
-      payload: input.payload as Prisma.InputJsonValue,
-      idempotencyKey: input.idempotencyKey,
-    },
-  });
+  return enqueueNotification(transaction, input);
 }
 
-async function sendWithResend(recipient: string, subject: string, html: string, text: string) {
+async function sendWithResend(recipient: string, subject: string, html: string, text: string, replyTo?: string) {
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
       authorization: `Bearer ${env.resendApiKey}`,
       "content-type": "application/json",
     },
-    body: JSON.stringify({ from: env.emailFrom, to: [recipient], subject, html, text }),
+    body: JSON.stringify({ from: env.emailFrom, to: [recipient], subject, html, text, ...(replyTo ? { reply_to: replyTo } : {}) }),
     signal: AbortSignal.timeout(DELIVERY_TIMEOUT_MS),
   });
   const body = await response.json().catch(() => null) as { id?: unknown; message?: unknown } | null;
@@ -166,8 +200,9 @@ export async function dispatchPendingNotifications(logger?: FastifyBaseLogger) {
     if (claimed.count !== 1) continue;
     try {
       const rendered = renderNotification(candidate.template, candidate.payload as NotificationPayload);
+      const payload = candidate.payload as NotificationPayload;
       const providerReference = env.notificationDelivery === "resend"
-        ? await sendWithResend(candidate.recipient, candidate.subject, rendered.html, rendered.text)
+        ? await sendWithResend(candidate.recipient, candidate.subject, rendered.html, rendered.text, payload.contactEmail)
         : `log-${candidate.id}`;
       await prisma.notification.update({
         where: { id: candidate.id },

@@ -211,14 +211,22 @@ function selectedMembership(request: FastifyRequest) {
   };
 }
 
-function bookingMembership(request: FastifyRequest) {
+function bookingOperationsMembership(request: FastifyRequest) {
   const membership = resolveMembership(request);
   if (membership.role !== "ADMIN" && membership.role !== "RECEPTION") {
     throw new AdminApiError(
       403,
       "ROLE_ACCESS_DENIED",
-      "Votre rôle ne permet pas de consulter les réservations.",
+      "Votre rôle ne permet pas de gérer les séjours.",
     );
+  }
+  return membership;
+}
+
+function bookingReadMembership(request: FastifyRequest) {
+  const membership = resolveMembership(request);
+  if (membership.role !== "ADMIN" && membership.role !== "RECEPTION" && membership.role !== "ACCOUNTING") {
+    throw new AdminApiError(403, "ROLE_ACCESS_DENIED", "Votre rôle ne permet pas de consulter les réservations.");
   }
   return membership;
 }
@@ -282,7 +290,7 @@ export async function adminRoutes(app: FastifyInstance) {
     { preHandler: authenticateAdmin },
     async (request, reply) =>
       handleAdminRoute(reply, async () => ({
-        data: await listAdminBookings(bookingMembership(request), parseBookingQuery(request.query)),
+        data: await listAdminBookings(bookingReadMembership(request), parseBookingQuery(request.query)),
       })),
   );
 
@@ -294,7 +302,8 @@ export async function adminRoutes(app: FastifyInstance) {
         if (!uuidPattern.test(request.params.id)) {
           throw new AdminApiError(400, "INVALID_BOOKING_ID", "L'identifiant de réservation est invalide.");
         }
-        const booking = await getAdminBooking(bookingMembership(request).propertyId, request.params.id);
+        const membership = bookingReadMembership(request);
+        const booking = await getAdminBooking(membership.propertyId, request.params.id, membership.role !== "ACCOUNTING");
         if (!booking) {
           throw new AdminApiError(404, "BOOKING_NOT_FOUND", "Réservation introuvable.");
         }
@@ -315,7 +324,7 @@ export async function adminRoutes(app: FastifyInstance) {
         }
         const context = requireAdminContext(request);
         const booking = await confirmAdminBooking(
-          bookingMembership(request),
+          bookingOperationsMembership(request),
           context.user.id,
           request.params.id,
           request.ip,
@@ -338,7 +347,7 @@ export async function adminRoutes(app: FastifyInstance) {
         const context = requireAdminContext(request);
         return {
           data: await updateAdminBookingStatus(
-            bookingMembership(request),
+            bookingOperationsMembership(request),
             context.user.id,
             request.params.id,
             parseAdminBookingStatusBody(request.body),
@@ -356,7 +365,7 @@ export async function adminRoutes(app: FastifyInstance) {
         if (!uuidPattern.test(request.params.id)) {
           throw new AdminApiError(400, "INVALID_BOOKING_ID", "L'identifiant de réservation est invalide.");
         }
-        return { data: await listAvailableRoomsForBooking(bookingMembership(request).propertyId, request.params.id) };
+        return { data: await listAvailableRoomsForBooking(bookingOperationsMembership(request).propertyId, request.params.id) };
       }),
   );
 
@@ -375,7 +384,7 @@ export async function adminRoutes(app: FastifyInstance) {
         const input = parseAdminBookingRoomAssignmentBody(request.body);
         return {
           data: await assignAdminBookingRoom(
-            bookingMembership(request),
+            bookingOperationsMembership(request),
             context.user.id,
             request.params.id,
             input.roomId,

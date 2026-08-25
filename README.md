@@ -4,7 +4,7 @@ Application hoteliere React 19 + Vite + TypeScript, reliee a une API Node/Fastif
 
 ## Fonctionnel
 
-- Pages Accueil, Hebergements, Detail, Reservation, Confirmation, Contact et Mentions legales.
+- Pages Accueil, Hebergements, Detail, Reservation, Confirmation, Contact et Mentions legales. Le formulaire Contact est persisté côté serveur et transmis par l'outbox e-mail.
 - Catalogue, tarifs, equipements et options charges depuis Supabase.
 - Recherche de disponibilite selon les dates, la capacite et les chambres physiques occupees.
 - Etats de chargement, erreur, relance et absence de resultat.

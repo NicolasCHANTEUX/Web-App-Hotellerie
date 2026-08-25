@@ -38,6 +38,7 @@ La migration et le démarrage de l'API sont séparés volontairement : plusieurs
 - `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` et `SUPABASE_SECRET_KEY` ;
 - `SUPABASE_STORAGE_BUCKET` ;
 - `CORS_ORIGIN` et `FRONTEND_URL` avec les domaines HTTPS réels ;
+- `PUBLIC_PROPERTY_SLUG`, correspondant à l'établissement affiché par le site public ;
 - `NODE_ENV=production`, `HOST=0.0.0.0` et `TRUST_PROXY=true` uniquement derrière un proxy maîtrisé.
 
 Stripe et Resend restent facultatifs. S'ils sont activés, configurer le webhook Stripe, vérifier le domaine d'expédition et utiliser exclusivement des secrets de production côté serveur.

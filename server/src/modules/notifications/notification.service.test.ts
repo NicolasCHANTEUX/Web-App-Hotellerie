@@ -13,3 +13,17 @@ test("échappe le contenu client dans le courriel HTML", () => {
   assert.doesNotMatch(rendered.html, /<Nicolas>/);
   assert.match(rendered.text, /Suite & Spa/);
 });
+
+test("prépare un message de contact destiné à l'hôtel sans interpréter son HTML", () => {
+  const rendered = renderNotification("CONTACT_REQUEST_RECEIVED", {
+    reference: "contact-id",
+    contactName: "Camille <Martin>",
+    contactEmail: "camille@example.com",
+    contactSubject: "Préparer mon arrivée",
+    contactMessage: "Arrivée tardive <script>alert(1)</script>",
+  });
+  assert.match(rendered.subject, /Préparer mon arrivée/);
+  assert.match(rendered.html, /&lt;script&gt;/);
+  assert.doesNotMatch(rendered.html, /<script>/);
+  assert.match(rendered.text, /camille@example.com/);
+});

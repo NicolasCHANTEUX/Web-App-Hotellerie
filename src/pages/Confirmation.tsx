@@ -1,11 +1,11 @@
 import { CalendarPlus, CheckCircle2, CreditCard, Download } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
-import { createStripeCheckout, getPaymentConfig } from "../api/hotel";
+import { createStripeCheckout, getPaymentConfig, getStripeCheckoutStatus } from "../api/hotel";
 
 type ConfirmationState = {
   reference?: string;
-  status?: "PENDING_PAYMENT" | "CONFIRMED";
+  status?: "DRAFT" | "PENDING_PAYMENT" | "CONFIRMED" | "CANCELLED" | "EXPIRED" | "COMPLETED" | "NO_SHOW";
   room?: string;
   arrival?: string;
   departure?: string;
@@ -58,9 +58,16 @@ export function Confirmation() {
   const [paymentStarting, setPaymentStarting] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const navigationState = (location.state as ConfirmationState | null) ?? {};
-  const booking = navigationState.reference ? navigationState : readStoredConfirmation();
+  const [booking, setBooking] = useState<ConfirmationState>(() => navigationState.reference ? navigationState : readStoredConfirmation());
+  const paymentReturn = new URLSearchParams(location.search).get("payment");
+  const checkoutSessionId = new URLSearchParams(location.search).get("session_id");
+  const [paymentSynchronizing, setPaymentSynchronizing] = useState(paymentReturn === "success" && Boolean(checkoutSessionId));
+  const [paymentNotice, setPaymentNotice] = useState<string | null>(
+    paymentReturn === "cancelled" ? "Le paiement a été interrompu. Votre demande reste en attente tant que l'option est active." : null,
+  );
 
   const isConfirmed = booking.status === "CONFIRMED";
+  const isInactive = booking.status === "CANCELLED" || booking.status === "EXPIRED" || booking.status === "NO_SHOW";
 
   useEffect(() => {
     const controller = new AbortController();
@@ -70,7 +77,61 @@ export function Confirmation() {
     return () => controller.abort();
   }, []);
 
-  if (!booking.reference) return <Navigate to="/reservation" replace />;
+  useEffect(() => {
+    if (paymentReturn !== "success" || !checkoutSessionId) return;
+    const sessionId = checkoutSessionId;
+    const controller = new AbortController();
+    let timer: number | undefined;
+    let attempts = 0;
+
+    async function synchronize() {
+      attempts += 1;
+      try {
+        const result = await getStripeCheckoutStatus(sessionId, controller.signal);
+        setBooking((current) => {
+          const updated = { ...current, ...result.booking } satisfies ConfirmationState;
+          sessionStorage.setItem("rivage:latest-confirmation", JSON.stringify({ ...updated, email: undefined }));
+          return updated;
+        });
+
+        if (result.booking.status === "CONFIRMED" && result.paymentStatus === "SUCCEEDED") {
+          sessionStorage.removeItem(`rivage:payment-key:${result.booking.reference}`);
+          setPaymentNotice("Votre paiement a été confirmé par l'hôtel.");
+          setPaymentSynchronizing(false);
+          return;
+        }
+        if (result.paymentStatus === "FAILED" || result.paymentStatus === "CANCELLED") {
+          setPaymentError("Le paiement n'a pas été validé. Vous pouvez réessayer tant que l'option est active.");
+          setPaymentSynchronizing(false);
+          return;
+        }
+        if (attempts < 10) {
+          timer = window.setTimeout(synchronize, 1_000);
+          return;
+        }
+        setPaymentNotice("Le paiement est encore en cours de validation. Vous recevrez un e-mail dès sa confirmation.");
+        setPaymentSynchronizing(false);
+      } catch (synchronizationError) {
+        if (controller.signal.aborted) return;
+        if (attempts < 3) {
+          timer = window.setTimeout(synchronize, 1_000);
+          return;
+        }
+        setPaymentError(synchronizationError instanceof Error
+          ? synchronizationError.message
+          : "L'état du paiement ne peut pas être vérifié pour le moment.");
+        setPaymentSynchronizing(false);
+      }
+    }
+
+    void synchronize();
+    return () => {
+      controller.abort();
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [checkoutSessionId, paymentReturn]);
+
+  if (!booking.reference && !paymentSynchronizing) return <Navigate to="/reservation" replace />;
 
   async function startOnlinePayment() {
     if (!booking.reference || !booking.email || paymentStarting) return;
@@ -209,9 +270,11 @@ export function Confirmation() {
           <div><dt>Montant du séjour</dt><dd>{amountLabel(booking.total, booking.currency)}</dd></div>
           {!isConfirmed && <div><dt>Maintien de la chambre</dt><dd>Jusqu'au {dateTimeLabel(booking.holdExpiresAt)}</dd></div>}
         </dl>
+        {paymentSynchronizing && <p className="confirmation-payment-notice" role="status">Vérification du paiement auprès de l'hôtel…</p>}
+        {paymentNotice && !paymentSynchronizing && <p className="confirmation-payment-notice" role="status">{paymentNotice}</p>}
         {(pdfError || paymentError) && <p className="confirmation-download-error" role="alert">{pdfError ?? paymentError}</p>}
         <div className="confirmation-actions">
-          {!isConfirmed && stripeAvailable && booking.email && <button className="btn-primary" type="button" disabled={paymentStarting} onClick={startOnlinePayment}><CreditCard />{paymentStarting ? "Redirection…" : "Payer en ligne"}</button>}
+          {!isConfirmed && !isInactive && paymentReturn !== "success" && stripeAvailable && booking.email && <button className="btn-primary" type="button" disabled={paymentStarting} onClick={startOnlinePayment}><CreditCard />{paymentStarting ? "Redirection…" : "Payer en ligne"}</button>}
           <button className="btn-secondary" type="button" disabled={downloadingPdf} onClick={downloadConfirmationPdf}><Download />{downloadingPdf ? "Préparation…" : "Télécharger le PDF"}</button>
           <button className="btn-secondary" type="button" disabled={!booking.arrival || !booking.departure} onClick={downloadCalendarEvent}><CalendarPlus />Ajouter au calendrier</button>
           <Link className="btn-primary" to="/">Retour à l'accueil</Link>

@@ -15,6 +15,7 @@ export type InvoiceLineDraft = {
   taxAmount: Prisma.Decimal;
   lineTotal: Prisma.Decimal;
   sortOrder: number;
+  originalInvoiceLineId?: string;
 };
 
 const cents = (value: Prisma.Decimal | string | number) => new Prisma.Decimal(value).toDecimalPlaces(2);
@@ -196,6 +197,104 @@ export async function issuePaidInvoice(transaction: BillingTransaction, bookingI
   return invoice;
 }
 
+type OriginalInvoiceLineForCredit = {
+  id: string;
+  description: string;
+  taxRate: Prisma.Decimal;
+  subtotal: Prisma.Decimal;
+  taxAmount: Prisma.Decimal;
+  lineTotal: Prisma.Decimal;
+  sortOrder: number;
+  creditLines: Array<{
+    subtotal: Prisma.Decimal;
+    taxAmount: Prisma.Decimal;
+    lineTotal: Prisma.Decimal;
+  }>;
+};
+
+function decimalSumOrZero(values: Prisma.Decimal[]) {
+  return values.reduce((sum, value) => sum.add(value), new Prisma.Decimal(0));
+}
+
+function minimum(left: Prisma.Decimal, right: Prisma.Decimal) {
+  return left.lte(right) ? left : right;
+}
+
+function maximum(left: Prisma.Decimal, right: Prisma.Decimal) {
+  return left.gte(right) ? left : right;
+}
+
+export function buildCreditNoteLines(originalLines: OriginalInvoiceLineForCredit[], requestedAmount: Prisma.Decimal) {
+  const amount = cents(requestedAmount);
+  const remaining = originalLines.map((line) => {
+    const creditedSubtotal = decimalSumOrZero(line.creditLines.map((credit) => credit.subtotal));
+    const creditedTax = decimalSumOrZero(line.creditLines.map((credit) => credit.taxAmount));
+    const remainingSubtotal = maximum(new Prisma.Decimal(0), cents(line.subtotal.minus(creditedSubtotal)));
+    const remainingTax = maximum(new Prisma.Decimal(0), cents(line.taxAmount.minus(creditedTax)));
+    return {
+      ...line,
+      remainingSubtotal,
+      remainingTax,
+      remainingTotal: cents(remainingSubtotal.add(remainingTax)),
+    };
+  }).filter((line) => line.remainingTotal.gt(0));
+
+  const totalRemaining = cents(decimalSumOrZero(remaining.map((line) => line.remainingTotal)));
+  if (amount.lte(0) || amount.gt(totalRemaining) || remaining.length === 0) {
+    throw new AdminApiError(409, "INVALID_CREDIT_AMOUNT", `Le montant maximal de l'avoir est de ${totalRemaining.toFixed(2)}.`);
+  }
+
+  const requestedCents = amount.mul(100).toDecimalPlaces(0).toNumber();
+  const remainingCents = totalRemaining.mul(100).toDecimalPlaces(0).toNumber();
+  const shares = remaining.map((line) => {
+    const capacity = line.remainingTotal.mul(100).toDecimalPlaces(0).toNumber();
+    const exact = new Prisma.Decimal(requestedCents).mul(capacity).div(remainingCents);
+    const allocated = Math.min(capacity, exact.floor().toNumber());
+    return { line, capacity, allocated, remainder: exact.minus(allocated) };
+  });
+
+  let undistributed = requestedCents - shares.reduce((sum, share) => sum + share.allocated, 0);
+  const distributionOrder = [...shares].sort((left, right) => {
+    const remainderOrder = right.remainder.comparedTo(left.remainder);
+    return remainderOrder || left.line.sortOrder - right.line.sortOrder;
+  });
+  for (const share of distributionOrder) {
+    if (undistributed === 0) break;
+    if (share.allocated >= share.capacity) continue;
+    share.allocated += 1;
+    undistributed -= 1;
+  }
+  if (undistributed !== 0) throw new AdminApiError(409, "CREDIT_ALLOCATION_FAILED", "La ventilation de l'avoir n'a pas pu être équilibrée.");
+
+  return shares.filter((share) => share.allocated > 0).map(({ line, allocated, capacity }) => {
+    const lineTotal = new Prisma.Decimal(allocated).div(100);
+    let taxAmount: Prisma.Decimal;
+    let subtotal: Prisma.Decimal;
+    if (allocated === capacity) {
+      taxAmount = line.remainingTax;
+      subtotal = line.remainingSubtotal;
+    } else {
+      const calculatedTax = line.taxRate.gt(0)
+        ? cents(lineTotal.mul(line.taxRate).div(line.taxRate.add(100)))
+        : new Prisma.Decimal(0);
+      const minimumTax = maximum(new Prisma.Decimal(0), cents(lineTotal.minus(line.remainingSubtotal)));
+      taxAmount = minimum(line.remainingTax, maximum(minimumTax, calculatedTax));
+      subtotal = cents(lineTotal.minus(taxAmount));
+    }
+    return {
+      description: `Avoir — ${line.description}`,
+      quantity: new Prisma.Decimal(1),
+      unitPrice: subtotal,
+      taxRate: line.taxRate,
+      subtotal,
+      taxAmount,
+      lineTotal,
+      sortOrder: line.sortOrder,
+      originalInvoiceLineId: line.id,
+    } satisfies InvoiceLineDraft;
+  });
+}
+
 export async function issueCreditNote(
   transaction: BillingTransaction,
   originalInvoiceId: string,
@@ -204,17 +303,28 @@ export async function issueCreditNote(
 ) {
   const original = await transaction.invoice.findUnique({
     where: { id: originalInvoiceId },
-    include: { property: { select: { timezone: true } } },
+    include: {
+      property: { select: { timezone: true } },
+      lines: {
+        orderBy: { sortOrder: "asc" },
+        include: {
+          creditLines: {
+            where: { invoice: { status: { not: InvoiceStatus.VOID } } },
+            select: { subtotal: true, taxAmount: true, lineTotal: true },
+          },
+        },
+      },
+    },
   });
   if (!original || original.documentType !== InvoiceDocumentType.INVOICE) {
     throw new AdminApiError(409, "INVOICE_NOT_FOUND", "La facture d'origine est introuvable.");
   }
   const issuedAt = new Date();
   const number = await nextNumber(transaction, original.propertyId, InvoiceDocumentType.CREDIT_NOTE, original.property.timezone, issuedAt);
-  const ratio = original.total.gt(0) ? amount.div(original.total) : new Prisma.Decimal(0);
-  const taxAmount = cents(original.taxTotal.mul(ratio));
-  const subtotal = cents(amount.minus(taxAmount));
-  const taxRate = subtotal.gt(0) ? cents(taxAmount.div(subtotal).mul(100)) : new Prisma.Decimal(0);
+  const lines = buildCreditNoteLines(original.lines, amount);
+  const subtotal = cents(lines.reduce((sum, line) => sum.add(line.subtotal), new Prisma.Decimal(0)));
+  const taxAmount = cents(lines.reduce((sum, line) => sum.add(line.taxAmount), new Prisma.Decimal(0)));
+  const total = cents(lines.reduce((sum, line) => sum.add(line.lineTotal), new Prisma.Decimal(0)));
 
   const creditNote = await transaction.invoice.create({
     data: {
@@ -229,22 +339,11 @@ export async function issueCreditNote(
       currency: original.currency,
       subtotal,
       taxTotal: taxAmount,
-      total: amount,
+      total,
       issuerSnapshot: original.issuerSnapshot as Prisma.InputJsonObject,
       customerSnapshot: original.customerSnapshot as Prisma.InputJsonObject,
       creditReason: reason,
-      lines: {
-        create: {
-          description: `Avoir sur la facture ${original.number} - ${reason}`,
-          quantity: 1,
-          unitPrice: subtotal,
-          taxRate,
-          subtotal,
-          taxAmount,
-          lineTotal: amount,
-          sortOrder: 0,
-        },
-      },
+      lines: { create: lines },
     },
     include: { lines: { orderBy: { sortOrder: "asc" } } },
   });

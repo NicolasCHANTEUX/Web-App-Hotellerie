@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
-import { createStripeCheckout, constructStripeEvent, PaymentApiError, processStripeEvent, stripeEnabled } from "./payment.service.js";
+import { createStripeCheckout, constructStripeEvent, getStripeCheckoutStatus, PaymentApiError, processStripeEvent, stripeEnabled } from "./payment.service.js";
+import { parseStripeCheckoutSessionId } from "./payment.validation.js";
 
 type CheckoutBody = { reference?: unknown; email?: unknown };
 
@@ -18,6 +19,15 @@ function idempotencyKey(value: string | string[] | undefined) {
 
 export async function paymentRoutes(app: FastifyInstance) {
   app.get("/payments/config", async () => ({ data: { stripeEnabled: stripeEnabled() } }));
+  app.get<{ Querystring: { sessionId?: unknown } }>("/payments/stripe/status", {
+    config: { rateLimit: { max: 30, timeWindow: "15 minutes" } },
+  }, async (request, reply) => {
+    try {
+      return { data: await getStripeCheckoutStatus(parseStripeCheckoutSessionId(request.query.sessionId)) };
+    } catch (error) {
+      return sendPaymentError(reply, error);
+    }
+  });
   app.post<{ Body: CheckoutBody }>("/payments/stripe/checkout", {
     config: { rateLimit: { max: 10, timeWindow: "15 minutes" } },
   }, async (request, reply) => {

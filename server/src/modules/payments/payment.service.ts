@@ -53,6 +53,9 @@ export async function createStripeCheckout(reference: string, email: string, req
   const existing = await prisma.payment.findUnique({ where: { idempotencyKey } });
   if (existing?.providerReference?.startsWith("cs_")) {
     const session = await stripeClient().checkout.sessions.retrieve(existing.providerReference);
+    if (!existing.checkoutSessionId) {
+      await prisma.payment.update({ where: { id: existing.id }, data: { checkoutSessionId: session.id } });
+    }
     if (session.url) return { checkoutUrl: session.url, sessionId: session.id };
   }
   if (existing) throw new PaymentApiError(409, "PAYMENT_ATTEMPT_FAILED", "Cette tentative a échoué. Rechargez la page pour réessayer.");
@@ -75,7 +78,7 @@ export async function createStripeCheckout(reference: string, email: string, req
       mode: "payment",
       customer_email: guest.email,
       client_reference_id: booking.reference,
-      success_url: `${env.frontendUrl}/confirmation?payment=success&reference=${encodeURIComponent(booking.reference)}`,
+      success_url: `${env.frontendUrl}/confirmation?payment=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${env.frontendUrl}/confirmation?payment=cancelled&reference=${encodeURIComponent(booking.reference)}`,
       expires_at: Math.floor(booking.hold.expiresAt.getTime() / 1000),
       metadata: { paymentId: payment.id, bookingId: booking.id, propertyId: booking.propertyId, reference: booking.reference },
@@ -90,7 +93,7 @@ export async function createStripeCheckout(reference: string, email: string, req
       }],
     }, { idempotencyKey });
     if (!session.url) throw new Error("Stripe Checkout did not return a URL.");
-    await prisma.payment.update({ where: { id: payment.id }, data: { providerReference: session.id, status: PaymentStatus.PROCESSING } });
+    await prisma.payment.update({ where: { id: payment.id }, data: { providerReference: session.id, checkoutSessionId: session.id, status: PaymentStatus.PROCESSING } });
     return { checkoutUrl: session.url, sessionId: session.id };
   } catch (error) {
     await prisma.payment.update({
@@ -100,6 +103,48 @@ export async function createStripeCheckout(reference: string, email: string, req
     if (error instanceof PaymentApiError) throw error;
     throw new PaymentApiError(502, "PAYMENT_PROVIDER_UNAVAILABLE", "Le service de paiement est momentanément indisponible.");
   }
+}
+
+export async function getStripeCheckoutStatus(sessionId: string) {
+  const payment = await prisma.payment.findUnique({
+    where: { checkoutSessionId: sessionId },
+    select: {
+      status: true,
+      booking: {
+        select: {
+          reference: true,
+          status: true,
+          checkIn: true,
+          checkOut: true,
+          adults: true,
+          children: true,
+          total: true,
+          currency: true,
+          hold: { select: { expiresAt: true } },
+          rooms: { orderBy: { createdAt: "asc" }, take: 1, select: { roomTypeNameSnapshot: true } },
+          extras: { orderBy: { createdAt: "asc" }, select: { nameSnapshot: true } },
+        },
+      },
+    },
+  });
+  if (!payment) throw new PaymentApiError(404, "CHECKOUT_SESSION_NOT_FOUND", "La session de paiement est introuvable.");
+
+  return {
+    paymentStatus: payment.status,
+    booking: {
+      reference: payment.booking.reference,
+      status: payment.booking.status,
+      room: payment.booking.rooms[0]?.roomTypeNameSnapshot ?? "Hôtel Rivage",
+      arrival: payment.booking.checkIn.toISOString().slice(0, 10),
+      departure: payment.booking.checkOut.toISOString().slice(0, 10),
+      adults: payment.booking.adults,
+      children: payment.booking.children,
+      options: payment.booking.extras.map((extra) => extra.nameSnapshot),
+      total: Number(payment.booking.total),
+      currency: payment.booking.currency,
+      holdExpiresAt: payment.booking.hold?.expiresAt.toISOString(),
+    },
+  };
 }
 
 function paymentIdFromEvent(event: Stripe.Event) {

@@ -27,6 +27,36 @@ function stripe() {
   return new Stripe(env.stripeSecretKey);
 }
 
+type RefundLookupClient = Pick<Prisma.TransactionClient, "payment" | "invoice">;
+
+async function existingRefundResult(
+  client: RefundLookupClient,
+  membership: AdminMembershipContext,
+  bookingId: string,
+  idempotencyKey: string,
+  input: RefundInput,
+): Promise<BillingResult | null> {
+  const existing = await client.payment.findUnique({ where: { idempotencyKey } });
+  if (!existing) return null;
+  if (
+    existing.propertyId !== membership.propertyId
+    || existing.bookingId !== bookingId
+    || existing.kind !== PaymentKind.REFUND
+    || existing.parentPaymentId !== input.paymentId
+    || (input.amount !== undefined && !existing.amount.equals(input.amount))
+  ) {
+    throw new AdminApiError(409, "IDEMPOTENCY_KEY_REUSED", "Cette clé de remboursement a déjà été utilisée pour une autre opération.");
+  }
+  const credit = await client.invoice.findFirst({
+    where: { bookingId, documentType: "CREDIT_NOTE", creditReason: { contains: `[remboursement ${existing.id}]` } },
+  });
+  if (!credit) throw new AdminApiError(409, "REFUND_CREDIT_NOTE_PENDING", "Le remboursement existe mais son avoir doit être régularisé.");
+  if (credit.creditReason !== `${input.reason} [remboursement ${existing.id}]`) {
+    throw new AdminApiError(409, "IDEMPOTENCY_KEY_REUSED", "Cette clé de remboursement a déjà été utilisée avec un autre motif.");
+  }
+  return { paymentId: existing.id, invoiceId: credit.id, invoiceNumber: credit.number };
+}
+
 export async function recordManualPayment(
   membership: AdminMembershipContext,
   adminUserId: string,
@@ -111,6 +141,9 @@ export async function refundPayment(
   input: RefundInput,
   ipAddress?: string,
 ): Promise<BillingResult> {
+  const completedAttempt = await existingRefundResult(prisma, membership, bookingId, idempotencyKey, input);
+  if (completedAttempt) return completedAttempt;
+
   const charge = await prisma.payment.findFirst({
     where: {
       id: input.paymentId,
@@ -139,13 +172,10 @@ export async function refundPayment(
     providerReference = stripeRefund.id;
   }
 
-  return prisma.$transaction(async (transaction) => {
-    const existing = await transaction.payment.findUnique({ where: { idempotencyKey } });
-    if (existing) {
-      const credit = await transaction.invoice.findFirst({ where: { bookingId, documentType: "CREDIT_NOTE", creditReason: { contains: existing.id } } });
-      if (!credit) throw new AdminApiError(409, "REFUND_CREDIT_NOTE_PENDING", "Le remboursement existe mais son avoir doit être régularisé.");
-      return { paymentId: existing.id, invoiceId: credit.id, invoiceNumber: credit.number };
-    }
+  try {
+    return await prisma.$transaction(async (transaction) => {
+      const concurrentAttempt = await existingRefundResult(transaction, membership, bookingId, idempotencyKey, input);
+      if (concurrentAttempt) return concurrentAttempt;
     const current = await transaction.payment.findUnique({
       where: { id: charge.id },
       include: { refunds: { where: { status: PaymentStatus.SUCCEEDED }, select: { amount: true } }, booking: { include: { guests: { where: { isPrimary: true }, take: 1, select: { firstName: true, email: true } } } } },
@@ -200,6 +230,13 @@ export async function refundPayment(
         payload: { firstName: guest.firstName, reference: current.booking.reference, total: Number(amount), currency: current.currency, reason: input.reason, invoiceNumber: credit.number },
       });
     }
-    return { paymentId: refund.id, invoiceId: credit.id, invoiceNumber: credit.number };
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      return { paymentId: refund.id, invoiceId: credit.id, invoiceNumber: credit.number };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      const recovered = await existingRefundResult(prisma, membership, bookingId, idempotencyKey, input);
+      if (recovered) return recovered;
+    }
+    throw error;
+  }
 }

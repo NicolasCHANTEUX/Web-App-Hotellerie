@@ -1052,6 +1052,7 @@ img { display: block; }
 .privacy-check a { color: var(--gold-dark); text-decoration: underline; text-underline-offset: 2px; }
 .contact-submit { width: 100%; min-height: 50px; }
 .contact-success { margin: 18px 0 0; border-radius: var(--radius-sm); background: #edf4eb; padding: 14px 16px; color: #42603f; font-size: 14px; font-weight: 600; }
+.contact-error { margin: 18px 0 0; border-radius: var(--radius-sm); background: #f8ece9; padding: 14px 16px; color: #8b3f36; font-size: 14px; font-weight: 600; }
 
 /* Booking flow */
 .booking-page { min-height: 80vh; background: var(--paper); padding: 64px 32px 96px; }
@@ -1187,6 +1188,7 @@ img { display: block; }
 .confirmation-actions { display: flex; justify-content: center; gap: 12px; }
 .confirmation-actions svg { width: 17px; }
 .confirmation-download-error { margin: -14px 0 20px; color: #9b5149; font-size: 13px; }
+.confirmation-payment-notice { margin: -14px 0 20px; border-radius: var(--radius-sm); background: #f3ede4; padding: 13px 15px; color: #765a38; font-size: 13px; font-weight: 600; }
 
 /* Shared inner pages */
 .section { width: min(1200px, 100%); margin: 0 auto; padding: 88px 32px; }

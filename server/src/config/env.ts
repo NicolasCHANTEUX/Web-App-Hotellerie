@@ -43,6 +43,7 @@ export const env = {
     .map((origin) => origin.trim())
     .filter(Boolean),
   frontendUrl: process.env.FRONTEND_URL?.trim() || "http://127.0.0.1:5173",
+  publicPropertySlug: process.env.PUBLIC_PROPERTY_SLUG?.trim() || "hotel-rivage",
   notificationDelivery: notificationDelivery as "disabled" | "log" | "resend",
   resendApiKey: process.env.RESEND_API_KEY?.trim() || null,
   emailFrom: process.env.EMAIL_FROM?.trim() || null,

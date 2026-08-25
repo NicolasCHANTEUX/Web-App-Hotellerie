@@ -43,3 +43,25 @@ export function createStripeCheckout(reference: string, email: string, idempoten
     { "Idempotency-Key": idempotencyKey },
   );
 }
+
+export type StripeCheckoutStatus = {
+  paymentStatus: "REQUIRES_PAYMENT" | "PROCESSING" | "SUCCEEDED" | "FAILED" | "CANCELLED" | "PARTIALLY_REFUNDED" | "REFUNDED";
+  booking: {
+    reference: string;
+    status: "DRAFT" | "PENDING_PAYMENT" | "CONFIRMED" | "CANCELLED" | "EXPIRED" | "COMPLETED" | "NO_SHOW";
+    room: string;
+    arrival: string;
+    departure: string;
+    adults: number;
+    children: number;
+    options: string[];
+    total: number;
+    currency: string;
+    holdExpiresAt?: string;
+  };
+};
+
+export function getStripeCheckoutStatus(sessionId: string, signal?: AbortSignal) {
+  const query = new URLSearchParams({ sessionId });
+  return apiGet<StripeCheckoutStatus>(`/payments/stripe/status?${query}`, signal);
+}

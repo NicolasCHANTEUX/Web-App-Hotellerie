@@ -21,5 +21,6 @@ server/.api-dev-state.json
 
 # Logs and operating-system files
 *.log
+*.pid
 .DS_Store
 Thumbs.db

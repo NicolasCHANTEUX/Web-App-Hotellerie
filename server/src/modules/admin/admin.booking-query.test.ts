@@ -24,3 +24,19 @@ test("ordinary booking filters remain composable without today-only", () => {
     checkIn: { lte: to },
   });
 });
+
+test("accounting search never queries guest contact details", () => {
+  const where = bookingWhere(
+    "property-id",
+    { search: "Martin" },
+    new Date("2026-08-24T00:00:00.000Z"),
+    true,
+    false,
+  );
+  const serialized = JSON.stringify(where);
+
+  assert.match(serialized, /firstName/);
+  assert.match(serialized, /lastName/);
+  assert.doesNotMatch(serialized, /email/);
+  assert.doesNotMatch(serialized, /phone/);
+});

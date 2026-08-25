@@ -86,6 +86,7 @@ function roomsLabel(booking: Pick<AdminBooking, "rooms">) {
 export function AdminBookings() {
   const { accessToken, logout, profile } = useAdminAuth();
   const propertyTimeZone = profile?.membership.property.timezone;
+  const isAccounting = profile?.membership.role === "ACCOUNTING";
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const [status, setStatus] = useState<BookingStatus | "">("");
@@ -144,9 +145,11 @@ export function AdminBookings() {
   return (
     <>
       <PageHeading
-        eyebrow="Pilotage des séjours"
+        eyebrow={isAccounting ? "Suivi financier" : "Pilotage des séjours"}
         title="Réservations"
-        description="Consultez les arrivées, les départs et le détail de chaque séjour."
+        description={isAccounting
+          ? "Consultez les règlements, remboursements et documents de chaque réservation."
+          : "Consultez les arrivées, les départs et le détail de chaque séjour."}
       />
 
       <section className="admin-metrics" aria-label="Synthèse des réservations">
@@ -166,7 +169,7 @@ export function AdminBookings() {
         </div>
 
         <div className="admin-filters">
-          <label className="admin-filter-search"><span className="sr-only">Rechercher</span><Search /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Référence, client, e-mail…" /></label>
+          <label className="admin-filter-search"><span className="sr-only">Rechercher</span><Search /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder={isAccounting ? "Référence, client, chambre…" : "Référence, client, e-mail…"} /></label>
           <label><span className="sr-only">Statut</span><Filter /><select value={status} onChange={(event) => { setStatus(event.target.value as BookingStatus | ""); setPage(1); }}><option value="">Tous les statuts</option>{bookingStatuses.map((item) => <option key={item} value={item}>{bookingStatusLabel(item)}</option>)}</select></label>
           <label className="admin-date-filter"><span>Du</span><CalendarDays /><input type="date" value={from} max={to || undefined} disabled={todayOnly} onChange={(event) => { setFrom(event.target.value); setPage(1); }} /></label>
           <label className="admin-date-filter"><span>Au</span><CalendarDays /><input type="date" value={to} min={from || undefined} disabled={todayOnly} onChange={(event) => { setTo(event.target.value); setPage(1); }} /></label>
@@ -220,6 +223,7 @@ export function AdminBookings() {
 function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: () => void }) {
   const { accessToken, logout, profile } = useAdminAuth();
   const propertyTimeZone = profile?.membership.property.timezone;
+  const canOperateBooking = profile?.membership.role === "ADMIN" || profile?.membership.role === "RECEPTION";
   const [booking, setBooking] = useState<AdminBookingDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -242,6 +246,7 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
   const [refundAmount, setRefundAmount] = useState("");
   const [refundReason, setRefundReason] = useState("");
   const [billingBusy, setBillingBusy] = useState(false);
+  const refundAttemptRef = useRef<{ signature: string; key: string } | null>(null);
   const confirmationOpenRef = useRef(false);
   const confirmingRef = useRef(false);
   const drawerRef = useRef<HTMLElement>(null);
@@ -322,7 +327,7 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
   }, [accessToken, booking, id, logout]);
 
   useEffect(() => {
-    if (!accessToken || booking?.status !== "CONFIRMED") {
+    if (!accessToken || !canOperateBooking || booking?.status !== "CONFIRMED") {
       setAvailableRooms([]);
       setAssignedRoomId("");
       return;
@@ -345,7 +350,7 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
         setRoomsLoading(false);
       });
     return () => controller.abort();
-  }, [accessToken, booking?.status, booking?.rooms, id, logout]);
+  }, [accessToken, booking?.status, booking?.rooms, canOperateBooking, id, logout]);
 
   async function applyRoomAssignment() {
     if (!accessToken || !booking || !assignedRoomId || roomAssigning) return;
@@ -394,13 +399,19 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
     setActionError(null);
     try {
       const parsedAmount = refundAmount.trim() ? Number(refundAmount.replace(",", ".")) : undefined;
-      await refundAdminPayment(id, refundPaymentId, parsedAmount, refundReason.trim(), accessToken);
+      const reason = refundReason.trim();
+      const signature = JSON.stringify({ bookingId: id, paymentId: refundPaymentId, amount: parsedAmount ?? null, reason });
+      if (!refundAttemptRef.current || refundAttemptRef.current.signature !== signature) {
+        refundAttemptRef.current = { signature, key: `refund:${crypto.randomUUID()}` };
+      }
+      await refundAdminPayment(id, refundPaymentId, parsedAmount, reason, refundAttemptRef.current.key, accessToken);
       const [updated, documents] = await Promise.all([getAdminBooking(id, accessToken), getAdminBookingInvoices(id, accessToken)]);
       setBooking(updated);
       setInvoices(documents);
       setBillingMode(null);
       setRefundAmount("");
       setRefundReason("");
+      refundAttemptRef.current = null;
       onChanged();
     } catch (nextError) {
       if (nextError instanceof AdminApiError && nextError.status === 401) return logout();
@@ -491,7 +502,9 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
   const hasSettledCharge = booking?.payments.some((payment) =>
     payment.kind === "CHARGE" && (payment.status === "SUCCEEDED" || payment.status === "PARTIALLY_REFUNDED"),
   ) ?? false;
-  const canManagePayment = profile?.membership.role !== "HOUSEKEEPING";
+  const canManagePayment = profile?.membership.role === "ADMIN"
+    || profile?.membership.role === "RECEPTION"
+    || profile?.membership.role === "ACCOUNTING";
   const canRefund = profile?.membership.role === "ADMIN" || profile?.membership.role === "ACCOUNTING";
 
   return (
@@ -510,7 +523,7 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
             <>
               <div className="admin-detail-statuses"><StatusBadge status={booking.status} kind="booking" />{booking.paymentStatus ? <StatusBadge status={booking.paymentStatus} kind="payment" /> : <span className="admin-status admin-status-neutral"><i />Paiement non initié</span>}</div>
               {booking.hold && <div className={`admin-hold-notice ${booking.hold.isActive ? "is-active" : ""}`}><CalendarCheck /><span><strong>{booking.hold.isActive ? "Chambre optionnée" : "Option terminée"}</strong><small>{booking.hold.isActive ? `À confirmer avant le ${formatDateTime(booking.hold.expiresAt, propertyTimeZone)}` : `Échéance : ${formatDateTime(booking.hold.expiresAt, propertyTimeZone)}`} · heure locale de l’hôtel</small></span></div>}
-              {booking.status === "PENDING_PAYMENT" && booking.hold?.isActive && <button ref={confirmationTriggerRef} type="button" className="admin-confirm-booking" disabled={confirming} aria-haspopup="dialog" onClick={openConfirmation}><CircleCheck />Confirmer manuellement la réservation</button>}
+              {canOperateBooking && booking.status === "PENDING_PAYMENT" && booking.hold?.isActive && <button ref={confirmationTriggerRef} type="button" className="admin-confirm-booking" disabled={confirming} aria-haspopup="dialog" onClick={openConfirmation}><CircleCheck />Confirmer manuellement la réservation</button>}
 
               <section className="admin-detail-section">
                 <h3><UserRound />Client principal</h3>
@@ -535,7 +548,7 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
                 <div className="admin-detail-lines">
                   {booking.rooms.map((room) => <p key={room.id}><span><strong>{room.roomTypeName}</strong><small>{room.roomNumber ? `Chambre ${room.roomNumber}` : "Chambre à attribuer"}</small></span>{room.lineTotal !== undefined && <strong>{formatMoney(room.lineTotal, booking.currency)}</strong>}</p>)}
                 </div>
-                {booking.status === "CONFIRMED" && <div className="admin-booking-room-assignment">
+                {canOperateBooking && booking.status === "CONFIRMED" && <div className="admin-booking-room-assignment">
                   <label><span>Chambre physique</span><select value={assignedRoomId} disabled={roomsLoading || roomAssigning} onChange={(event) => setAssignedRoomId(event.target.value)}>{availableRooms.map((room) => <option value={room.id} key={room.id}>Chambre {room.number}{room.floor !== null ? ` · étage ${room.floor}` : ""}{room.selected ? " · actuelle" : ""}</option>)}</select></label>
                   <button type="button" disabled={roomsLoading || roomAssigning || !assignedRoomId || assignedRoomId === booking.rooms[0]?.roomId} onClick={applyRoomAssignment}>{roomAssigning ? "Affectation…" : roomsLoading ? "Chargement…" : "Affecter"}</button>
                 </div>}
@@ -572,7 +585,7 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
                   <button className="admin-billing-action" type="button" onClick={() => { setBillingMode("payment"); setActionError(null); }}><CreditCard />Enregistrer le règlement</button>
                 )}
                 {canRefund && refundablePayments.length > 0 && billingMode !== "refund" && (
-                  <button className="admin-billing-action secondary" type="button" onClick={() => { setRefundPaymentId(refundablePayments[0]?.id ?? ""); setBillingMode("refund"); setActionError(null); }}><RotateCcw />Effectuer un remboursement</button>
+                  <button className="admin-billing-action secondary" type="button" onClick={() => { setRefundPaymentId(refundablePayments[0]?.id ?? ""); setBillingMode("refund"); setActionError(null); refundAttemptRef.current = null; }}><RotateCcw />Effectuer un remboursement</button>
                 )}
 
                 {billingMode === "payment" && <div className="admin-billing-form">
@@ -587,14 +600,14 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
                   <label>Paiement<select value={refundPaymentId} onChange={(event) => setRefundPaymentId(event.target.value)}>{refundablePayments.map((payment) => <option key={payment.id} value={payment.id}>{payment.provider === "STRIPE" ? "Stripe" : payment.paymentMethodType ?? "Manuel"} · {formatMoney(payment.amount, payment.currency)}</option>)}</select></label>
                   <label>Montant <span>(laisser vide pour le solde complet)</span><input inputMode="decimal" value={refundAmount} placeholder="Ex. 50,00" onChange={(event) => setRefundAmount(event.target.value)} /></label>
                   <label>Motif<textarea required rows={2} maxLength={500} value={refundReason} onChange={(event) => setRefundReason(event.target.value)} /></label>
-                  <div><button type="button" disabled={billingBusy} onClick={() => setBillingMode(null)}>Annuler</button><button type="button" className="danger" disabled={billingBusy || !refundReason.trim()} onClick={saveRefund}>{billingBusy ? "Remboursement…" : "Confirmer le remboursement"}</button></div>
+                  <div><button type="button" disabled={billingBusy} onClick={() => { setBillingMode(null); refundAttemptRef.current = null; }}>Annuler</button><button type="button" className="danger" disabled={billingBusy || !refundReason.trim()} onClick={saveRefund}>{billingBusy ? "Remboursement…" : "Confirmer le remboursement"}</button></div>
                 </div>}
                 {actionError && <p className="admin-booking-confirm-error" role="alert">{actionError}</p>}
               </section>
 
-              {booking.specialRequests && <section className="admin-detail-section"><h3><Users />Demande particulière</h3><p className="admin-special-request">{booking.specialRequests}</p></section>}
+              {canOperateBooking && booking.specialRequests && <section className="admin-detail-section"><h3><Users />Demande particulière</h3><p className="admin-special-request">{booking.specialRequests}</p></section>}
 
-              {(booking.status === "PENDING_PAYMENT" || booking.status === "CONFIRMED") && <section className="admin-detail-section admin-booking-lifecycle">
+              {canOperateBooking && (booking.status === "PENDING_PAYMENT" || booking.status === "CONFIRMED") && <section className="admin-detail-section admin-booking-lifecycle">
                 <h3><Ban />Actions sur le séjour</h3>
                 <div className="admin-booking-lifecycle-actions">
                   <button type="button" className="danger" onClick={() => { setStatusAction("CANCELLED"); setStatusReason(""); setActionError(null); }}>Annuler la réservation</button>
@@ -613,7 +626,7 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
           )}
         </div>
 
-        {confirmationOpen && booking && (
+        {canOperateBooking && confirmationOpen && booking && (
           <div className="admin-booking-confirm-layer">
             <div
               ref={confirmationDialogRef}

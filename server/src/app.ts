@@ -9,6 +9,7 @@ import { adminRoutes } from "./modules/admin/index.js";
 import { availabilityRoutes } from "./modules/availability/availability.routes.js";
 import { bookingRoutes } from "./modules/booking/booking.routes.js";
 import { catalogRoutes } from "./modules/catalog/catalog.routes.js";
+import { contactRoutes } from "./modules/contact/contact.routes.js";
 import { startNotificationWorker } from "./modules/notifications/notification.service.js";
 import { paymentRoutes, stripeWebhookRoutes } from "./modules/payments/payment.routes.js";
 
@@ -69,6 +70,7 @@ export async function buildApp() {
   });
 
   await app.register(catalogRoutes);
+  await app.register(contactRoutes);
   await app.register(availabilityRoutes);
   await app.register(bookingRoutes);
   await app.register(paymentRoutes);

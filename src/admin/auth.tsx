@@ -140,7 +140,7 @@ export function AdminIndexRedirect() {
 }
 
 export function canReadReservations(role?: AdminRole) {
-  return role === "ADMIN" || role === "RECEPTION";
+  return role === "ADMIN" || role === "RECEPTION" || role === "ACCOUNTING";
 }
 
 export function RequireReservationAccess({ children }: { children: ReactNode }) {

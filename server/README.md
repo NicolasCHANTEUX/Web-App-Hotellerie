@@ -68,8 +68,10 @@ Routes disponibles :
 - `GET /availability?arrival=2026-08-08&departure=2026-08-09&adults=2&children=0`
 - `POST /quotes`
 - `POST /bookings`
+- `POST /contact-requests`
 - `GET /payments/config`
 - `POST /payments/stripe/checkout`
+- `GET /payments/stripe/status?sessionId=cs_...`
 - `POST /payments/stripe/webhook`
 - `POST /admin/auth/login`
 - `GET /admin/me`
@@ -93,7 +95,7 @@ Routes disponibles :
 - `PATCH /admin/rooms/:id` (`ADMIN` uniquement)
 - `DELETE /admin/rooms/:id` (`ADMIN` uniquement)
 
-Toutes les routes `/admin/*`, sauf la connexion, exigent un jeton Supabase Auth et une appartenance `AdminMembership` active pour l'etablissement. Les reservations et leurs coordonnees sont limitees aux roles `ADMIN` et `RECEPTION`; les autres roles ne voient que l'inventaire des chambres et une identite minimale d'occupation.
+Toutes les routes `/admin/*`, sauf la connexion, exigent un jeton Supabase Auth et une appartenance `AdminMembership` active pour l'etablissement. `ADMIN` et `RECEPTION` pilotent les sejours et voient les coordonnees clients. `ACCOUNTING` dispose d'une vue financiere des reservations, paiements, factures et avoirs, sans coordonnees clients, demandes particulieres ni actions operationnelles. Les identites d'occupation restent masquees dans la vue des chambres pour `ACCOUNTING` et `HOUSEKEEPING`.
 
 La periode `from` / `to` de `/admin/rooms` est optionnelle, mais les deux dates doivent etre fournies ensemble. Le calcul utilise l'intervalle hotelier `[from, to)` : le jour d'arrivee est inclus et le jour de depart est reutilisable. La periode est limitee a 366 nuits. `sortOrder` accepte `asc` (par defaut) ou `desc` et trie les numeros de chambre.
 
@@ -151,6 +153,8 @@ STRIPE_WEBHOOK_SECRET="whsec_..."
 
 Le webhook Stripe doit pointer vers `POST /payments/stripe/webhook`. La signature porte sur le corps brut et chaque evenement est traite de facon idempotente. Les metadonnees Stripe ne contiennent que les identifiants techniques de la reservation et du paiement. Ne jamais placer ces cles dans une variable `VITE_*`.
 
+Après Checkout, Stripe renvoie le navigateur avec son identifiant de session. La page de confirmation interroge `GET /payments/stripe/status` pendant quelques secondes et affiche uniquement l'état persistant produit par le webhook. L'identifiant Checkout et la référence fournisseur du paiement sont conservés séparément afin que cette vérification reste possible après confirmation.
+
 Les e-mails passent par la table transactionnelle `notifications`. Une panne d'envoi n'annule donc jamais une reservation ou un paiement. Trois modes sont disponibles :
 
 ```dotenv
@@ -160,6 +164,8 @@ NOTIFICATION_DELIVERY="resend"   # envoi reel, exige RESEND_API_KEY et EMAIL_FRO
 ```
 
 Le worker traite les messages par petits lots, reprend les envois interrompus et applique un delai progressif apres un echec. Tester d'abord `log`, puis le domaine d'expedition Resend, avant d'activer `resend`.
+
+Le formulaire public enregistre chaque demande dans `contact_requests` avant de créer la notification destinée à l'établissement. Il exige une clé `Idempotency-Key` UUID, applique une limite de cinq demandes par heure et utilise `PUBLIC_PROPERTY_SLUG` pour sélectionner l'établissement destinataire.
 
 ## Images du catalogue
 
@@ -175,6 +181,8 @@ npm run media:migrate -- --apply
 ## Conservation des données personnelles
 
 Chaque réservation reçoit une échéance de conservation de dix ans après le départ. L'émission ultérieure d'une facture ou d'un avoir repousse cette échéance à dix ans après le document. Le traitement d'anonymisation retire les coordonnées client, les demandes particulières, les destinataires de notifications et les instantanés client des factures, sans supprimer l'historique financier ou les journaux d'audit.
+
+Les demandes de contact ont une échéance distincte de trois ans. La même commande anonymise leur identité, leurs coordonnées, leur message et la notification associée lorsqu'elles arrivent à échéance.
 
 La commande est toujours en aperçu par défaut :
 
