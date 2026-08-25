@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch --clear-screen=false --exclude .api-dev-state.json --exclude dist/** --exclude src/generated/prisma/** src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js",
+    "start": "node dist/src/index.js",
     "db:format": "prisma format",
     "db:validate": "prisma validate",
     "db:generate": "prisma generate",
@@ -17,23 +17,32 @@
     "db:seed": "prisma db seed",
     "db:seed:demo": "tsx prisma/seed-demo.ts",
     "admin:provision": "tsx src/scripts/provision-admin.ts",
-    "test": "node --import tsx --test src/modules/booking/booking.validation.test.ts src/modules/booking/booking.idempotency.test.ts src/modules/booking/booking.pricing.test.ts src/modules/admin/admin.privacy.test.ts src/modules/admin/admin.room-query.test.ts src/modules/admin/admin.room-update.test.ts src/modules/admin/admin.room-create-delete.test.ts src/modules/admin/admin.room-type.test.ts",
+    "media:migrate": "tsx src/scripts/migrate-room-type-media.ts",
+    "privacy:anonymize": "tsx src/scripts/anonymize-expired-bookings.ts",
+    "test": "node --import tsx --test src/modules/booking/booking.validation.test.ts src/modules/booking/booking.idempotency.test.ts src/modules/booking/booking.pricing.test.ts src/modules/admin/admin.privacy.test.ts src/modules/admin/admin.availability-block.test.ts src/modules/admin/admin.booking-actions.test.ts src/modules/admin/admin.booking-query.test.ts src/modules/admin/admin.room-query.test.ts src/modules/admin/admin.room-update.test.ts src/modules/admin/admin.room-create-delete.test.ts src/modules/admin/admin.room-type.test.ts src/modules/billing/billing.validation.test.ts src/modules/billing/invoice.service.test.ts src/modules/notifications/notification.service.test.ts src/modules/media/media.service.test.ts src/modules/privacy/retention.service.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",
+    "@fastify/helmet": "^13.1.1",
+    "@fastify/multipart": "^10.1.1",
     "@fastify/rate-limit": "^10.0.0",
     "@prisma/adapter-pg": "^7.0.0",
     "@prisma/client": "^7.0.0",
+    "@supabase/supabase-js": "^2.109.0",
     "dotenv": "^17.0.0",
     "fastify": "^5.11.3",
-    "hotel-figma-frontend": "file:..",
-    "pg": "^8.16.0"
+    "pdfkit": "^0.20.1",
+    "pg": "^8.16.0",
+    "stripe": "^22.5.0",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@types/pdfkit": "^0.17.6",
     "@types/pg": "^8.21.0",
-    "prisma": "^7.0.0",
+    "@types/ws": "^8.18.1",
+    "prisma": "^7.9.1",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0"
   }

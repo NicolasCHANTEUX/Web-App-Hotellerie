@@ -1,5 +1,5 @@
 import { invalidBooking } from "./booking.errors.js";
-import type { BookingGuestInput, CreateBookingInput } from "./booking.types.js";
+import type { BookingGuestInput, BookingSelectionInput, CreateBookingInput } from "./booking.types.js";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -16,10 +16,13 @@ const ROOT_FIELDS = new Set([
   "children",
   "extraIds",
   "expectedTotal",
+  "termsAccepted",
   "guest",
   "specialRequests",
 ]);
-const REQUIRED_ROOT_FIELDS = ["roomTypeId", "arrival", "departure", "adults", "children", "extraIds", "expectedTotal", "guest"] as const;
+const QUOTE_FIELDS = new Set(["roomTypeId", "arrival", "departure", "adults", "children", "extraIds"]);
+const REQUIRED_QUOTE_FIELDS = ["roomTypeId", "arrival", "departure", "adults", "children", "extraIds"] as const;
+const REQUIRED_ROOT_FIELDS = ["roomTypeId", "arrival", "departure", "adults", "children", "extraIds", "expectedTotal", "termsAccepted", "guest"] as const;
 const GUEST_FIELDS = new Set(["firstName", "lastName", "email", "phone", "countryCode"]);
 const REQUIRED_GUEST_FIELDS = ["firstName", "lastName", "email", "phone"] as const;
 
@@ -118,6 +121,36 @@ function parseExtraIds(value: unknown) {
   return ids;
 }
 
+export function parseBookingQuoteBody(body: unknown): BookingSelectionInput {
+  if (!isRecord(body)) throw invalidBooking();
+  assertExactFields(body, QUOTE_FIELDS, REQUIRED_QUOTE_FIELDS, "La demande de devis");
+
+  if (typeof body.roomTypeId !== "string" || !UUID.test(body.roomTypeId)) {
+    throw invalidBooking("Le type de chambre est invalide.");
+  }
+
+  const arrival = parseIsoDate(body.arrival, "La date d'arrivée");
+  const departure = parseIsoDate(body.departure, "La date de départ");
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  if (arrival < today) {
+    throw invalidBooking("La date d'arrivée ne peut pas être dans le passé.");
+  }
+  const nights = (departure.getTime() - arrival.getTime()) / 86_400_000;
+  if (!Number.isInteger(nights) || nights < 1 || nights > 365) {
+    throw invalidBooking("La durée du séjour doit être comprise entre 1 et 365 nuits.");
+  }
+
+  return {
+    roomTypeId: body.roomTypeId,
+    arrival,
+    departure,
+    adults: parseInteger(body.adults, "Le nombre d'adultes", 1, 10),
+    children: parseInteger(body.children, "Le nombre d'enfants", 0, 10),
+    extraIds: parseExtraIds(body.extraIds),
+  };
+}
+
 export function parseCreateBookingBody(body: unknown): CreateBookingInput {
   if (!isRecord(body)) throw invalidBooking();
   assertExactFields(body, ROOT_FIELDS, REQUIRED_ROOT_FIELDS, "La demande de réservation");
@@ -142,6 +175,9 @@ export function parseCreateBookingBody(body: unknown): CreateBookingInput {
   const children = parseInteger(body.children, "Le nombre d'enfants", 0, 10);
   const extraIds = parseExtraIds(body.extraIds);
   const expectedTotal = parseInteger(body.expectedTotal, "Le montant attendu", 0, 100_000_000);
+  if (body.termsAccepted !== true) {
+    throw invalidBooking("Vous devez accepter les conditions générales de vente pour réserver.");
+  }
   const guest = parseGuest(body.guest);
   const specialRequests = parseOptionalString(body.specialRequests, "La demande particulière", 2_000);
 
@@ -153,6 +189,7 @@ export function parseCreateBookingBody(body: unknown): CreateBookingInput {
     children,
     extraIds,
     expectedTotal,
+    termsAccepted: true,
     guest,
     ...(specialRequests ? { specialRequests } : {}),
   };

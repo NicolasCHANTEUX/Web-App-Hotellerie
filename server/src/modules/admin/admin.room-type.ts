@@ -11,10 +11,12 @@ const allowedCreateFields = new Set([
   "maxGuests",
   "bedLabel",
   "coverImageUrl",
+  "coverImageFileId",
   "displayOrder",
   "isPublished",
   "price",
   "taxRate",
+  "promotion",
   "amenities",
 ]);
 const allowedUpdateFields = new Set(["updatedAt", ...allowedCreateFields]);
@@ -30,15 +32,33 @@ export type AdminRoomTypeFields = {
   maxGuests: number;
   bedLabel: string;
   coverImageUrl: string;
+  coverImageFileId: string | null;
   displayOrder: number;
   isPublished: boolean;
   price: number;
   taxRate: number;
+  promotion: AdminRoomTypePromotionInput | null;
   amenities: string[];
+};
+
+export type AdminRoomTypePromotionInput = {
+  label: string;
+  discountPercent: number;
+  validFrom: Date;
+  validUntil: Date | null;
 };
 
 export type AdminRoomTypeUpdateInput = AdminRoomTypeFields & { updatedAt: Date };
 export type AdminRoomTypeDeleteInput = { updatedAt: Date };
+
+export function roomTypeRetirementMode(input: {
+  blockingBookings: number;
+  blockingHolds: number;
+  dependencies: number;
+}) {
+  if (input.blockingBookings > 0 || input.blockingHolds > 0) return "BLOCKED" as const;
+  return input.dependencies > 0 ? "ARCHIVE" as const : "DELETE" as const;
+}
 
 function invalid(message: string): never {
   throw new AdminApiError(400, "INVALID_ROOM_TYPE", message);
@@ -116,6 +136,14 @@ function coverImage(value: unknown) {
   return parsed;
 }
 
+function optionalUuid(value: unknown, label: string) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) {
+    return invalid(`${label} est invalide.`);
+  }
+  return value;
+}
+
 function amenities(value: unknown) {
   if (!Array.isArray(value) || value.length > 20) {
     return invalid("La liste des équipements est invalide.");
@@ -138,6 +166,38 @@ function timestamp(value: unknown) {
   return date;
 }
 
+function dateOnly(value: unknown, label: string) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return invalid(`${label} doit respecter le format AAAA-MM-JJ.`);
+  }
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
+    return invalid(`${label} est invalide.`);
+  }
+  return date;
+}
+
+function promotion(value: unknown): AdminRoomTypePromotionInput | null {
+  if (value === null || value === undefined) return null;
+  const candidate = strictObject(
+    value,
+    new Set(["label", "discountPercent", "validFrom", "validUntil"]),
+  );
+  const validFrom = dateOnly(candidate.validFrom, "La date de début de la promotion");
+  const validUntil = candidate.validUntil === null || candidate.validUntil === undefined || candidate.validUntil === ""
+    ? null
+    : dateOnly(candidate.validUntil, "La date de fin de la promotion");
+  if (validUntil && validUntil <= validFrom) {
+    return invalid("La fin de la promotion doit être postérieure à son début.");
+  }
+  return {
+    label: requiredString(candidate.label, "Le libellé de la promotion", 2, 80),
+    discountPercent: decimal(candidate.discountPercent, "La réduction", 0.01, 90),
+    validFrom,
+    validUntil,
+  };
+}
+
 function parseFields(candidate: Record<string, unknown>): AdminRoomTypeFields {
   const parsed = {
     name: requiredString(candidate.name, "Le nom", 3, 100),
@@ -149,12 +209,14 @@ function parseFields(candidate: Record<string, unknown>): AdminRoomTypeFields {
     maxGuests: integer(candidate.maxGuests, "La capacité totale", 1, 12),
     bedLabel: requiredString(candidate.bedLabel, "La literie", 2, 120),
     coverImageUrl: coverImage(candidate.coverImageUrl),
+    coverImageFileId: optionalUuid(candidate.coverImageFileId, "L'image téléversée"),
     displayOrder: integer(candidate.displayOrder, "L’ordre d’affichage", 0, 999),
     isPublished: typeof candidate.isPublished === "boolean"
       ? candidate.isPublished
       : invalid("L’état de publication est invalide."),
     price: decimal(candidate.price, "Le prix par nuit", 1, 10_000),
     taxRate: decimal(candidate.taxRate, "Le taux de taxe", 0, 100),
+    promotion: promotion(candidate.promotion),
     amenities: amenities(candidate.amenities),
   };
 

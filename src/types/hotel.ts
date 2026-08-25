@@ -6,6 +6,12 @@ export type Accommodation = {
   shortDescription: string;
   description: string;
   price: number;
+  originalPrice?: number;
+  promotion?: {
+    label: string;
+    discountPercent: number;
+    validUntil: string | null;
+  };
   taxRate: number;
   currency: string;
   refundable: boolean;
@@ -47,14 +53,55 @@ export type AvailabilityResult = {
   roomTypes: Accommodation[];
 };
 
-export type CreateBookingInput = {
+export type BookingSelectionInput = {
   roomTypeId: string;
   arrival: string;
   departure: string;
   adults: number;
   children: number;
   extraIds: string[];
+};
+
+export type BookingQuote = {
+  priceTaxMode: "INCLUSIVE";
+  currency: string;
+  nights: number;
+  room: {
+    id: string;
+    slug: string;
+    name: string;
+    unitPrice: number;
+    subtotal: number;
+    taxAmount: number;
+    total: number;
+    promotion: {
+      id: string;
+      label: string;
+      discountPercent: number;
+      referenceUnitPrice: number;
+    } | null;
+  };
+  extras: Array<{
+    id: string;
+    code: string;
+    name: string;
+    unitPrice: number;
+    pricingUnit: PricingUnit;
+    quantity: number;
+    subtotal: number;
+    taxAmount: number;
+    total: number;
+  }>;
+  accommodationTotal: number;
+  extrasTotal: number;
+  vatTotalIncluded: number;
+  touristTaxTotal: number;
+  total: number;
+};
+
+export type CreateBookingInput = BookingSelectionInput & {
   expectedTotal: number;
+  termsAccepted: true;
   guest: {
     firstName: string;
     lastName: string;

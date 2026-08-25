@@ -1,5 +1,7 @@
 import cors from "@fastify/cors";
+import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
+import multipart from "@fastify/multipart";
 import Fastify from "fastify";
 import { env } from "./config/env.js";
 import { prisma } from "./lib/prisma.js";
@@ -7,6 +9,8 @@ import { adminRoutes } from "./modules/admin/index.js";
 import { availabilityRoutes } from "./modules/availability/availability.routes.js";
 import { bookingRoutes } from "./modules/booking/booking.routes.js";
 import { catalogRoutes } from "./modules/catalog/catalog.routes.js";
+import { startNotificationWorker } from "./modules/notifications/notification.service.js";
+import { paymentRoutes, stripeWebhookRoutes } from "./modules/payments/payment.routes.js";
 
 export async function buildApp() {
   const app = Fastify({
@@ -26,6 +30,10 @@ export async function buildApp() {
     trustProxy: env.trustProxy,
   });
 
+  await app.register(helmet, {
+    contentSecurityPolicy: false,
+  });
+
   await app.register(cors, {
     origin(origin, callback) {
       if (!origin || env.corsOrigins.includes(origin)) return callback(null, true);
@@ -41,6 +49,10 @@ export async function buildApp() {
         message: "Trop de tentatives. Réessayez dans quelques instants.",
       },
     }),
+  });
+
+  await app.register(multipart, {
+    limits: { files: 1, fileSize: 5 * 1024 * 1024, fields: 0 },
   });
 
   app.get("/", async (_request, reply) => reply.redirect(env.frontendUrl));
@@ -59,7 +71,11 @@ export async function buildApp() {
   await app.register(catalogRoutes);
   await app.register(availabilityRoutes);
   await app.register(bookingRoutes);
+  await app.register(paymentRoutes);
+  await app.register(stripeWebhookRoutes);
   await app.register(adminRoutes);
+
+  const notificationWorker = startNotificationWorker(app.log);
 
   app.setErrorHandler((error, _request, reply) => {
     if (
@@ -81,6 +97,9 @@ export async function buildApp() {
     });
   });
 
-  app.addHook("onClose", async () => prisma.$disconnect());
+  app.addHook("onClose", async () => {
+    if (notificationWorker) clearInterval(notificationWorker);
+    await prisma.$disconnect();
+  });
   return app;
 }

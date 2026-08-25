@@ -5,6 +5,7 @@ import {
   parseAdminRoomTypeCreateBody,
   parseAdminRoomTypeDeleteBody,
   parseAdminRoomTypeUpdateBody,
+  roomTypeRetirementMode,
   slugifyRoomType,
 } from "./admin.room-type.js";
 
@@ -47,10 +48,12 @@ test("room type creation parser normalizes catalogue fields", () => {
     maxGuests: 3,
     bedLabel: "1 lit king-size",
     coverImageUrl,
+    coverImageFileId: null,
     displayOrder: 4,
     isPublished: true,
     price: 190,
     taxRate: 10,
+    promotion: null,
     amenities: ["Wi-Fi fibre", "Vue jardin"],
   });
 });
@@ -71,4 +74,40 @@ test("room type update and deletion require a canonical version", () => {
 
 test("room type slugs are stable and URL-safe", () => {
   assert.equal(slugifyRoomType(" Suite Côte d’Azur "), "suite-cote-d-azur");
+});
+
+test("room type parser accepts and normalizes a bounded percentage promotion", () => {
+  const parsed = parseAdminRoomTypeCreateBody({
+    ...validRoomType,
+    promotion: {
+      label: " Offre d'été ",
+      discountPercent: 12.345,
+      validFrom: "2026-08-24",
+      validUntil: "2026-09-15",
+    },
+  });
+  assert.deepEqual(parsed.promotion, {
+    label: "Offre d'été",
+    discountPercent: 12.35,
+    validFrom: new Date("2026-08-24T00:00:00.000Z"),
+    validUntil: new Date("2026-09-15T00:00:00.000Z"),
+  });
+});
+
+test("room type parser rejects invalid discounts and promotion periods", () => {
+  assertInvalid(() => parseAdminRoomTypeCreateBody({
+    ...validRoomType,
+    promotion: { label: "Promo", discountPercent: 100, validFrom: "2026-08-24", validUntil: null },
+  }));
+  assertInvalid(() => parseAdminRoomTypeCreateBody({
+    ...validRoomType,
+    promotion: { label: "Promo", discountPercent: 10, validFrom: "2026-09-01", validUntil: "2026-09-01" },
+  }));
+});
+
+test("room type retirement deletes unused types, archives history and blocks future stays", () => {
+  assert.equal(roomTypeRetirementMode({ blockingBookings: 0, blockingHolds: 0, dependencies: 0 }), "DELETE");
+  assert.equal(roomTypeRetirementMode({ blockingBookings: 0, blockingHolds: 0, dependencies: 12 }), "ARCHIVE");
+  assert.equal(roomTypeRetirementMode({ blockingBookings: 1, blockingHolds: 0, dependencies: 12 }), "BLOCKED");
+  assert.equal(roomTypeRetirementMode({ blockingBookings: 0, blockingHolds: 1, dependencies: 2 }), "BLOCKED");
 });

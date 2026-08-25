@@ -23,6 +23,7 @@ function input(): CreateBookingInput {
       "22222222-2222-4222-8222-222222222222",
     ],
     expectedTotal: 49_950,
+    termsAccepted: true,
     guest: {
       firstName: "Sophie",
       lastName: "Martin",

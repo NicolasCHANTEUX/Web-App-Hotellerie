@@ -98,9 +98,11 @@ async function seedBooking(propertyId: string, fixture: DemoBooking) {
   const checkIn = dateAtOffset(fixture.checkInOffset);
   const checkOut = dateAtOffset(fixture.checkOutOffset);
   const nights = Math.round((checkOut.getTime() - checkIn.getTime()) / 86_400_000);
-  const accommodationSubtotal = Number(ratePlan.basePricePerNight) * nights;
-  const taxTotal = Math.round(accommodationSubtotal * Number(ratePlan.taxRate) / 100 * 100) / 100;
-  const total = accommodationSubtotal + taxTotal;
+  const accommodationTotal = Number(ratePlan.basePricePerNight) * nights;
+  const taxRate = Number(ratePlan.taxRate);
+  const taxTotal = Math.round(accommodationTotal * taxRate / (100 + taxRate) * 100) / 100;
+  const accommodationSubtotalExcludingTax = Math.round((accommodationTotal - taxTotal) * 100) / 100;
+  const total = accommodationTotal;
   const isPending = fixture.status === BookingStatus.PENDING_PAYMENT;
   const isAllocated = fixture.status !== BookingStatus.CANCELLED && !isPending;
   const allocationStatus = fixture.status === BookingStatus.COMPLETED
@@ -119,18 +121,23 @@ async function seedBooking(propertyId: string, fixture: DemoBooking) {
         adults: fixture.adults,
         children: fixture.children,
         currency: ratePlan.currency,
-        accommodationSubtotal,
+        priceTaxMode: "INCLUSIVE",
+        accommodationSubtotal: accommodationTotal,
         extrasSubtotal: 0,
         touristTaxTotal: 0,
         taxTotal,
         total,
         pricingSnapshot: {
-          version: 2,
+          version: 3,
+          priceTaxMode: "INCLUSIVE",
           demo: true,
           nights,
           roomType: room.roomType.name,
-          nightlyPrice: Number(ratePlan.basePricePerNight),
+          nightlyPriceTtc: Number(ratePlan.basePricePerNight),
           taxRate: Number(ratePlan.taxRate),
+          accommodationSubtotalExcludingTax,
+          accommodationTotalIncludingTax: accommodationTotal,
+          vatTotalIncluded: taxTotal,
           touristTaxTotal: 0,
           taxTotal,
           total,
@@ -146,7 +153,7 @@ async function seedBooking(propertyId: string, fixture: DemoBooking) {
             calculationModeSnapshot: "PERCENTAGE",
             rateSnapshot: ratePlan.taxRate,
             quantitySnapshot: 1,
-            taxableBase: accommodationSubtotal,
+            taxableBase: accommodationSubtotalExcludingTax,
             amount: taxTotal,
           },
         },
@@ -166,9 +173,10 @@ async function seedBooking(propertyId: string, fixture: DemoBooking) {
         roomTypeNameSnapshot: room.roomType.name,
         roomNumberSnapshot: isPending ? null : room.number,
         nightlyPriceSnapshot: ratePlan.basePricePerNight,
+        priceTaxModeSnapshot: "INCLUSIVE",
         taxRateSnapshot: ratePlan.taxRate,
         taxAmountSnapshot: taxTotal,
-        lineTotal: accommodationSubtotal,
+        lineTotal: accommodationTotal,
       },
     });
 

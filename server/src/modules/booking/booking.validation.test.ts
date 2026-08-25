@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { BookingError } from "./booking.errors.js";
-import { parseCreateBookingBody } from "./booking.validation.js";
+import { parseBookingQuoteBody, parseCreateBookingBody } from "./booking.validation.js";
 
 const ROOM_TYPE_ID = "11111111-1111-4111-8111-111111111111";
 const BREAKFAST_ID = "22222222-2222-4222-8222-222222222222";
@@ -23,6 +23,7 @@ function validBody() {
     children: 1,
     extraIds: [BREAKFAST_ID, PARKING_ID],
     expectedTotal: 49_950,
+    termsAccepted: true,
     guest: {
       firstName: "  Sophie ",
       lastName: " Martin  ",
@@ -57,6 +58,7 @@ test("accepte et normalise une réservation valide avec des dates futures", () =
   assert.equal(parsed.children, 1);
   assert.deepEqual(parsed.extraIds, [BREAKFAST_ID, PARKING_ID]);
   assert.equal(parsed.expectedTotal, 49_950);
+  assert.equal(parsed.termsAccepted, true);
   assert.deepEqual(parsed.guest, {
     firstName: "Sophie",
     lastName: "Martin",
@@ -118,4 +120,41 @@ test("refuse un montant attendu absent, négatif, décimal ou démesuré", () =>
   for (const expectedTotal of [-1, 1.5, 100_000_001, "49950"]) {
     assertInvalid({ ...validBody(), expectedTotal });
   }
+});
+
+test("exige une acceptation explicite des conditions générales de vente", () => {
+  const { termsAccepted: _missing, ...withoutAcceptance } = validBody();
+  assertInvalid(withoutAcceptance);
+  assertInvalid({ ...validBody(), termsAccepted: false });
+  assertInvalid({ ...validBody(), termsAccepted: "true" });
+});
+
+test("accepte un devis sans coordonnées client ni montant calculé côté navigateur", () => {
+  const body = validBody();
+  const quote = parseBookingQuoteBody({
+    roomTypeId: body.roomTypeId,
+    arrival: body.arrival,
+    departure: body.departure,
+    adults: body.adults,
+    children: body.children,
+    extraIds: body.extraIds,
+  });
+
+  assert.equal(quote.roomTypeId, ROOM_TYPE_ID);
+  assert.equal(quote.adults, 2);
+  assert.equal(quote.children, 1);
+  assert.deepEqual(quote.extraIds, [BREAKFAST_ID, PARKING_ID]);
+});
+
+test("refuse qu'un devis fournisse un prix ou des coordonnées client", () => {
+  const body = validBody();
+  assert.throws(() => parseBookingQuoteBody({
+    roomTypeId: body.roomTypeId,
+    arrival: body.arrival,
+    departure: body.departure,
+    adults: body.adults,
+    children: body.children,
+    extraIds: body.extraIds,
+    expectedTotal: body.expectedTotal,
+  }), BookingError);
 });

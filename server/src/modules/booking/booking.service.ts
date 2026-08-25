@@ -1,4 +1,4 @@
-import { Prisma, type PricingUnit } from "../../generated/prisma/client.js";
+import { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import { BookingError } from "./booking.errors.js";
 import { expireStaleBookingHolds } from "./booking.holds.js";
@@ -7,13 +7,10 @@ import {
   bookingReferenceFromIdempotencyKey,
   bookingRequestHash,
 } from "./booking.idempotency.js";
-import {
-  assertExpectedTotal,
-  percentageTax,
-  priceTaxRule,
-  roundMoney,
-} from "./booking.pricing.js";
+import { assertExpectedTotal, buildTaxInclusivePrice } from "./booking.pricing.js";
 import type { BookingConfirmation, CreateBookingInput } from "./booking.types.js";
+import { enqueueBookingNotification } from "../notifications/notification.service.js";
+import { retentionDeadlineFrom } from "../privacy/retention.service.js";
 
 const MAX_TRANSACTION_ATTEMPTS = 3;
 const HOLD_DURATION_MS = 24 * 60 * 60 * 1_000;
@@ -24,12 +21,6 @@ function dateOnly(date: Date) {
 
 function moneySnapshot(value: Prisma.Decimal) {
   return value.toFixed(2);
-}
-
-function quantityForExtra(unit: PricingUnit, nights: number, guests: number) {
-  if (unit === "PER_PERSON_PER_NIGHT") return nights * guests;
-  if (unit === "PER_NIGHT") return nights;
-  return 1;
 }
 
 function errorValues(error: unknown): string[] {
@@ -188,12 +179,22 @@ export async function createBooking(
               where: {
                 isActive: true,
                 minNights: { lte: nights },
+                priceTaxMode: "INCLUSIVE",
                 AND: [
                   { OR: [{ validFrom: null }, { validFrom: { lte: input.arrival } }] },
                   { OR: [{ validUntil: null }, { validUntil: { gte: input.departure } }] },
                 ],
               },
               orderBy: { basePricePerNight: "asc" },
+            },
+            promotions: {
+              where: {
+                isActive: true,
+                validFrom: { lte: input.arrival },
+                OR: [{ validUntil: null }, { validUntil: { gte: input.departure } }],
+              },
+              orderBy: [{ validFrom: "desc" }, { createdAt: "desc" }],
+              take: 1,
             },
             rooms: {
               where: {
@@ -220,7 +221,7 @@ export async function createBooking(
           },
         });
 
-        if (!roomType || !roomType.isPublished) {
+        if (!roomType || !roomType.isPublished || roomType.archivedAt) {
           throw new BookingError(404, "ROOM_TYPE_NOT_FOUND", "Ce type de chambre est introuvable.");
         }
         if (input.adults > roomType.maxAdults || input.children > roomType.maxChildren || guests > roomType.maxGuests) {
@@ -231,6 +232,8 @@ export async function createBooking(
         if (!ratePlan) {
           throw new BookingError(409, "RATE_NOT_AVAILABLE", "Aucun tarif n'est disponible pour ce séjour.");
         }
+        const promotion = roomType.promotions[0] ?? null;
+        const nightlyPrice = promotion?.promotionalPricePerNight ?? ratePlan.basePricePerNight;
 
         const room = roomType.rooms[0];
         if (!room) {
@@ -243,6 +246,7 @@ export async function createBooking(
                 id: { in: input.extraIds },
                 propertyId: roomType.propertyId,
                 currency: roomType.property.currency,
+                priceTaxMode: "INCLUSIVE",
                 isActive: true,
               },
               orderBy: { displayOrder: "asc" },
@@ -253,38 +257,38 @@ export async function createBooking(
           throw new BookingError(400, "EXTRA_NOT_AVAILABLE", "Une ou plusieurs options ne sont pas disponibles.");
         }
 
-        const accommodationSubtotal = roundMoney(ratePlan.basePricePerNight.mul(nights));
-        const pricedExtras = selectedExtras.map((extra) => {
-          const quantity = quantityForExtra(extra.pricingUnit, nights, guests);
-          const lineTotal = roundMoney(extra.price.mul(quantity));
-          const taxRate = extra.taxRate ?? ratePlan.taxRate;
-          return {
-            extra,
-            quantity,
-            lineTotal,
-            taxRate,
-            taxAmount: percentageTax(lineTotal, taxRate),
-          };
+        const price = buildTaxInclusivePrice({
+          nightlyPrice,
+          accommodationTaxRate: ratePlan.taxRate,
+          nights,
+          adults: input.adults,
+          children: input.children,
+          extras: selectedExtras.map((extra) => ({
+            item: extra,
+            price: extra.price,
+            pricingUnit: extra.pricingUnit,
+            taxRate: extra.taxRate,
+          })),
+          taxRules: roomType.property.taxRules
+            .filter((rule) => rule.currency === null || rule.currency === roomType.property.currency)
+            .map((rule) => ({
+              rule,
+              calculationMode: rule.calculationMode,
+              rate: rule.rate,
+              amount: rule.amount,
+            })),
         });
-        const extrasSubtotal = roundMoney(
-          pricedExtras.reduce((total, item) => total.add(item.lineTotal), new Prisma.Decimal(0)),
-        );
-        const subtotal = accommodationSubtotal.add(extrasSubtotal);
-        const accommodationTax = percentageTax(accommodationSubtotal, ratePlan.taxRate);
-        const extrasTax = roundMoney(
-          pricedExtras.reduce((total, item) => total.add(item.taxAmount), new Prisma.Decimal(0)),
-        );
-        const touristTaxLines = roomType.property.taxRules
-          .filter((rule) => rule.currency === null || rule.currency === roomType.property.currency)
-          .map((rule) => ({
-            rule,
-            ...priceTaxRule(rule, accommodationSubtotal, nights, input.adults, input.children),
-          }));
-        const touristTaxTotal = roundMoney(
-          touristTaxLines.reduce((total, item) => total.add(item.amount), new Prisma.Decimal(0)),
-        );
-        const taxTotal = roundMoney(accommodationTax.add(extrasTax).add(touristTaxTotal));
-        const total = roundMoney(subtotal.add(taxTotal));
+        const pricedExtras = price.extras.map(({ item, ...pricedExtra }) => ({
+          extra: item,
+          ...pricedExtra,
+        }));
+        const accommodationSubtotal = price.accommodationTotal;
+        const extrasSubtotal = price.extrasTotal;
+        const accommodationTax = price.accommodationTax;
+        const touristTaxLines = price.touristTaxes;
+        const touristTaxTotal = price.touristTaxTotal;
+        const taxTotal = price.taxTotal;
+        const total = price.total;
         assertExpectedTotal(input.expectedTotal, total);
 
         const termsVersion = roomType.property.contractTerms[0];
@@ -299,16 +303,21 @@ export async function createBooking(
               checksumSha256: termsVersion.checksumSha256,
               cancellationPolicy: termsVersion.cancellationPolicy,
               acceptedAt: now.toISOString(),
+              acceptedExplicitly: input.termsAccepted,
+              acceptanceChannel: "WEBSITE",
             }
           : {
               source: "RATE_PLAN_FALLBACK",
               refundable: ratePlan.refundable,
               ratePlanCode: ratePlan.code,
               acceptedAt: now.toISOString(),
+              acceptedExplicitly: input.termsAccepted,
+              acceptanceChannel: "WEBSITE",
             };
 
         const pricingSnapshot = {
-          version: 2,
+          version: 3,
+          priceTaxMode: "INCLUSIVE",
           idempotency: { key: idempotencyKey, requestHash },
           nights,
           roomType: { id: roomType.id, slug: roomType.slug, name: roomType.name },
@@ -316,21 +325,32 @@ export async function createBooking(
             id: ratePlan.id,
             code: ratePlan.code,
             name: ratePlan.name,
-            nightlyPrice: moneySnapshot(ratePlan.basePricePerNight),
+            baseNightlyPriceTtc: moneySnapshot(ratePlan.basePricePerNight),
+            nightlyPriceTtc: moneySnapshot(nightlyPrice),
             taxRate: ratePlan.taxRate.toFixed(2),
-            taxAmount: moneySnapshot(accommodationTax),
+            taxAmountIncluded: moneySnapshot(accommodationTax),
             refundable: ratePlan.refundable,
           },
-          extras: pricedExtras.map(({ extra, quantity, lineTotal, taxRate, taxAmount }) => ({
+          promotion: promotion ? {
+            id: promotion.id,
+            label: promotion.label,
+            discountPercent: promotion.discountPercent.toFixed(2),
+            referenceNightlyPriceTtc: moneySnapshot(promotion.referencePricePerNight),
+            promotionalNightlyPriceTtc: moneySnapshot(promotion.promotionalPricePerNight),
+            validFrom: dateOnly(promotion.validFrom),
+            validUntil: promotion.validUntil ? dateOnly(promotion.validUntil) : null,
+          } : null,
+          extras: pricedExtras.map(({ extra, quantity, lineSubtotal, lineTotal, taxRate, taxAmount }) => ({
             id: extra.id,
             code: extra.code,
             name: extra.name,
             pricingUnit: extra.pricingUnit,
-            unitPrice: moneySnapshot(extra.price),
+            unitPriceTtc: moneySnapshot(extra.price),
             quantity,
+            lineSubtotalExcludingTax: moneySnapshot(lineSubtotal),
             lineTotal: moneySnapshot(lineTotal),
             taxRate: taxRate.toFixed(2),
-            taxAmount: moneySnapshot(taxAmount),
+            taxAmountIncluded: moneySnapshot(taxAmount),
           })),
           taxes: [
             {
@@ -338,15 +358,15 @@ export async function createBooking(
               label: "TVA hébergement",
               calculationMode: "PERCENTAGE",
               rate: ratePlan.taxRate.toFixed(2),
-              taxableBase: moneySnapshot(accommodationSubtotal),
+              taxableBase: moneySnapshot(price.accommodationSubtotal),
               amount: moneySnapshot(accommodationTax),
             },
-            ...pricedExtras.map(({ extra, lineTotal, taxRate, taxAmount }) => ({
+            ...pricedExtras.map(({ extra, lineSubtotal, taxRate, taxAmount }) => ({
               kind: "VAT",
               label: `TVA ${extra.name}`,
               calculationMode: "PERCENTAGE",
               rate: taxRate.toFixed(2),
-              taxableBase: moneySnapshot(lineTotal),
+              taxableBase: moneySnapshot(lineSubtotal),
               amount: moneySnapshot(taxAmount),
             })),
             ...touristTaxLines.map(({ rule, quantity, taxableBase, amount }) => ({
@@ -361,8 +381,11 @@ export async function createBooking(
               amount: moneySnapshot(amount),
             })),
           ],
-          accommodationSubtotal: moneySnapshot(accommodationSubtotal),
-          extrasSubtotal: moneySnapshot(extrasSubtotal),
+          accommodationSubtotalExcludingTax: moneySnapshot(price.accommodationSubtotal),
+          accommodationTotalIncludingTax: moneySnapshot(price.accommodationTotal),
+          extrasSubtotalExcludingTax: moneySnapshot(price.extrasSubtotal),
+          extrasTotalIncludingTax: moneySnapshot(price.extrasTotal),
+          vatTotalIncluded: moneySnapshot(price.vatTotal),
           touristTaxTotal: moneySnapshot(touristTaxTotal),
           taxTotal: moneySnapshot(taxTotal),
           total: moneySnapshot(total),
@@ -405,6 +428,7 @@ export async function createBooking(
             adults: input.adults,
             children: input.children,
             currency: ratePlan.currency,
+            priceTaxMode: "INCLUSIVE",
             accommodationSubtotal,
             extrasSubtotal,
             touristTaxTotal,
@@ -414,6 +438,7 @@ export async function createBooking(
             termsVersionId: termsVersion?.id,
             termsSnapshot,
             specialRequests: input.specialRequests,
+            personalDataRetainUntil: retentionDeadlineFrom(input.departure),
             guests: {
               create: {
                 isPrimary: true,
@@ -432,17 +457,17 @@ export async function createBooking(
                   calculationModeSnapshot: "PERCENTAGE",
                   rateSnapshot: ratePlan.taxRate,
                   quantitySnapshot: 1,
-                  taxableBase: accommodationSubtotal,
+                  taxableBase: price.accommodationSubtotal,
                   amount: accommodationTax,
                   sortOrder: 0,
                 },
-                ...pricedExtras.map(({ extra, lineTotal, taxRate, taxAmount }, index) => ({
+                ...pricedExtras.map(({ extra, lineSubtotal, taxRate, taxAmount }, index) => ({
                   kind: "VAT" as const,
                   labelSnapshot: `TVA ${extra.name}`,
                   calculationModeSnapshot: "PERCENTAGE" as const,
                   rateSnapshot: taxRate,
                   quantitySnapshot: 1,
-                  taxableBase: lineTotal,
+                  taxableBase: lineSubtotal,
                   amount: taxAmount,
                   sortOrder: index + 1,
                 })),
@@ -468,6 +493,7 @@ export async function createBooking(
                     nameSnapshot: extra.name,
                     unitPriceSnapshot: extra.price,
                     pricingUnitSnapshot: extra.pricingUnit,
+                    priceTaxModeSnapshot: "INCLUSIVE",
                     taxRateSnapshot: taxRate,
                     taxAmountSnapshot: taxAmount,
                     quantity,
@@ -485,10 +511,11 @@ export async function createBooking(
             roomTypeId: roomType.id,
             ratePlanId: ratePlan.id,
             roomTypeNameSnapshot: roomType.name,
-            nightlyPriceSnapshot: ratePlan.basePricePerNight,
+            nightlyPriceSnapshot: nightlyPrice,
+            priceTaxModeSnapshot: "INCLUSIVE",
             taxRateSnapshot: ratePlan.taxRate,
             taxAmountSnapshot: accommodationTax,
-            lineTotal: accommodationSubtotal,
+            lineTotal: price.accommodationTotal,
           },
         });
 
@@ -516,6 +543,24 @@ export async function createBooking(
             status: "ACTIVE",
             checkIn: input.arrival,
             checkOut: input.departure,
+          },
+        });
+
+        await enqueueBookingNotification(transaction, {
+          propertyId: roomType.propertyId,
+          bookingId: booking.id,
+          recipient: input.guest.email,
+          template: "BOOKING_OPTIONED",
+          idempotencyKey: `booking:${booking.id}:optioned`,
+          payload: {
+            firstName: input.guest.firstName,
+            reference: booking.reference,
+            roomName: roomType.name,
+            arrival: dateOnly(input.arrival),
+            departure: dateOnly(input.departure),
+            total: Number(total),
+            currency: ratePlan.currency,
+            holdExpiresAt: hold.expiresAt.toISOString(),
           },
         });
 

@@ -25,6 +25,9 @@ import {
   type AdminRoomCreateInput,
   type AdminRoomDeleteInput,
 } from "./admin.room-create-delete.js";
+import { bookingStatusTransitionAllowed, type AdminBookingStatusInput } from "./admin.booking-actions.js";
+import type { AdminAvailabilityBlockInput } from "./admin.availability-block.js";
+import { enqueueBookingNotification } from "../notifications/notification.service.js";
 
 const MAX_SERIALIZABLE_TRANSACTION_ATTEMPTS = 3;
 
@@ -91,9 +94,14 @@ const bookingDetailInclude = {
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
+      parentPaymentId: true,
+      provider: true,
+      kind: true,
       status: true,
       amount: true,
       currency: true,
+      paymentMethodType: true,
+      processedAt: true,
       createdAt: true,
     },
   },
@@ -105,6 +113,7 @@ type BookingFilters = {
   status?: BookingStatus;
   from?: Date;
   to?: Date;
+  todayOnly?: boolean;
 };
 
 export type BookingListInput = BookingFilters & {
@@ -207,9 +216,10 @@ function serializeGuest(
   };
 }
 
-function bookingWhere(
+export function bookingWhere(
   propertyId: string,
   input: BookingFilters,
+  today: Date,
   includeStatus = true,
 ): Prisma.BookingWhereInput {
   const search = input.search?.trim();
@@ -218,6 +228,7 @@ function bookingWhere(
     ...(includeStatus && input.status ? { status: input.status } : {}),
     ...(input.from ? { checkOut: { gt: input.from } } : {}),
     ...(input.to ? { checkIn: { lte: input.to } } : {}),
+    ...(input.todayOnly ? { AND: [{ checkIn: { lte: today } }, { checkOut: { gte: today } }] } : {}),
     ...(search
       ? {
           OR: [
@@ -319,9 +330,9 @@ export async function listAdminBookings(
   input: BookingListInput,
 ) {
   await expirePropertyHolds(membership.propertyId);
-  const where = bookingWhere(membership.propertyId, input);
-  const summaryWhere = bookingWhere(membership.propertyId, input, false);
   const today = propertyDate(membership.property.timezone);
+  const where = bookingWhere(membership.propertyId, input, today);
+  const summaryWhere = bookingWhere(membership.propertyId, input, today, false);
   const operationalStatuses: BookingStatus[] = [
     BookingStatus.PENDING_PAYMENT,
     BookingStatus.CONFIRMED,
@@ -385,6 +396,7 @@ export async function getAdminBooking(propertyId: string, bookingId: string) {
     adults: booking.adults,
     children: booking.children,
     currency: booking.currency,
+    priceTaxMode: booking.priceTaxMode,
     accommodationSubtotal: Number(booking.accommodationSubtotal),
     extrasSubtotal: Number(booking.extrasSubtotal),
     touristTaxTotal: Number(booking.touristTaxTotal),
@@ -429,6 +441,7 @@ export async function getAdminBooking(propertyId: string, bookingId: string) {
     payments: booking.payments.map((payment) => ({
       ...payment,
       amount: Number(payment.amount),
+      processedAt: payment.processedAt?.toISOString() ?? null,
       createdAt: payment.createdAt.toISOString(),
     })),
   };
@@ -451,6 +464,7 @@ export async function confirmAdminBooking(
       include: {
         hold: { include: { allocation: true, room: { select: { number: true } } } },
         rooms: { orderBy: { createdAt: "asc" }, take: 1 },
+        guests: { where: { isPrimary: true }, take: 1 },
       },
     });
 
@@ -524,6 +538,26 @@ export async function confirmAdminBooking(
       },
     });
 
+    const primaryGuest = booking.guests[0];
+    if (primaryGuest?.email) {
+      await enqueueBookingNotification(transaction, {
+        propertyId: membership.propertyId,
+        bookingId: booking.id,
+        recipient: primaryGuest.email,
+        template: "BOOKING_CONFIRMED",
+        idempotencyKey: `booking:${booking.id}:confirmed`,
+        payload: {
+          firstName: primaryGuest.firstName,
+          reference: booking.reference,
+          roomName: booking.rooms[0]?.roomTypeNameSnapshot,
+          arrival: booking.checkIn.toISOString().slice(0, 10),
+          departure: booking.checkOut.toISOString().slice(0, 10),
+          total: Number(booking.total),
+          currency: booking.currency,
+        },
+      });
+    }
+
         return booking.id;
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
       break;
@@ -537,6 +571,349 @@ export async function confirmAdminBooking(
   }
 
   return getAdminBooking(membership.propertyId, confirmedBookingId);
+}
+
+export async function updateAdminBookingStatus(
+  membership: AdminMembershipContext,
+  adminUserId: string,
+  bookingId: string,
+  input: AdminBookingStatusInput,
+  ipAddress?: string,
+) {
+  let updatedBookingId: string | undefined;
+  for (let attempt = 1; attempt <= MAX_SERIALIZABLE_TRANSACTION_ATTEMPTS; attempt += 1) {
+    try {
+      updatedBookingId = await prisma.$transaction(async (transaction) => {
+        const booking = await transaction.booking.findFirst({
+          where: { id: bookingId, propertyId: membership.propertyId },
+          select: {
+            id: true,
+            reference: true,
+            status: true,
+            checkIn: true,
+            checkOut: true,
+            total: true,
+            currency: true,
+            guests: { where: { isPrimary: true }, take: 1, select: { firstName: true, email: true } },
+            rooms: { orderBy: { createdAt: "asc" }, take: 1, select: { roomTypeNameSnapshot: true } },
+          },
+        });
+        if (!booking) throw new AdminApiError(404, "BOOKING_NOT_FOUND", "Réservation introuvable.");
+        if (booking.status === input.status) return booking.id;
+        if (!bookingStatusTransitionAllowed(booking.status, input.status)) {
+          throw new AdminApiError(409, "BOOKING_STATUS_TRANSITION_DENIED", "Ce changement de statut n’est pas autorisé.");
+        }
+
+        const today = propertyDate(membership.property.timezone);
+        if (input.status === BookingStatus.COMPLETED && booking.checkOut > today) {
+          throw new AdminApiError(409, "BOOKING_NOT_FINISHABLE", "Le séjour ne peut être terminé avant sa date de départ.");
+        }
+        if (input.status === BookingStatus.NO_SHOW && booking.checkIn > today) {
+          throw new AdminApiError(409, "BOOKING_NOT_NO_SHOW", "L’absence ne peut être constatée avant la date d’arrivée.");
+        }
+
+        await transaction.roomAllocation.updateMany({
+          where: {
+            status: "ACTIVE",
+            OR: [
+              { bookingRoom: { is: { bookingId: booking.id } } },
+              { reservationHold: { is: { bookingId: booking.id } } },
+            ],
+          },
+          data: { status: "RELEASED" },
+        });
+        await transaction.reservationHold.updateMany({
+          where: { bookingId: booking.id, status: "ACTIVE" },
+          data: { status: "RELEASED" },
+        });
+        const now = new Date();
+        await transaction.booking.update({
+          where: { id: booking.id },
+          data: {
+            status: input.status,
+            ...(input.status === BookingStatus.CANCELLED ? { cancelledAt: now } : {}),
+          },
+        });
+        await transaction.auditLog.create({
+          data: {
+            propertyId: membership.propertyId,
+            adminUserId,
+            bookingId: booking.id,
+            action: "BOOKING_STATUS_CHANGED",
+            entityType: "Booking",
+            entityId: booking.id,
+            before: { status: booking.status },
+            after: { status: input.status },
+            metadata: { reason: input.reason, source: "ADMIN_BOOKING_ACTION" },
+            ...(ipAddress ? { ipAddress } : {}),
+          },
+        });
+        const primaryGuest = booking.guests[0];
+        if (input.status === BookingStatus.CANCELLED && primaryGuest?.email) {
+          await enqueueBookingNotification(transaction, {
+            propertyId: membership.propertyId,
+            bookingId: booking.id,
+            recipient: primaryGuest.email,
+            template: "BOOKING_CANCELLED",
+            idempotencyKey: `booking:${booking.id}:cancelled`,
+            payload: {
+              firstName: primaryGuest.firstName,
+              reference: booking.reference,
+              roomName: booking.rooms[0]?.roomTypeNameSnapshot,
+              arrival: booking.checkIn.toISOString().slice(0, 10),
+              departure: booking.checkOut.toISOString().slice(0, 10),
+              total: Number(booking.total),
+              currency: booking.currency,
+              reason: input.reason ?? undefined,
+            },
+          });
+        }
+        return booking.id;
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      break;
+    } catch (error) {
+      if (!isRetryableTransactionConflict(error) || attempt === MAX_SERIALIZABLE_TRANSACTION_ATTEMPTS) throw error;
+    }
+  }
+  if (!updatedBookingId) throw new AdminApiError(409, "BOOKING_UPDATE_CONFLICT", "La réservation a changé. Rechargez-la.");
+  return getAdminBooking(membership.propertyId, updatedBookingId);
+}
+
+export async function listAvailableRoomsForBooking(propertyId: string, bookingId: string) {
+  const now = new Date();
+  const booking = await prisma.booking.findFirst({
+    where: { id: bookingId, propertyId },
+    select: {
+      checkIn: true,
+      checkOut: true,
+      rooms: {
+        orderBy: { createdAt: "asc" },
+        take: 1,
+        select: { roomTypeId: true, roomId: true, allocation: { select: { id: true } } },
+      },
+    },
+  });
+  const bookingRoom = booking?.rooms[0];
+  if (!booking || !bookingRoom) throw new AdminApiError(404, "BOOKING_NOT_FOUND", "Réservation introuvable.");
+
+  const rooms = await prisma.room.findMany({
+    where: {
+      propertyId,
+      roomTypeId: bookingRoom.roomTypeId,
+      status: "ACTIVE",
+      OR: [
+        ...(bookingRoom.roomId ? [{ id: bookingRoom.roomId }] : []),
+        {
+          allocations: {
+            none: {
+              ...blockingRoomAllocationWhere(now),
+              checkIn: { lt: booking.checkOut },
+              checkOut: { gt: booking.checkIn },
+              ...(bookingRoom.allocation ? { NOT: { id: bookingRoom.allocation.id } } : {}),
+            },
+          },
+        },
+      ],
+    },
+    orderBy: { number: "asc" },
+    select: { id: true, number: true, floor: true },
+  });
+  return rooms.map((room) => ({ ...room, selected: room.id === bookingRoom.roomId }));
+}
+
+export async function assignAdminBookingRoom(
+  membership: AdminMembershipContext,
+  adminUserId: string,
+  bookingId: string,
+  roomId: string,
+  ipAddress?: string,
+) {
+  const now = new Date();
+  const updatedBookingId = await prisma.$transaction(async (transaction) => {
+    const booking = await transaction.booking.findFirst({
+      where: { id: bookingId, propertyId: membership.propertyId },
+      select: {
+        id: true,
+        status: true,
+        checkIn: true,
+        checkOut: true,
+        rooms: {
+          orderBy: { createdAt: "asc" },
+          take: 1,
+          select: { id: true, roomTypeId: true, roomId: true, roomNumberSnapshot: true, allocation: true },
+        },
+      },
+    });
+    const bookingRoom = booking?.rooms[0];
+    if (!booking || !bookingRoom) throw new AdminApiError(404, "BOOKING_NOT_FOUND", "Réservation introuvable.");
+    if (booking.status !== BookingStatus.CONFIRMED) {
+      throw new AdminApiError(409, "BOOKING_ROOM_NOT_ASSIGNABLE", "Seule une réservation confirmée peut changer de chambre.");
+    }
+    if (bookingRoom.roomId === roomId) return booking.id;
+
+    const room = await transaction.room.findFirst({
+      where: { id: roomId, propertyId: membership.propertyId, roomTypeId: bookingRoom.roomTypeId, status: "ACTIVE" },
+      select: { id: true, number: true },
+    });
+    if (!room) throw new AdminApiError(400, "INVALID_BOOKING_ROOM", "Cette chambre ne correspond pas au type réservé.");
+    const conflict = await transaction.roomAllocation.findFirst({
+      where: {
+        roomId: room.id,
+        ...blockingRoomAllocationWhere(now),
+        checkIn: { lt: booking.checkOut },
+        checkOut: { gt: booking.checkIn },
+        ...(bookingRoom.allocation ? { NOT: { id: bookingRoom.allocation.id } } : {}),
+      },
+      select: { id: true },
+    });
+    if (conflict) throw new AdminApiError(409, "BOOKING_ROOM_UNAVAILABLE", "Cette chambre n’est plus disponible sur le séjour.");
+
+    if (bookingRoom.allocation) {
+      await transaction.roomAllocation.update({ where: { id: bookingRoom.allocation.id }, data: { roomId: room.id } });
+    } else {
+      await transaction.roomAllocation.create({
+        data: {
+          roomId: room.id,
+          bookingRoomId: bookingRoom.id,
+          source: "BOOKING",
+          status: "ACTIVE",
+          checkIn: booking.checkIn,
+          checkOut: booking.checkOut,
+        },
+      });
+    }
+    await transaction.bookingRoom.update({
+      where: { id: bookingRoom.id },
+      data: { roomId: room.id, roomNumberSnapshot: room.number },
+    });
+    await transaction.auditLog.create({
+      data: {
+        propertyId: membership.propertyId,
+        adminUserId,
+        bookingId: booking.id,
+        action: "BOOKING_ROOM_ASSIGNED",
+        entityType: "BookingRoom",
+        entityId: bookingRoom.id,
+        before: { roomId: bookingRoom.roomId, roomNumber: bookingRoom.roomNumberSnapshot },
+        after: { roomId: room.id, roomNumber: room.number },
+        metadata: { source: "ADMIN_BOOKING_ROOM_ASSIGNMENT" },
+        ...(ipAddress ? { ipAddress } : {}),
+      },
+    });
+    return booking.id;
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  return getAdminBooking(membership.propertyId, updatedBookingId);
+}
+
+export async function createAdminAvailabilityBlock(
+  membership: AdminMembershipContext,
+  adminUserId: string,
+  roomId: string,
+  input: AdminAvailabilityBlockInput,
+  ipAddress?: string,
+) {
+  const now = new Date();
+  try {
+    return await prisma.$transaction(async (transaction) => {
+      const room = await transaction.room.findFirst({
+        where: { id: roomId, propertyId: membership.propertyId, status: { not: "ARCHIVED" } },
+        select: { id: true, number: true },
+      });
+      if (!room) throw new AdminApiError(404, "ROOM_NOT_FOUND", "Chambre introuvable.");
+      const conflict = await transaction.roomAllocation.findFirst({
+        where: {
+          roomId: room.id,
+          ...blockingRoomAllocationWhere(now),
+          checkIn: { lt: input.checkOut },
+          checkOut: { gt: input.checkIn },
+        },
+        select: { id: true },
+      });
+      if (conflict) {
+        throw new AdminApiError(409, "ROOM_BLOCK_CONFLICT", "La chambre possède déjà une réservation, une option ou un blocage sur cette période.");
+      }
+      const block = await transaction.availabilityBlock.create({
+        data: {
+          propertyId: membership.propertyId,
+          roomId: room.id,
+          checkIn: input.checkIn,
+          checkOut: input.checkOut,
+          reason: input.reason,
+          note: input.note,
+        },
+      });
+      await transaction.roomAllocation.create({
+        data: {
+          roomId: room.id,
+          availabilityBlockId: block.id,
+          source: "BLOCK",
+          status: "ACTIVE",
+          checkIn: input.checkIn,
+          checkOut: input.checkOut,
+        },
+      });
+      await transaction.auditLog.create({
+        data: {
+          propertyId: membership.propertyId,
+          adminUserId,
+          action: "ROOM_AVAILABILITY_BLOCK_CREATED",
+          entityType: "AvailabilityBlock",
+          entityId: block.id,
+          before: Prisma.DbNull,
+          after: {
+            roomId: room.id,
+            roomNumber: room.number,
+            checkIn: isoDate(input.checkIn),
+            checkOut: isoDate(input.checkOut),
+            reason: input.reason,
+            note: input.note,
+          },
+          metadata: { source: "ADMIN_ROOM_BLOCK" },
+          ...(ipAddress ? { ipAddress } : {}),
+        },
+      });
+      return { id: block.id };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  } catch (error) {
+    if (isRetryableTransactionConflict(error)) {
+      throw new AdminApiError(409, "ROOM_BLOCK_CONFLICT", "La disponibilité de cette chambre a changé. Rechargez la vue.");
+    }
+    throw error;
+  }
+}
+
+export async function releaseAdminAvailabilityBlock(
+  membership: AdminMembershipContext,
+  adminUserId: string,
+  blockId: string,
+  ipAddress?: string,
+) {
+  return prisma.$transaction(async (transaction) => {
+    const block = await transaction.availabilityBlock.findFirst({
+      where: { id: blockId, propertyId: membership.propertyId },
+      include: { allocation: true, room: { select: { number: true } } },
+    });
+    if (!block) throw new AdminApiError(404, "ROOM_BLOCK_NOT_FOUND", "Blocage introuvable.");
+    if (!block.allocation || block.allocation.status !== "ACTIVE") return { id: block.id, released: true };
+    await transaction.roomAllocation.update({
+      where: { id: block.allocation.id },
+      data: { status: "RELEASED" },
+    });
+    await transaction.auditLog.create({
+      data: {
+        propertyId: membership.propertyId,
+        adminUserId,
+        action: "ROOM_AVAILABILITY_BLOCK_RELEASED",
+        entityType: "AvailabilityBlock",
+        entityId: block.id,
+        before: { status: "ACTIVE", roomNumber: block.room.number },
+        after: { status: "RELEASED" },
+        metadata: { source: "ADMIN_ROOM_BLOCK_RELEASE" },
+        ...(ipAddress ? { ipAddress } : {}),
+      },
+    });
+    return { id: block.id, released: true };
+  });
 }
 
 function roomWhere(
@@ -618,7 +995,7 @@ const roomAllocationDetails = {
       },
     },
   },
-  availabilityBlock: { select: { reason: true, note: true } },
+  availabilityBlock: { select: { id: true, reason: true, note: true } },
 } satisfies Prisma.RoomAllocationInclude;
 
 async function fetchRoomPage(where: Prisma.RoomWhereInput, input: RoomListInput, today: Date, now: Date) {
@@ -683,6 +1060,7 @@ function serializeOccupancy(
   if (allocation.source === "BLOCK") {
     return protectRoomOccupancyIdentity({
       kind: "BLOCK" as const,
+      blockId: allocation.availabilityBlock?.id ?? null,
       bookingId: null,
       bookingReference: null,
       status: null,
@@ -700,6 +1078,7 @@ function serializeOccupancy(
   const guest = booking?.guests[0];
   return protectRoomOccupancyIdentity({
     kind: allocation.source === "HOLD" ? "HOLD" as const : "BOOKING" as const,
+    blockId: null,
     bookingId: booking?.id ?? null,
     bookingReference: booking?.reference ?? null,
     status: booking?.status ?? null,

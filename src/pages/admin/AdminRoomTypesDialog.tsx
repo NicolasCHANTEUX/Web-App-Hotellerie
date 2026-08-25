@@ -21,12 +21,13 @@ import {
   deleteAdminRoomType,
   getAdminRoomTypes,
   updateAdminRoomType,
+  uploadAdminRoomTypeCover,
 } from "../../api/admin";
 import { useAdminAuth } from "../../admin/auth";
 import { formatMoney } from "../../admin/ui";
 
 const MAX_SOURCE_IMAGE_SIZE = 10 * 1024 * 1024;
-const MAX_ENCODED_IMAGE_LENGTH = 560_000;
+const MAX_OPTIMIZED_IMAGE_SIZE = 1_500_000;
 
 type EditorState = { mode: "create" } | { mode: "edit"; roomType: AdminRoomType };
 
@@ -40,12 +41,23 @@ type RoomTypeFormState = {
   maxGuests: string;
   bedLabel: string;
   coverImageUrl: string;
+  coverImageFileId: string;
   displayOrder: string;
   isPublished: boolean;
   price: string;
   taxRate: string;
+  promotionEnabled: boolean;
+  promotionLabel: string;
+  promotionPercent: string;
+  promotionValidFrom: string;
+  promotionValidUntil: string;
   amenities: string;
 };
+
+function todayInputValue() {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
 
 function initialForm(roomType: AdminRoomType | null, displayOrder: number): RoomTypeFormState {
   if (!roomType) {
@@ -59,10 +71,16 @@ function initialForm(roomType: AdminRoomType | null, displayOrder: number): Room
       maxGuests: "2",
       bedLabel: "1 lit double",
       coverImageUrl: "",
+      coverImageFileId: "",
       displayOrder: String(displayOrder),
       isPublished: true,
       price: "100",
       taxRate: "10",
+      promotionEnabled: false,
+      promotionLabel: "Offre spéciale",
+      promotionPercent: "10",
+      promotionValidFrom: todayInputValue(),
+      promotionValidUntil: "",
       amenities: "",
     };
   }
@@ -76,10 +94,16 @@ function initialForm(roomType: AdminRoomType | null, displayOrder: number): Room
     maxGuests: String(roomType.maxGuests),
     bedLabel: roomType.bedLabel,
     coverImageUrl: roomType.coverImageUrl,
+    coverImageFileId: "",
     displayOrder: String(roomType.displayOrder),
     isPublished: roomType.isPublished,
     price: String(roomType.price),
     taxRate: String(roomType.taxRate),
+    promotionEnabled: Boolean(roomType.promotion),
+    promotionLabel: roomType.promotion?.label ?? "Offre spéciale",
+    promotionPercent: String(roomType.promotion?.discountPercent ?? 10),
+    promotionValidFrom: roomType.promotion?.validFrom ?? todayInputValue(),
+    promotionValidUntil: roomType.promotion?.validUntil ?? "",
     amenities: roomType.amenities.join(", "),
   };
 }
@@ -92,6 +116,16 @@ function parseForm(form: RoomTypeFormState) {
   const displayOrder = Number(form.displayOrder);
   const price = Number(form.price.replace(",", "."));
   const taxRate = Number(form.taxRate.replace(",", "."));
+  const promotionPercent = Number(form.promotionPercent.replace(",", "."));
+  const promotionValid = !form.promotionEnabled || (
+    form.promotionLabel.trim().length >= 2
+    && form.promotionLabel.trim().length <= 80
+    && Number.isFinite(promotionPercent)
+    && promotionPercent > 0
+    && promotionPercent <= 90
+    && /^\d{4}-\d{2}-\d{2}$/.test(form.promotionValidFrom)
+    && (!form.promotionValidUntil || form.promotionValidUntil > form.promotionValidFrom)
+  );
   const amenities = form.amenities
     .split(",")
     .map((item) => item.trim())
@@ -107,6 +141,7 @@ function parseForm(form: RoomTypeFormState) {
     && Number.isInteger(displayOrder) && displayOrder >= 0 && displayOrder <= 999
     && Number.isFinite(price) && price >= 1 && price <= 10_000
     && Number.isFinite(taxRate) && taxRate >= 0 && taxRate <= 100
+    && promotionValid
     && amenities.length <= 20;
 
   const input: AdminRoomTypeInput = {
@@ -119,10 +154,17 @@ function parseForm(form: RoomTypeFormState) {
     maxGuests,
     bedLabel: form.bedLabel.trim(),
     coverImageUrl: form.coverImageUrl,
+    coverImageFileId: form.coverImageFileId || null,
     displayOrder,
     isPublished: form.isPublished,
     price,
     taxRate,
+    promotion: form.promotionEnabled ? {
+      label: form.promotionLabel.trim(),
+      discountPercent: promotionPercent,
+      validFrom: form.promotionValidFrom,
+      validUntil: form.promotionValidUntil || null,
+    } : null,
     amenities,
   };
   return { valid, input };
@@ -159,12 +201,13 @@ async function compressCoverImage(file: File) {
     context.fillStyle = "#ffffff";
     context.fillRect(0, 0, canvas.width, canvas.height);
     context.drawImage(image, 0, 0, canvas.width, canvas.height);
-    let encoded = canvas.toDataURL("image/jpeg", 0.78);
-    if (encoded.length > MAX_ENCODED_IMAGE_LENGTH) encoded = canvas.toDataURL("image/jpeg", 0.58);
-    if (encoded.length > MAX_ENCODED_IMAGE_LENGTH) {
+    const encode = (quality: number) => new Promise<Blob>((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("La compression de l’image a échoué.")), "image/jpeg", quality));
+    let optimized = await encode(0.8);
+    if (optimized.size > MAX_OPTIMIZED_IMAGE_SIZE) optimized = await encode(0.62);
+    if (optimized.size > MAX_OPTIMIZED_IMAGE_SIZE) {
       throw new Error("L’image reste trop volumineuse. Choisissez une image plus légère.");
     }
-    return encoded;
+    return new File([optimized], `${file.name.replace(/\.[^.]+$/, "") || "couverture"}.jpg`, { type: "image/jpeg" });
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
@@ -311,12 +354,13 @@ export function AdminRoomTypesDialog({ onClose, onChanged }: { onClose: () => vo
                         <span className={roomType.isPublished ? "published" : "unpublished"}>{roomType.isPublished ? <Eye /> : <EyeOff />}{roomType.isPublished ? "Publié" : "Dépublié"}</span>
                         <h3>{roomType.name}</h3>
                         <p>{roomType.surfaceSqm} m² · {roomType.maxGuests} voyageur(s) · {roomType.bedLabel}</p>
-                        <strong>{formatMoney(roomType.price, roomType.currency)} <small>/ nuit</small></strong>
+                        <strong>{roomType.promotion && <><del>{formatMoney(roomType.promotion.referencePrice, roomType.currency)}</del> </>}{formatMoney(roomType.promotion?.promotionalPrice ?? roomType.price, roomType.currency)} <small>/ nuit TTC</small></strong>
+                        {roomType.promotion && <span className="promotion">-{roomType.promotion.discountPercent}% · {roomType.promotion.label}</span>}
                         <em><BedDouble />{roomType.roomCount} chambre{roomType.roomCount > 1 ? "s" : ""}</em>
                       </div>
                       <div className="admin-room-type-card-actions">
                         <button type="button" onClick={() => setEditor({ mode: "edit", roomType })}><Pencil />Modifier</button>
-                        <button type="button" className="danger" disabled={!roomType.canDelete} title={!roomType.canDelete ? "Déplacez les chambres associées ou dépubliez ce type." : undefined} onClick={() => askDelete(roomType)}><Trash2 />Supprimer</button>
+                        <button type="button" className="danger" disabled={!roomType.canDelete} title={!roomType.canDelete ? "Une réservation future ou une option active empêche le retrait de ce type." : undefined} onClick={() => askDelete(roomType)}><Trash2 />Supprimer</button>
                       </div>
                     </article>
                   ))}
@@ -332,7 +376,7 @@ export function AdminRoomTypesDialog({ onClose, onChanged }: { onClose: () => vo
               <span className="admin-room-delete-icon" aria-hidden="true"><Trash2 /></span>
               <div className="admin-room-delete-copy">
                 <h3 id={`${titleId}-delete`}>Supprimer « {deleteTarget.name} » ?</h3>
-                <p>Ce type disparaîtra définitivement du catalogue. Cette action n’est possible que lorsqu’aucune chambre ni réservation ne lui est associée.</p>
+                <p>Ce type disparaîtra du catalogue. S’il possède un historique ou des chambres, il sera archivé afin de conserver les anciennes réservations.</p>
               </div>
               {deleteError && <p className="admin-room-delete-error" role="alert">{deleteError}</p>}
               <div className="admin-room-delete-actions">
@@ -372,9 +416,13 @@ function RoomTypeEditor({ roomType, displayOrder, onCancel, onSaved }: {
     setProcessingImage(true);
     setError(null);
     try {
-      update("coverImageUrl", await compressCoverImage(file));
+      if (!accessToken) return;
+      const optimized = await compressCoverImage(file);
+      const uploaded = await uploadAdminRoomTypeCover(optimized, accessToken);
+      setForm((current) => ({ ...current, coverImageUrl: uploaded.url, coverImageFileId: uploaded.storedFileId }));
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "L’image n’a pas pu être préparée.");
+      if (nextError instanceof AdminApiError && nextError.status === 401) return logout();
+      setError(nextError instanceof Error ? nextError.message : "L’image n’a pas pu être téléversée.");
     } finally {
       setProcessingImage(false);
     }
@@ -413,9 +461,9 @@ function RoomTypeEditor({ roomType, displayOrder, onCancel, onSaved }: {
         </div>
         <div>
           <strong>Image de couverture</strong>
-          <p>JPEG, PNG ou WebP. L’image est automatiquement redimensionnée et optimisée.</p>
+          <p>JPEG, PNG ou WebP. L’image est optimisée puis stockée dans le catalogue public.</p>
           <input ref={fileInputRef} className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" onChange={selectImage} />
-          <button type="button" disabled={saving || processingImage} onClick={() => fileInputRef.current?.click()}>{processingImage ? <span className="admin-spinner" /> : <Upload />}{processingImage ? "Optimisation…" : form.coverImageUrl ? "Remplacer l’image" : "Choisir une image"}</button>
+          <button type="button" disabled={saving || processingImage} onClick={() => fileInputRef.current?.click()}>{processingImage ? <span className="admin-spinner" /> : <Upload />}{processingImage ? "Téléversement…" : form.coverImageUrl ? "Remplacer l’image" : "Choisir une image"}</button>
         </div>
       </section>
 
@@ -429,11 +477,21 @@ function RoomTypeEditor({ roomType, displayOrder, onCancel, onSaved }: {
         <label><span>Adultes maximum</span><input type="number" min="1" max="10" value={form.maxAdults} onChange={(event) => update("maxAdults", event.target.value)} /></label>
         <label><span>Enfants maximum</span><input type="number" min="0" max="10" value={form.maxChildren} onChange={(event) => update("maxChildren", event.target.value)} /></label>
         <label><span>Capacité totale</span><input type="number" min="1" max="12" value={form.maxGuests} onChange={(event) => update("maxGuests", event.target.value)} /></label>
-        <label><span>Prix par nuit (€)</span><input type="number" min="1" max="10000" step="0.01" value={form.price} onChange={(event) => update("price", event.target.value)} /></label>
-        <label><span>Taxe (%)</span><input type="number" min="0" max="100" step="0.01" value={form.taxRate} onChange={(event) => update("taxRate", event.target.value)} /></label>
+        <label><span>Prix par nuit TTC (€)</span><input type="number" min="1" max="10000" step="0.01" value={form.price} onChange={(event) => update("price", event.target.value)} /></label>
+        <label><span>TVA incluse (%)</span><input type="number" min="0" max="100" step="0.01" value={form.taxRate} onChange={(event) => update("taxRate", event.target.value)} /></label>
         <label><span>Ordre d’affichage</span><input type="number" min="0" max="999" value={form.displayOrder} onChange={(event) => update("displayOrder", event.target.value)} /></label>
         <label className="wide"><span>Équipements</span><input value={form.amenities} onChange={(event) => update("amenities", event.target.value)} placeholder="Wi-Fi fibre, Vue mer, Machine à café" /><small>Séparez chaque équipement par une virgule.</small></label>
       </div>
+
+      <section className="admin-room-type-promotion-field">
+        <label className="admin-room-type-promotion-toggle"><input type="checkbox" checked={form.promotionEnabled} onChange={(event) => update("promotionEnabled", event.target.checked)} /><span><strong>Appliquer une réduction</strong><small>Le prix remisé est calculé depuis le prix de référence le plus bas des 30 derniers jours.</small></span></label>
+        {form.promotionEnabled && <div>
+          <label><span>Libellé</span><input maxLength={80} value={form.promotionLabel} onChange={(event) => update("promotionLabel", event.target.value)} placeholder="Offre d'été" /></label>
+          <label><span>Réduction (%)</span><input type="number" min="0.01" max="90" step="0.01" value={form.promotionPercent} onChange={(event) => update("promotionPercent", event.target.value)} /></label>
+          <label><span>Début</span><input type="date" value={form.promotionValidFrom} onChange={(event) => update("promotionValidFrom", event.target.value)} /></label>
+          <label><span>Fin (facultative)</span><input type="date" min={form.promotionValidFrom} value={form.promotionValidUntil} onChange={(event) => update("promotionValidUntil", event.target.value)} /></label>
+        </div>}
+      </section>
 
       <label className="admin-room-type-published"><input type="checkbox" checked={form.isPublished} onChange={(event) => update("isPublished", event.target.checked)} /><span><strong>Publier sur le site</strong><small>Le type apparaîtra sur l’accueil, les hébergements et la recherche.</small></span></label>
       {error && <p className="admin-room-save-error" role="alert">{error}</p>}

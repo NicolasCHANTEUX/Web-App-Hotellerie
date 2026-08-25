@@ -28,12 +28,26 @@ import {
   updateAdminRoomType,
 } from "./admin.room-type.service.js";
 import {
+  parseAdminBookingRoomAssignmentBody,
+  parseAdminBookingStatusBody,
+} from "./admin.booking-actions.js";
+import { parseAdminAvailabilityBlockBody } from "./admin.availability-block.js";
+import { parseIdempotencyKey, parseManualPaymentBody, parseRefundBody } from "../billing/billing.validation.js";
+import { recordManualPayment, refundPayment } from "../billing/billing.service.js";
+import { getInvoiceForProperty, listBookingInvoices, renderInvoicePdf } from "../billing/invoice.service.js";
+import { storeRoomTypeCover } from "../media/media.service.js";
+import {
   confirmAdminBooking,
+  assignAdminBookingRoom,
+  createAdminAvailabilityBlock,
   createAdminRoom,
   deleteAdminRoom,
   getAdminBooking,
   listAdminBookings,
+  listAvailableRoomsForBooking,
   listAdminRooms,
+  releaseAdminAvailabilityBlock,
+  updateAdminBookingStatus,
   updateAdminRoom,
   type BookingListInput,
   type RoomListInput,
@@ -51,6 +65,7 @@ type BookingListQuery = {
   status?: string;
   from?: string;
   to?: string;
+  todayOnly?: string;
 };
 
 type BookingParams = {
@@ -62,6 +77,14 @@ type RoomParams = {
 };
 
 type RoomTypeParams = {
+  id: string;
+};
+
+type BlockParams = {
+  id: string;
+};
+
+type InvoiceParams = {
   id: string;
 };
 
@@ -154,6 +177,13 @@ function parseBookingQuery(query: BookingListQuery): BookingListInput {
     status: parseBookingStatus(query.status),
     from,
     to,
+    todayOnly: query.todayOnly === undefined || query.todayOnly === ""
+      ? undefined
+      : query.todayOnly === "true"
+        ? true
+        : query.todayOnly === "false"
+          ? false
+          : (() => { throw new AdminApiError(400, "INVALID_QUERY", "Le paramètre todayOnly est invalide."); })(),
   };
 }
 
@@ -189,6 +219,22 @@ function bookingMembership(request: FastifyRequest) {
       "ROLE_ACCESS_DENIED",
       "Votre rôle ne permet pas de consulter les réservations.",
     );
+  }
+  return membership;
+}
+
+function paymentMembership(request: FastifyRequest) {
+  const membership = resolveMembership(request);
+  if (!(["ADMIN", "RECEPTION", "ACCOUNTING"] as const).includes(membership.role as "ADMIN" | "RECEPTION" | "ACCOUNTING")) {
+    throw new AdminApiError(403, "ROLE_ACCESS_DENIED", "Votre rôle ne permet pas de gérer les règlements.");
+  }
+  return membership;
+}
+
+function refundMembership(request: FastifyRequest) {
+  const membership = resolveMembership(request);
+  if (membership.role !== "ADMIN" && membership.role !== "ACCOUNTING") {
+    throw new AdminApiError(403, "ROLE_ACCESS_DENIED", "Votre rôle ne permet pas d'effectuer un remboursement.");
   }
   return membership;
 }
@@ -278,6 +324,130 @@ export async function adminRoutes(app: FastifyInstance) {
       }),
   );
 
+  app.patch<{ Params: BookingParams; Body: unknown }>(
+    "/admin/bookings/:id/status",
+    {
+      preHandler: authenticateAdmin,
+      config: { rateLimit: { max: 40, timeWindow: "15 minutes" } },
+    },
+    async (request, reply) =>
+      handleAdminRoute(reply, async () => {
+        if (!uuidPattern.test(request.params.id)) {
+          throw new AdminApiError(400, "INVALID_BOOKING_ID", "L'identifiant de réservation est invalide.");
+        }
+        const context = requireAdminContext(request);
+        return {
+          data: await updateAdminBookingStatus(
+            bookingMembership(request),
+            context.user.id,
+            request.params.id,
+            parseAdminBookingStatusBody(request.body),
+            request.ip,
+          ),
+        };
+      }),
+  );
+
+  app.get<{ Params: BookingParams }>(
+    "/admin/bookings/:id/available-rooms",
+    { preHandler: authenticateAdmin },
+    async (request, reply) =>
+      handleAdminRoute(reply, async () => {
+        if (!uuidPattern.test(request.params.id)) {
+          throw new AdminApiError(400, "INVALID_BOOKING_ID", "L'identifiant de réservation est invalide.");
+        }
+        return { data: await listAvailableRoomsForBooking(bookingMembership(request).propertyId, request.params.id) };
+      }),
+  );
+
+  app.patch<{ Params: BookingParams; Body: unknown }>(
+    "/admin/bookings/:id/room",
+    {
+      preHandler: authenticateAdmin,
+      config: { rateLimit: { max: 40, timeWindow: "15 minutes" } },
+    },
+    async (request, reply) =>
+      handleAdminRoute(reply, async () => {
+        if (!uuidPattern.test(request.params.id)) {
+          throw new AdminApiError(400, "INVALID_BOOKING_ID", "L'identifiant de réservation est invalide.");
+        }
+        const context = requireAdminContext(request);
+        const input = parseAdminBookingRoomAssignmentBody(request.body);
+        return {
+          data: await assignAdminBookingRoom(
+            bookingMembership(request),
+            context.user.id,
+            request.params.id,
+            input.roomId,
+            request.ip,
+          ),
+        };
+      }),
+  );
+
+  app.post<{ Params: BookingParams; Body: unknown }>(
+    "/admin/bookings/:id/payments/manual",
+    { preHandler: authenticateAdmin, config: { rateLimit: { max: 30, timeWindow: "15 minutes" } } },
+    async (request, reply) => handleAdminRoute(reply, async () => {
+      if (!uuidPattern.test(request.params.id)) throw new AdminApiError(400, "INVALID_BOOKING_ID", "L'identifiant de réservation est invalide.");
+      const context = requireAdminContext(request);
+      const result = await recordManualPayment(
+        paymentMembership(request),
+        context.user.id,
+        request.params.id,
+        parseIdempotencyKey(request.headers["idempotency-key"]),
+        parseManualPaymentBody(request.body),
+        request.ip,
+      );
+      return reply.code(201).send({ data: result });
+    }),
+  );
+
+  app.post<{ Params: BookingParams; Body: unknown }>(
+    "/admin/bookings/:id/refunds",
+    { preHandler: authenticateAdmin, config: { rateLimit: { max: 20, timeWindow: "15 minutes" } } },
+    async (request, reply) => handleAdminRoute(reply, async () => {
+      if (!uuidPattern.test(request.params.id)) throw new AdminApiError(400, "INVALID_BOOKING_ID", "L'identifiant de réservation est invalide.");
+      const context = requireAdminContext(request);
+      const result = await refundPayment(
+        refundMembership(request),
+        context.user.id,
+        request.params.id,
+        parseIdempotencyKey(request.headers["idempotency-key"]),
+        parseRefundBody(request.body),
+        request.ip,
+      );
+      return reply.code(201).send({ data: result });
+    }),
+  );
+
+  app.get<{ Params: BookingParams }>(
+    "/admin/bookings/:id/invoices",
+    { preHandler: authenticateAdmin },
+    async (request, reply) => handleAdminRoute(reply, async () => {
+      if (!uuidPattern.test(request.params.id)) throw new AdminApiError(400, "INVALID_BOOKING_ID", "L'identifiant de réservation est invalide.");
+      const membership = paymentMembership(request);
+      return { data: await listBookingInvoices(membership.propertyId, request.params.id) };
+    }),
+  );
+
+  app.get<{ Params: InvoiceParams }>(
+    "/admin/invoices/:id/pdf",
+    { preHandler: authenticateAdmin },
+    async (request, reply) => handleAdminRoute(reply, async () => {
+      if (!uuidPattern.test(request.params.id)) throw new AdminApiError(400, "INVALID_INVOICE_ID", "L'identifiant du document est invalide.");
+      const membership = paymentMembership(request);
+      const invoice = await getInvoiceForProperty(membership.propertyId, request.params.id);
+      if (!invoice) throw new AdminApiError(404, "INVOICE_NOT_FOUND", "Document introuvable.");
+      const pdf = await renderInvoicePdf(invoice);
+      return reply
+        .header("content-type", "application/pdf")
+        .header("content-disposition", `attachment; filename="${invoice.number}.pdf"`)
+        .header("content-length", pdf.length)
+        .send(pdf);
+    }),
+  );
+
   app.get<{ Querystring: RoomListQuery }>(
     "/admin/rooms",
     { preHandler: authenticateAdmin },
@@ -295,6 +465,28 @@ export async function adminRoutes(app: FastifyInstance) {
         const membership = requireRoomManagementPermission(resolveMembership(request));
         return { data: await listAdminRoomTypes(membership.propertyId) };
       }),
+  );
+
+  app.post(
+    "/admin/media/room-type-cover",
+    {
+      preHandler: authenticateAdmin,
+      config: { rateLimit: { max: 30, timeWindow: "15 minutes" } },
+    },
+    async (request, reply) => handleAdminRoute(reply, async () => {
+      const membership = requireRoomManagementPermission(resolveMembership(request));
+      const part = await request.file({ limits: { files: 1, fileSize: 5 * 1024 * 1024, fields: 0 } });
+      if (!part) throw new AdminApiError(400, "IMAGE_REQUIRED", "Choisissez une image à téléverser.");
+      let buffer: Buffer;
+      try {
+        buffer = await part.toBuffer();
+      } catch {
+        throw new AdminApiError(400, "INVALID_IMAGE_SIZE", "L'image doit peser au maximum 5 Mo.");
+      }
+      if (part.file.truncated) throw new AdminApiError(400, "INVALID_IMAGE_SIZE", "L'image doit peser au maximum 5 Mo.");
+      const result = await storeRoomTypeCover(membership.propertyId, buffer, part.mimetype);
+      return reply.code(201).send({ data: result });
+    }),
   );
 
   app.post<{ Body: unknown }>(
@@ -408,6 +600,50 @@ export async function adminRoutes(app: FastifyInstance) {
           request.ip,
         );
         return { data: room };
+      }),
+  );
+
+  app.post<{ Params: RoomParams; Body: unknown }>(
+    "/admin/rooms/:id/blocks",
+    {
+      preHandler: authenticateAdmin,
+      config: { rateLimit: { max: 40, timeWindow: "15 minutes" } },
+    },
+    async (request, reply) =>
+      handleAdminRoute(reply, async () => {
+        if (!uuidPattern.test(request.params.id)) {
+          throw new AdminApiError(400, "INVALID_ROOM_ID", "L'identifiant de chambre est invalide.");
+        }
+        const membership = requireRoomManagementPermission(resolveMembership(request));
+        const context = requireAdminContext(request);
+        return {
+          data: await createAdminAvailabilityBlock(
+            membership,
+            context.user.id,
+            request.params.id,
+            parseAdminAvailabilityBlockBody(request.body),
+            request.ip,
+          ),
+        };
+      }),
+  );
+
+  app.post<{ Params: BlockParams }>(
+    "/admin/room-blocks/:id/release",
+    {
+      preHandler: authenticateAdmin,
+      config: { rateLimit: { max: 40, timeWindow: "15 minutes" } },
+    },
+    async (request, reply) =>
+      handleAdminRoute(reply, async () => {
+        if (!uuidPattern.test(request.params.id)) {
+          throw new AdminApiError(400, "INVALID_ROOM_BLOCK_ID", "L'identifiant du blocage est invalide.");
+        }
+        const membership = requireRoomManagementPermission(resolveMembership(request));
+        const context = requireAdminContext(request);
+        return {
+          data: await releaseAdminAvailabilityBlock(membership, context.user.id, request.params.id, request.ip),
+        };
       }),
   );
 

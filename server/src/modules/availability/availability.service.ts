@@ -18,6 +18,7 @@ export async function searchAvailability(input: AvailabilityInput) {
   const roomTypes = await prisma.roomType.findMany({
     where: {
       isPublished: true,
+      archivedAt: null,
       maxGuests: { gte: totalGuests },
       maxAdults: { gte: input.adults },
       maxChildren: { gte: input.children },
@@ -45,12 +46,21 @@ export async function searchAvailability(input: AvailabilityInput) {
         where: {
           isActive: true,
           minNights: { lte: nights },
+          priceTaxMode: "INCLUSIVE",
           AND: [
             { OR: [{ validFrom: null }, { validFrom: { lte: input.arrival } }] },
             { OR: [{ validUntil: null }, { validUntil: { gte: input.departure } }] },
           ],
         },
         orderBy: { basePricePerNight: "asc" },
+      },
+      promotions: {
+        where: {
+          isActive: true,
+          validFrom: { lte: input.arrival },
+          OR: [{ validUntil: null }, { validUntil: { gte: input.departure } }],
+        },
+        orderBy: [{ validFrom: "desc" }, { createdAt: "desc" }],
       },
       rooms: {
         where: {
@@ -77,7 +87,7 @@ export async function searchAvailability(input: AvailabilityInput) {
 
   const availableRoomTypes = roomTypes.flatMap((roomType) => {
     if (!roomType.rooms.length) return [];
-    const serialized = serializeRoomType(roomType);
+    const serialized = serializeRoomType(roomType, { arrival: input.arrival, departure: input.departure });
     if (!serialized) return [];
     const accommodationSubtotal = new Prisma.Decimal(serialized.price).mul(nights);
     const touristTaxTotal = roundMoney(

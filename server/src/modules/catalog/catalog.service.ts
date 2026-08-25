@@ -6,8 +6,12 @@ const roomTypeInclude = {
     include: { amenity: true },
   },
   ratePlans: {
-    where: { isActive: true },
+    where: { isActive: true, priceTaxMode: "INCLUSIVE" as const },
     orderBy: { basePricePerNight: "asc" as const },
+  },
+  promotions: {
+    where: { isActive: true },
+    orderBy: { validFrom: "desc" as const },
   },
 } as const;
 
@@ -26,9 +30,19 @@ function categoryFor(slug: string) {
   return "Chambre double";
 }
 
-export function serializeRoomType(roomType: CatalogRoomType) {
+export function serializeRoomType(
+  roomType: CatalogRoomType,
+  promotionPeriod?: { arrival: Date; departure: Date },
+) {
   const rate = roomType.ratePlans[0];
   if (!rate) return null;
+  const arrival = promotionPeriod?.arrival ?? new Date(new Date().toISOString().slice(0, 10) + "T00:00:00.000Z");
+  const departure = promotionPeriod?.departure ?? new Date(arrival.getTime() + 86_400_000);
+  const promotion = roomType.promotions.find((item) =>
+    item.isActive
+    && item.validFrom <= arrival
+    && (!item.validUntil || item.validUntil >= departure),
+  );
 
   return {
     id: roomType.id,
@@ -37,7 +51,13 @@ export function serializeRoomType(roomType: CatalogRoomType) {
     category: roomType.shortName?.trim() || categoryFor(roomType.slug),
     shortDescription: roomType.description,
     description: roomType.description,
-    price: Number(rate.basePricePerNight),
+    price: Number(promotion?.promotionalPricePerNight ?? rate.basePricePerNight),
+    originalPrice: promotion ? Number(promotion.referencePricePerNight) : undefined,
+    promotion: promotion ? {
+      label: promotion.label,
+      discountPercent: Number(promotion.discountPercent),
+      validUntil: promotion.validUntil?.toISOString().slice(0, 10) ?? null,
+    } : undefined,
     taxRate: Number(rate.taxRate),
     currency: rate.currency,
     refundable: rate.refundable,
@@ -55,7 +75,7 @@ export function serializeRoomType(roomType: CatalogRoomType) {
 
 export function findRoomTypes() {
   return prisma.roomType.findMany({
-    where: { isPublished: true },
+    where: { isPublished: true, archivedAt: null },
     orderBy: { displayOrder: "asc" },
     include: roomTypeInclude,
   });
@@ -63,12 +83,12 @@ export function findRoomTypes() {
 
 export async function listRoomTypes() {
   const roomTypes = await findRoomTypes();
-  return roomTypes.map(serializeRoomType).filter((item) => item !== null);
+  return roomTypes.map((roomType) => serializeRoomType(roomType)).filter((item) => item !== null);
 }
 
 export async function findRoomTypeBySlug(slug: string) {
   const roomType = await prisma.roomType.findFirst({
-    where: { slug, isPublished: true },
+    where: { slug, isPublished: true, archivedAt: null },
     include: roomTypeInclude,
   });
   return roomType ? serializeRoomType(roomType) : null;
@@ -76,7 +96,7 @@ export async function findRoomTypeBySlug(slug: string) {
 
 export async function listExtras() {
   const extras = await prisma.extra.findMany({
-    where: { isActive: true },
+    where: { isActive: true, priceTaxMode: "INCLUSIVE" },
     orderBy: { displayOrder: "asc" },
   });
 

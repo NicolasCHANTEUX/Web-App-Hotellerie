@@ -32,7 +32,7 @@ npm run db:migrate:status
 npm run db:migrate:deploy
 ```
 
-Le lancement `dev:full` ne migre jamais la base automatiquement. Le code v2 ne doit etre demarre contre Supabase qu'apres l'application de `20260824120000_business_foundation_v2`.
+Le lancement `dev:full` ne migre jamais la base automatiquement. Toujours vérifier `npm run db:migrate:status` avant de démarrer une version qui contient une nouvelle migration.
 
 Si une base creee avant l'adoption de Prisma Migrate contient deja le schema initial mais que `db:migrate:status` annonce encore `20260808193000_init`, verifier d'abord le socle sans aucune ecriture :
 
@@ -46,8 +46,9 @@ Sans chaine PostgreSQL, les memes fichiers peuvent etre executes dans le SQL Edi
 
 1. `supabase/migrations/20260808193000_init.sql`
 2. `supabase/migrations/20260824120000_business_foundation_v2.sql`
-3. `supabase/seed.sql`
-4. `supabase/verify.sql` pour controler l'installation
+3. les migrations suivantes, dans l'ordre chronologique de leur nom
+4. `supabase/seed.sql`
+5. `supabase/verify.sql` pour controler l'installation
 
 La migration active RLS sur toutes les tables sans creer de politique publique. Les appels REST publics sont donc refuses par defaut jusqu'a l'ajout volontaire de politiques.
 
@@ -65,13 +66,29 @@ Routes disponibles :
 - `GET /room-types/:slug`
 - `GET /extras`
 - `GET /availability?arrival=2026-08-08&departure=2026-08-09&adults=2&children=0`
+- `POST /quotes`
 - `POST /bookings`
+- `GET /payments/config`
+- `POST /payments/stripe/checkout`
+- `POST /payments/stripe/webhook`
 - `POST /admin/auth/login`
 - `GET /admin/me`
 - `GET /admin/bookings`
 - `GET /admin/bookings/:id`
 - `POST /admin/bookings/:id/confirm`
+- `PATCH /admin/bookings/:id/status`
+- `GET /admin/bookings/:id/available-rooms`
+- `PATCH /admin/bookings/:id/room`
+- `POST /admin/bookings/:id/payments/manual`
+- `POST /admin/bookings/:id/refunds`
+- `GET /admin/bookings/:id/invoices`
+- `GET /admin/invoices/:id/pdf`
 - `GET /admin/rooms?from=2026-08-24&to=2026-08-27&sortOrder=asc`
+- `GET /admin/room-types`
+- `POST /admin/media/room-type-cover` (`ADMIN` uniquement, JPEG/PNG/WebP, 5 Mo maximum)
+- `POST /admin/room-types` (`ADMIN` uniquement)
+- `PATCH /admin/room-types/:id` (`ADMIN` uniquement)
+- `DELETE /admin/room-types/:id` (`ADMIN` uniquement)
 - `POST /admin/rooms` (`ADMIN` uniquement)
 - `PATCH /admin/rooms/:id` (`ADMIN` uniquement)
 - `DELETE /admin/rooms/:id` (`ADMIN` uniquement)
@@ -121,7 +138,52 @@ Une demande publique cree une option de chambre de 24 heures au statut `PENDING_
 
 Chaque nouvelle reservation conserve maintenant une ventilation fiscale immuable (`BookingTaxLine`) et une copie des conditions acceptees. Le taux d'une option peut differer de celui de la chambre; lorsqu'il n'est pas renseigne, le taux du plan tarifaire reste utilise pour conserver le comportement historique. Une taxe de sejour n'entre dans le prix que si une `TaxRule` active et valide pour toute la periode a ete configuree. Les pages client, l'API et l'admin utilisent alors la meme ventilation et le meme arrondi par ligne.
 
-Le modele de facturation accepte plusieurs documents par reservation, les avoirs rattaches a leur facture d'origine et une sequence annuelle par etablissement. `StoredFile` ne contient que des metadonnees et une cle d'objet : les factures et documents prives devront etre servis via une URL signee de courte duree, jamais via un bucket public. `PaymentProviderEvent` conserve l'identifiant fournisseur et une empreinte de payload, pas le contenu bancaire brut.
+Le modele de facturation accepte plusieurs documents par reservation, les avoirs rattaches a leur facture d'origine et une sequence annuelle par etablissement. Une facture immuable est emise lorsque le solde est enregistre; un remboursement total ou partiel cree un avoir distinct et conserve l'original. Les PDF sont generes cote serveur depuis ces instantanes et telecharges par une route admin protegee. `StoredFile` reste disponible pour une future copie d'archivage privee. `PaymentProviderEvent` conserve l'identifiant fournisseur et une empreinte de payload, jamais le contenu bancaire brut.
+
+## Paiements et notifications optionnels
+
+Le mode manuel fonctionne sans service externe. Stripe n'est propose au client que lorsque les deux variables suivantes sont presentes :
+
+```dotenv
+STRIPE_SECRET_KEY="sk_..."
+STRIPE_WEBHOOK_SECRET="whsec_..."
+```
+
+Le webhook Stripe doit pointer vers `POST /payments/stripe/webhook`. La signature porte sur le corps brut et chaque evenement est traite de facon idempotente. Les metadonnees Stripe ne contiennent que les identifiants techniques de la reservation et du paiement. Ne jamais placer ces cles dans une variable `VITE_*`.
+
+Les e-mails passent par la table transactionnelle `notifications`. Une panne d'envoi n'annule donc jamais une reservation ou un paiement. Trois modes sont disponibles :
+
+```dotenv
+NOTIFICATION_DELIVERY="disabled" # defaut, les messages restent en attente
+NOTIFICATION_DELIVERY="log"      # marque les messages comme envoyes sans contacter un client
+NOTIFICATION_DELIVERY="resend"   # envoi reel, exige RESEND_API_KEY et EMAIL_FROM
+```
+
+Le worker traite les messages par petits lots, reprend les envois interrompus et applique un delai progressif apres un echec. Tester d'abord `log`, puis le domaine d'expedition Resend, avant d'activer `resend`.
+
+## Images du catalogue
+
+Les couvertures téléversées depuis l'administration sont validées d'après leur signature réelle, limitées à 5 Mo puis envoyées dans le bucket Supabase Storage public défini par `SUPABASE_STORAGE_BUCKET`. Seule l'URL publique est conservée dans `RoomType`; les métadonnées et l'empreinte SHA-256 sont enregistrées dans `StoredFile`.
+
+Pour vérifier les anciennes images encore intégrées en base64, puis les migrer explicitement :
+
+```powershell
+npm run media:migrate
+npm run media:migrate -- --apply
+```
+
+## Conservation des données personnelles
+
+Chaque réservation reçoit une échéance de conservation de dix ans après le départ. L'émission ultérieure d'une facture ou d'un avoir repousse cette échéance à dix ans après le document. Le traitement d'anonymisation retire les coordonnées client, les demandes particulières, les destinataires de notifications et les instantanés client des factures, sans supprimer l'historique financier ou les journaux d'audit.
+
+La commande est toujours en aperçu par défaut :
+
+```powershell
+npm run privacy:anonymize
+npm run privacy:anonymize -- --apply
+```
+
+Planifier l'exécution avec `--apply` seulement après validation de la politique définitive par l'exploitant.
 
 ## Premier acces administrateur
 
@@ -150,7 +212,7 @@ Le limiteur actuel est adapte au MVP mono-instance : trois demandes par heure et
 
 Si l'API est placee derriere un reverse proxy de confiance, definir `TRUST_PROXY=true` pour que le limiteur lise l'adresse client transmise par ce proxy. Le laisser a `false` lorsque l'API est directement accessible.
 
-La page de confidentialite signale qu'aucune purge de conservation n'est encore automatisee. Definir puis tester cette politique avant de collecter de vraies donnees personnelles.
+Compléter l'identité juridique, la médiation, les conditions tarifaires et la politique de confidentialité avant toute ouverture commerciale. La commande d'anonymisation doit ensuite être planifiée et supervisée ; elle ne s'exécute jamais implicitement au démarrage de l'API.
 
 ## Verifications
 
@@ -158,6 +220,8 @@ La page de confidentialite signale qu'aucune purge de conservation n'est encore 
 npm run typecheck
 npm test
 ```
+
+À la racine du projet, `npm run verify` ajoute le build frontend et les tests de rendu. La procédure Docker et la liste des variables de production sont dans `../docs/deployment.md`.
 
 `prisma/manual/room_allocation_constraints.sql` conserve une copie lisible des regles natives a reporter dans toute migration initiale regeneree. Prisma ne les exprime pas dans `schema.prisma`.
 

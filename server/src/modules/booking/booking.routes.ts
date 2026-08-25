@@ -1,10 +1,26 @@
 import type { FastifyInstance } from "fastify";
 import { BookingError } from "./booking.errors.js";
 import { createBooking } from "./booking.service.js";
-import { parseCreateBookingBody } from "./booking.validation.js";
+import { getBookingQuote } from "./booking.quote.service.js";
+import { parseBookingQuoteBody, parseCreateBookingBody } from "./booking.validation.js";
 import { parseIdempotencyKey } from "./booking.idempotency.js";
 
 export async function bookingRoutes(app: FastifyInstance) {
+  app.post<{ Body: unknown }>("/quotes", {
+    config: { rateLimit: { max: 60, timeWindow: "15 minutes" } },
+  }, async (request, reply) => {
+    try {
+      return { data: await getBookingQuote(parseBookingQuoteBody(request.body)) };
+    } catch (error) {
+      if (error instanceof BookingError) {
+        return reply.code(error.statusCode).send({
+          error: { code: error.code, message: error.message },
+        });
+      }
+      throw error;
+    }
+  });
+
   app.post<{ Body: unknown }>("/bookings", {
     config: { rateLimit: { max: 3, timeWindow: "1 hour" } },
   }, async (request, reply) => {

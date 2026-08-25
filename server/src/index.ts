@@ -4,12 +4,13 @@ import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const app = await buildApp();
-const statePath = process.env.HOTEL_DEV_STATE_PATH || resolve(process.cwd(), ".api-dev-state.json");
+const statePath = process.env.HOTEL_DEV_STATE_PATH?.trim()
+  || (env.nodeEnv === "development" ? resolve(process.cwd(), ".api-dev-state.json") : null);
 const stackPid = Number(process.env.HOTEL_DEV_STACK_PID);
 let shuttingDown = false;
 
 function removeOwnedState() {
-  if (!existsSync(statePath)) return;
+  if (!statePath || !existsSync(statePath)) return;
   try {
     const state = JSON.parse(readFileSync(statePath, "utf8")) as { pid?: unknown };
     if (state.pid === process.pid) unlinkSync(statePath);
@@ -20,13 +21,15 @@ function removeOwnedState() {
 
 try {
   await app.listen({ host: env.host, port: env.port });
-  writeFileSync(statePath, JSON.stringify({
-    service: "hotel-rivage-api",
-    pid: process.pid,
-    parentPid: process.ppid,
-    ...(Number.isInteger(stackPid) && stackPid > 0 ? { stackPid } : {}),
-    port: env.port,
-  }));
+  if (statePath) {
+    writeFileSync(statePath, JSON.stringify({
+      service: "hotel-rivage-api",
+      pid: process.pid,
+      parentPid: process.ppid,
+      ...(Number.isInteger(stackPid) && stackPid > 0 ? { stackPid } : {}),
+      port: env.port,
+    }));
+  }
 } catch (error) {
   app.log.error(error);
   process.exit(1);

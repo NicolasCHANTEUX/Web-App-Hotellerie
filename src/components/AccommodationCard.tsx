@@ -7,6 +7,7 @@ export function AccommodationCard({ accommodation }: { accommodation: Accommodat
       <Link to={`/hebergements/${accommodation.slug}`} className="room-image">
         <img src={accommodation.hero} alt={accommodation.name} />
         <span>{accommodation.surface}</span>
+        {accommodation.promotion && <em className="room-promotion-badge">-{accommodation.promotion.discountPercent}% · {accommodation.promotion.label}</em>}
       </Link>
       <div className="room-content">
         <div>
@@ -17,7 +18,7 @@ export function AccommodationCard({ accommodation }: { accommodation: Accommodat
         <p className="room-description">{accommodation.shortDescription}</p>
         <div className="room-tags">{accommodation.amenities.slice(0, 3).map((item) => <span key={item}>{item}</span>)}</div>
         <div className="room-bottom">
-          <p><span>À partir de</span><strong>{accommodation.price} €</strong><small>/ nuit</small></p>
+          <p><span>À partir de · TTC</span>{accommodation.originalPrice && <del>{accommodation.originalPrice} €</del>}<strong>{accommodation.price} €</strong><small>/ nuit</small></p>
           <Link className="room-cta" to={`/hebergements/${accommodation.slug}`}>Découvrir</Link>
         </div>
       </div>

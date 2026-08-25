@@ -28,6 +28,7 @@ export function bookingRequestHash(input: CreateBookingInput) {
     children: input.children,
     extraIds: input.extraIds.map((id) => id.toLowerCase()).sort(),
     expectedTotal: input.expectedTotal,
+    termsAccepted: input.termsAccepted,
     guest: {
       firstName: input.guest.firstName,
       lastName: input.guest.lastName,

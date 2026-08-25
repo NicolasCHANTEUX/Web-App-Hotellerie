@@ -38,6 +38,11 @@ enum PricingUnit {
   ONE_TIME
 }
 
+enum PriceTaxMode {
+  EXCLUSIVE
+  INCLUSIVE
+}
+
 enum HoldStatus {
   ACTIVE
   CONVERTED
@@ -117,6 +122,26 @@ enum PaymentEventStatus {
   FAILED
 }
 
+enum NotificationChannel {
+  EMAIL
+}
+
+enum NotificationTemplate {
+  BOOKING_OPTIONED
+  BOOKING_CONFIRMED
+  BOOKING_CANCELLED
+  PAYMENT_SUCCEEDED
+  PAYMENT_REFUNDED
+}
+
+enum NotificationStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  CANCELLED
+}
+
 enum StoredFileKind {
   ROOM_TYPE_COVER
   ROOM_TYPE_GALLERY
@@ -161,6 +186,7 @@ model Property {
   amenities          Amenity[]
   extras             Extra[]
   ratePlans          RatePlan[]
+  roomTypePromotions RoomTypePromotion[]
   bookings           Booking[]
   reservationHolds   ReservationHold[]
   availabilityBlocks AvailabilityBlock[]
@@ -171,6 +197,7 @@ model Property {
   invoices           Invoice[]
   invoiceSequences   InvoiceSequence[]
   storedFiles        StoredFile[]
+  notifications      Notification[]
   adminMemberships   AdminMembership[]
   auditLogs          AuditLog[]
 
@@ -178,34 +205,36 @@ model Property {
 }
 
 model RoomType {
-  id            String   @id @default(uuid()) @db.Uuid
-  propertyId    String   @db.Uuid
+  id            String    @id @default(uuid()) @db.Uuid
+  propertyId    String    @db.Uuid
   slug          String
   name          String
   shortName     String?
   description   String
   surfaceSqm    Int
   maxAdults     Int
-  maxChildren   Int      @default(0)
+  maxChildren   Int       @default(0)
   maxGuests     Int
   bedLabel      String
   coverImageUrl String
   gallery       Json?
-  displayOrder  Int      @default(0)
-  isPublished   Boolean  @default(true)
-  createdAt     DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
+  displayOrder  Int       @default(0)
+  isPublished   Boolean   @default(true)
+  archivedAt    DateTime? @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
 
-  property         Property          @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  property         Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   rooms            Room[]
   amenities        RoomTypeAmenity[]
   ratePlans        RatePlan[]
   bookingRooms     BookingRoom[]
   reservationHolds ReservationHold[]
   storedFiles      StoredFile[]
+  promotions       RoomTypePromotion[]
 
   @@unique([propertyId, slug])
-  @@index([propertyId, isPublished, displayOrder])
+  @@index([propertyId, isPublished, archivedAt, displayOrder])
   @@map("room_types")
 }
 
@@ -262,45 +291,87 @@ model RoomTypeAmenity {
 }
 
 model RatePlan {
-  id                String    @id @default(uuid()) @db.Uuid
-  propertyId        String    @db.Uuid
-  roomTypeId        String    @db.Uuid
+  id                String       @id @default(uuid()) @db.Uuid
+  propertyId        String       @db.Uuid
+  roomTypeId        String       @db.Uuid
   code              String
   name              String
-  basePricePerNight Decimal   @db.Decimal(12, 2)
-  currency          String    @default("EUR") @db.Char(3)
-  taxRate           Decimal   @default(10) @db.Decimal(5, 2)
-  minNights         Int       @default(1)
-  refundable        Boolean   @default(true)
-  isActive          Boolean   @default(true)
-  validFrom         DateTime? @db.Date
-  validUntil        DateTime? @db.Date
-  createdAt         DateTime  @default(now()) @db.Timestamptz(3)
-  updatedAt         DateTime  @updatedAt @db.Timestamptz(3)
+  basePricePerNight Decimal      @db.Decimal(12, 2)
+  currency          String       @default("EUR") @db.Char(3)
+  taxRate           Decimal      @default(10) @db.Decimal(5, 2)
+  priceTaxMode      PriceTaxMode @default(INCLUSIVE)
+  minNights         Int          @default(1)
+  refundable        Boolean      @default(true)
+  isActive          Boolean      @default(true)
+  validFrom         DateTime?    @db.Date
+  validUntil        DateTime?    @db.Date
+  createdAt         DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime     @updatedAt @db.Timestamptz(3)
 
-  property     Property      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  roomType     RoomType      @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
+  property     Property               @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  roomType     RoomType               @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
   bookingRooms BookingRoom[]
+  priceHistory RatePlanPriceHistory[]
 
   @@unique([propertyId, code])
   @@index([roomTypeId, isActive])
   @@map("rate_plans")
 }
 
+model RatePlanPriceHistory {
+  id           String       @id @default(uuid()) @db.Uuid
+  ratePlanId   String       @db.Uuid
+  price        Decimal      @db.Decimal(12, 2)
+  priceTaxMode PriceTaxMode @default(INCLUSIVE)
+  validFrom    DateTime     @db.Timestamptz(3)
+  validUntil   DateTime?    @db.Timestamptz(3)
+  reason       String
+  createdAt    DateTime     @default(now()) @db.Timestamptz(3)
+
+  ratePlan RatePlan @relation(fields: [ratePlanId], references: [id], onDelete: Cascade)
+
+  @@index([ratePlanId, validFrom, validUntil])
+  @@map("rate_plan_price_history")
+}
+
+model RoomTypePromotion {
+  id                       String    @id @default(uuid()) @db.Uuid
+  propertyId               String    @db.Uuid
+  roomTypeId               String    @db.Uuid
+  label                    String
+  discountPercent          Decimal   @db.Decimal(5, 2)
+  referencePricePerNight   Decimal   @db.Decimal(12, 2)
+  promotionalPricePerNight Decimal   @db.Decimal(12, 2)
+  currency                 String    @default("EUR") @db.Char(3)
+  isActive                 Boolean   @default(true)
+  validFrom                DateTime  @db.Date
+  validUntil               DateTime? @db.Date
+  createdAt                DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt                DateTime  @updatedAt @db.Timestamptz(3)
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  roomType RoomType @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId, isActive, validFrom, validUntil])
+  @@index([roomTypeId, isActive, validFrom, validUntil])
+  @@map("room_type_promotions")
+}
+
 model Extra {
-  id           String      @id @default(uuid()) @db.Uuid
-  propertyId   String      @db.Uuid
+  id           String       @id @default(uuid()) @db.Uuid
+  propertyId   String       @db.Uuid
   code         String
   name         String
   description  String
-  price        Decimal     @db.Decimal(12, 2)
-  currency     String      @default("EUR") @db.Char(3)
+  price        Decimal      @db.Decimal(12, 2)
+  currency     String       @default("EUR") @db.Char(3)
   pricingUnit  PricingUnit
-  taxRate      Decimal?    @db.Decimal(5, 2)
-  isActive     Boolean     @default(true)
-  displayOrder Int         @default(0)
-  createdAt    DateTime    @default(now()) @db.Timestamptz(3)
-  updatedAt    DateTime    @updatedAt @db.Timestamptz(3)
+  taxRate      Decimal?     @db.Decimal(5, 2)
+  priceTaxMode PriceTaxMode @default(INCLUSIVE)
+  isActive     Boolean      @default(true)
+  displayOrder Int          @default(0)
+  createdAt    DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime     @updatedAt @db.Timestamptz(3)
 
   property      Property       @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   bookingExtras BookingExtra[]
@@ -321,6 +392,7 @@ model Booking {
   adults                  Int
   children                Int           @default(0)
   currency                String        @default("EUR") @db.Char(3)
+  priceTaxMode            PriceTaxMode  @default(INCLUSIVE)
   accommodationSubtotal   Decimal       @db.Decimal(12, 2)
   extrasSubtotal          Decimal       @default(0) @db.Decimal(12, 2)
   touristTaxTotal         Decimal       @default(0) @db.Decimal(12, 2)
@@ -338,38 +410,41 @@ model Booking {
   createdAt               DateTime      @default(now()) @db.Timestamptz(3)
   updatedAt               DateTime      @updatedAt @db.Timestamptz(3)
 
-  property     Property              @relation(fields: [propertyId], references: [id], onDelete: Restrict)
-  termsVersion ContractTermsVersion? @relation(fields: [termsVersionId], references: [id], onDelete: Restrict)
-  rooms        BookingRoom[]
-  extras       BookingExtra[]
-  guests       Guest[]
-  taxLines     BookingTaxLine[]
-  payments     Payment[]
-  invoices     Invoice[]
-  storedFiles  StoredFile[]
-  hold         ReservationHold?
-  auditLogs    AuditLog[]
+  property      Property              @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  termsVersion  ContractTermsVersion? @relation(fields: [termsVersionId], references: [id], onDelete: Restrict)
+  rooms         BookingRoom[]
+  extras        BookingExtra[]
+  guests        Guest[]
+  taxLines      BookingTaxLine[]
+  payments      Payment[]
+  invoices      Invoice[]
+  storedFiles   StoredFile[]
+  notifications Notification[]
+  hold          ReservationHold?
+  auditLogs     AuditLog[]
 
   @@index([propertyId, status, checkIn, checkOut])
+  @@index([personalDataRetainUntil, anonymizedAt])
   @@index([termsVersionId])
   @@index([createdAt])
   @@map("bookings")
 }
 
 model BookingRoom {
-  id                   String   @id @default(uuid()) @db.Uuid
-  bookingId            String   @db.Uuid
-  roomTypeId           String   @db.Uuid
-  roomId               String?  @db.Uuid
-  ratePlanId           String   @db.Uuid
+  id                   String       @id @default(uuid()) @db.Uuid
+  bookingId            String       @db.Uuid
+  roomTypeId           String       @db.Uuid
+  roomId               String?      @db.Uuid
+  ratePlanId           String       @db.Uuid
   roomTypeNameSnapshot String
   roomNumberSnapshot   String?
-  nightlyPriceSnapshot Decimal  @db.Decimal(12, 2)
-  taxRateSnapshot      Decimal  @db.Decimal(5, 2)
-  taxAmountSnapshot    Decimal  @default(0) @db.Decimal(12, 2)
-  lineTotal            Decimal  @db.Decimal(12, 2)
-  createdAt            DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt            DateTime @updatedAt @db.Timestamptz(3)
+  nightlyPriceSnapshot Decimal      @db.Decimal(12, 2)
+  taxRateSnapshot      Decimal      @db.Decimal(5, 2)
+  priceTaxModeSnapshot PriceTaxMode @default(INCLUSIVE)
+  taxAmountSnapshot    Decimal      @default(0) @db.Decimal(12, 2)
+  lineTotal            Decimal      @db.Decimal(12, 2)
+  createdAt            DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime     @updatedAt @db.Timestamptz(3)
 
   booking    Booking         @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   roomType   RoomType        @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
@@ -384,17 +459,18 @@ model BookingRoom {
 }
 
 model BookingExtra {
-  id                  String      @id @default(uuid()) @db.Uuid
-  bookingId           String      @db.Uuid
-  extraId             String      @db.Uuid
-  nameSnapshot        String
-  unitPriceSnapshot   Decimal     @db.Decimal(12, 2)
-  pricingUnitSnapshot PricingUnit
-  taxRateSnapshot     Decimal?    @db.Decimal(5, 2)
-  taxAmountSnapshot   Decimal     @default(0) @db.Decimal(12, 2)
-  quantity            Int
-  lineTotal           Decimal     @db.Decimal(12, 2)
-  createdAt           DateTime    @default(now()) @db.Timestamptz(3)
+  id                   String       @id @default(uuid()) @db.Uuid
+  bookingId            String       @db.Uuid
+  extraId              String       @db.Uuid
+  nameSnapshot         String
+  unitPriceSnapshot    Decimal      @db.Decimal(12, 2)
+  pricingUnitSnapshot  PricingUnit
+  taxRateSnapshot      Decimal?     @db.Decimal(5, 2)
+  priceTaxModeSnapshot PriceTaxMode @default(INCLUSIVE)
+  taxAmountSnapshot    Decimal      @default(0) @db.Decimal(12, 2)
+  quantity             Int
+  lineTotal            Decimal      @db.Decimal(12, 2)
+  createdAt            DateTime     @default(now()) @db.Timestamptz(3)
 
   booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   extra   Extra   @relation(fields: [extraId], references: [id], onDelete: Restrict)
@@ -714,6 +790,34 @@ model StoredFile {
   @@index([roomTypeId, sortOrder])
   @@index([bookingId, createdAt])
   @@map("stored_files")
+}
+
+model Notification {
+  id                String               @id @default(uuid()) @db.Uuid
+  propertyId        String               @db.Uuid
+  bookingId         String?              @db.Uuid
+  channel           NotificationChannel  @default(EMAIL)
+  template          NotificationTemplate
+  recipient         String
+  subject           String
+  payload           Json
+  status            NotificationStatus   @default(PENDING)
+  idempotencyKey    String               @unique
+  attempts          Int                  @default(0)
+  nextAttemptAt     DateTime             @default(now()) @db.Timestamptz(3)
+  providerReference String?
+  lastError         String?
+  sentAt            DateTime?            @db.Timestamptz(3)
+  createdAt         DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime             @updatedAt @db.Timestamptz(3)
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  booking  Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+
+  @@index([status, nextAttemptAt])
+  @@index([propertyId, createdAt])
+  @@index([bookingId, createdAt])
+  @@map("notifications")
 }
 
 model AdminUser {

@@ -8,11 +8,12 @@ Application hoteliere React 19 + Vite + TypeScript, reliee a une API Node/Fastif
 - Catalogue, tarifs, equipements et options charges depuis Supabase.
 - Recherche de disponibilite selon les dates, la capacite et les chambres physiques occupees.
 - Etats de chargement, erreur, relance et absence de resultat.
-- Tunnel de reservation en cinq etapes avec creation serveur au statut `PENDING_PAYMENT`.
-- Espace administrateur protege avec reservations et cartes de chambres, filtrees par periode et disponibilite.
+- Tunnel de reservation en cinq etapes avec devis TTC serveur, acceptation explicite des CGV et option de chambre temporaire.
+- Paiement manuel complet et paiement Stripe optionnel, factures et avoirs PDF.
+- Espace administrateur protege avec reservations paginees, cartes de chambres et gestion du catalogue, des promotions et des images.
 - Navigation responsive, formulaires, galerie et lightbox.
 
-Le paiement en ligne n'est pas encore branche : les reservations sont enregistrees, mais leur reglement reste a finaliser hors ligne.
+Sans clés Stripe, l'application reste volontairement en mode manuel et ne montre aucun bouton de paiement en ligne.
 
 ## Installation
 
@@ -48,4 +49,10 @@ npm run dev:stop
 npm run build:all
 ```
 
-Les details de la base et des migrations sont documentes dans `server/README.md`.
+Pour lancer les validations Prisma, les tests backend, le build frontend et les deux tests de rendu :
+
+```powershell
+npm run verify
+```
+
+Les détails de la base sont documentés dans `server/README.md` et la procédure de mise en ligne dans `docs/deployment.md`.

@@ -1,6 +1,7 @@
-import { CalendarPlus, CheckCircle2, Download } from "lucide-react";
-import { useState } from "react";
+import { CalendarPlus, CheckCircle2, CreditCard, Download } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
+import { createStripeCheckout, getPaymentConfig } from "../api/hotel";
 
 type ConfirmationState = {
   reference?: string;
@@ -53,11 +54,39 @@ export function Confirmation() {
   const location = useLocation();
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
+  const [stripeAvailable, setStripeAvailable] = useState(false);
+  const [paymentStarting, setPaymentStarting] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
   const navigationState = (location.state as ConfirmationState | null) ?? {};
   const booking = navigationState.reference ? navigationState : readStoredConfirmation();
 
-  if (!booking.reference) return <Navigate to="/reservation" replace />;
   const isConfirmed = booking.status === "CONFIRMED";
+
+  useEffect(() => {
+    const controller = new AbortController();
+    getPaymentConfig(controller.signal)
+      .then((config) => setStripeAvailable(config.stripeEnabled))
+      .catch(() => setStripeAvailable(false));
+    return () => controller.abort();
+  }, []);
+
+  if (!booking.reference) return <Navigate to="/reservation" replace />;
+
+  async function startOnlinePayment() {
+    if (!booking.reference || !booking.email || paymentStarting) return;
+    setPaymentStarting(true);
+    setPaymentError(null);
+    const storageKey = `rivage:payment-key:${booking.reference}`;
+    const key = sessionStorage.getItem(storageKey) ?? `checkout:${crypto.randomUUID()}`;
+    sessionStorage.setItem(storageKey, key);
+    try {
+      const session = await createStripeCheckout(booking.reference, booking.email, key);
+      window.location.assign(session.checkoutUrl);
+    } catch (error) {
+      setPaymentError(error instanceof Error ? error.message : "Le paiement en ligne n'a pas pu être préparé.");
+      setPaymentStarting(false);
+    }
+  }
 
   function downloadCalendarEvent() {
     if (!booking.arrival || !booking.departure || !booking.reference) return;
@@ -180,8 +209,9 @@ export function Confirmation() {
           <div><dt>Montant du séjour</dt><dd>{amountLabel(booking.total, booking.currency)}</dd></div>
           {!isConfirmed && <div><dt>Maintien de la chambre</dt><dd>Jusqu'au {dateTimeLabel(booking.holdExpiresAt)}</dd></div>}
         </dl>
-        {pdfError && <p className="confirmation-download-error" role="alert">{pdfError}</p>}
+        {(pdfError || paymentError) && <p className="confirmation-download-error" role="alert">{pdfError ?? paymentError}</p>}
         <div className="confirmation-actions">
+          {!isConfirmed && stripeAvailable && booking.email && <button className="btn-primary" type="button" disabled={paymentStarting} onClick={startOnlinePayment}><CreditCard />{paymentStarting ? "Redirection…" : "Payer en ligne"}</button>}
           <button className="btn-secondary" type="button" disabled={downloadingPdf} onClick={downloadConfirmationPdf}><Download />{downloadingPdf ? "Préparation…" : "Télécharger le PDF"}</button>
           <button className="btn-secondary" type="button" disabled={!booking.arrival || !booking.departure} onClick={downloadCalendarEvent}><CalendarPlus />Ajouter au calendrier</button>
           <Link className="btn-primary" to="/">Retour à l'accueil</Link>

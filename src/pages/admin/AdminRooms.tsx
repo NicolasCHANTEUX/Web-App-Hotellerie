@@ -20,6 +20,7 @@ import { useDeferredValue, useEffect, useId, useRef, useState } from "react";
 import type { FormEvent, RefObject } from "react";
 import {
   AdminApiError,
+  AdminAvailabilityBlockInput,
   AdminRoom,
   AdminRoomOccupancy,
   AdminRoomSummary,
@@ -28,8 +29,10 @@ import {
   RoomStatus,
   UpdateAdminRoomInput,
   createAdminRoom,
+  createAdminAvailabilityBlock,
   deleteAdminRoom,
   getAdminRooms,
+  releaseAdminAvailabilityBlock,
   updateAdminRoom,
 } from "../../api/admin";
 import { useAdminAuth } from "../../admin/auth";
@@ -82,6 +85,15 @@ function addDays(value: string, amount: number) {
     date.getUTCFullYear(),
     String(date.getUTCMonth() + 1).padStart(2, "0"),
     String(date.getUTCDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+function todayInputValue() {
+  const date = new Date();
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
   ].join("-");
 }
 
@@ -818,6 +830,14 @@ function RoomDialog({ room, roomTypes, timeZone, canEdit, onClose, onSaved, onDe
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [blockEditorOpen, setBlockEditorOpen] = useState(false);
+  const [blockForm, setBlockForm] = useState<AdminAvailabilityBlockInput>(() => {
+    const checkIn = todayInputValue();
+    return { checkIn, checkOut: addDays(checkIn, 1), reason: "MAINTENANCE", note: "" };
+  });
+  const [blockCreating, setBlockCreating] = useState(false);
+  const [blockReleasingId, setBlockReleasingId] = useState<string | null>(null);
+  const [blockError, setBlockError] = useState<string | null>(null);
   const pendingRef = useRef(false);
   const dirtyRef = useRef(false);
   const discardOpenRef = useRef(false);
@@ -834,6 +854,11 @@ function RoomDialog({ room, roomTypes, timeZone, canEdit, onClose, onSaved, onDe
   const titleId = useId();
   const descriptionId = useId();
   const nestedDialogOpen = confirmDiscard || confirmDelete;
+  const visibleBlocks = [...new Map(
+    [room.currentOccupancy, room.nextOccupancy, ...(room.periodAvailability?.conflicts ?? [])]
+      .filter((occupancy): occupancy is AdminRoomOccupancy => occupancy?.kind === "BLOCK" && Boolean(occupancy.blockId))
+      .map((occupancy) => [occupancy.blockId!, occupancy]),
+  ).values()];
 
   const parsed = parseRoomForm(form);
   const initialNotes = room.notes?.trim() || null;
@@ -933,6 +958,47 @@ function RoomDialog({ room, roomTypes, timeZone, canEdit, onClose, onSaved, onDe
     setDeleteError(null);
   }
 
+  async function createBlock(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!canEdit || !accessToken || pendingRef.current || !isIsoDate(blockForm.checkIn) || !isIsoDate(blockForm.checkOut) || blockForm.checkOut <= blockForm.checkIn) return;
+    setBlockCreating(true);
+    pendingRef.current = true;
+    setBlockError(null);
+    try {
+      await createAdminAvailabilityBlock(room.id, { ...blockForm, note: blockForm.note?.trim() || null }, accessToken);
+      onSaved();
+    } catch (nextError) {
+      if (nextError instanceof AdminApiError && nextError.status === 401) {
+        logout();
+        return;
+      }
+      setBlockError(nextError instanceof Error ? nextError.message : "Le blocage n’a pas pu être créé.");
+    } finally {
+      pendingRef.current = false;
+      setBlockCreating(false);
+    }
+  }
+
+  async function releaseBlock(blockId: string) {
+    if (!canEdit || !accessToken || pendingRef.current) return;
+    setBlockReleasingId(blockId);
+    pendingRef.current = true;
+    setBlockError(null);
+    try {
+      await releaseAdminAvailabilityBlock(blockId, accessToken);
+      onSaved();
+    } catch (nextError) {
+      if (nextError instanceof AdminApiError && nextError.status === 401) {
+        logout();
+        return;
+      }
+      setBlockError(nextError instanceof Error ? nextError.message : "Le blocage n’a pas pu être levé.");
+    } finally {
+      pendingRef.current = false;
+      setBlockReleasingId(null);
+    }
+  }
+
   async function submitRoom(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canEdit || !accessToken || pendingRef.current || !dirty || !parsed.valid) return;
@@ -998,7 +1064,7 @@ function RoomDialog({ room, roomTypes, timeZone, canEdit, onClose, onSaved, onDe
 
   return (
     <div className="admin-room-dialog-layer">
-      <button type="button" className="admin-room-dialog-backdrop" aria-label="Fermer la fiche de la chambre" disabled={saving || deleting || nestedDialogOpen} aria-hidden={nestedDialogOpen || undefined} onClick={requestClose} />
+      <button type="button" className="admin-room-dialog-backdrop" aria-label="Fermer la fiche de la chambre" disabled={saving || deleting || blockCreating || Boolean(blockReleasingId) || nestedDialogOpen} aria-hidden={nestedDialogOpen || undefined} onClick={requestClose} />
       <section
         ref={dialogRef}
         className="admin-room-dialog"
@@ -1013,7 +1079,7 @@ function RoomDialog({ room, roomTypes, timeZone, canEdit, onClose, onSaved, onDe
             <h2 id={titleId}>Chambre {room.number}</h2>
             <span id={descriptionId}>{canEdit ? "Mettez à jour les informations d’inventaire." : "Consultation en lecture seule."}</span>
           </div>
-          <button ref={closeButtonRef} type="button" disabled={saving || deleting} onClick={requestClose} aria-label="Fermer"><X /></button>
+          <button ref={closeButtonRef} type="button" disabled={saving || deleting || blockCreating || Boolean(blockReleasingId)} onClick={requestClose} aria-label="Fermer"><X /></button>
         </header>
 
         <div className="admin-room-dialog-body" inert={nestedDialogOpen || undefined} aria-hidden={nestedDialogOpen || undefined}>
@@ -1034,6 +1100,19 @@ function RoomDialog({ room, roomTypes, timeZone, canEdit, onClose, onSaved, onDe
               </div>
             </div>
           </section>
+
+          {canEdit && <section className="admin-room-dialog-section admin-room-block-management">
+            <div className="admin-room-block-head"><h3><Wrench />Blocages opérationnels</h3><button type="button" disabled={blockCreating || Boolean(blockReleasingId)} onClick={() => { setBlockEditorOpen((value) => !value); setBlockError(null); }}><Plus />Nouveau blocage</button></div>
+            {visibleBlocks.length > 0 && <div className="admin-room-block-list">{visibleBlocks.map((block) => <div key={block.blockId}><span><strong>{blockReasonLabels[block.blockReason ?? "OTHER"] ?? "Indisponibilité"}</strong><small>{formatDate(block.checkIn)} → {formatDate(block.checkOut)}{block.note ? ` · ${block.note}` : ""}</small></span><button type="button" disabled={Boolean(blockReleasingId)} onClick={() => releaseBlock(block.blockId!)}>{blockReleasingId === block.blockId ? "Suppression…" : "Lever"}</button></div>)}</div>}
+            {blockEditorOpen && <form className="admin-room-block-form" onSubmit={createBlock}>
+              <label><span>Début</span><input type="date" value={blockForm.checkIn} onChange={(event) => { const checkIn = event.target.value; setBlockForm((current) => ({ ...current, checkIn, checkOut: current.checkOut <= checkIn ? addDays(checkIn, 1) : current.checkOut })); }} required /></label>
+              <label><span>Fin</span><input type="date" min={addDays(blockForm.checkIn, 1)} value={blockForm.checkOut} onChange={(event) => setBlockForm((current) => ({ ...current, checkOut: event.target.value }))} required /></label>
+              <label><span>Motif</span><select value={blockForm.reason} onChange={(event) => setBlockForm((current) => ({ ...current, reason: event.target.value as AdminAvailabilityBlockInput["reason"] }))}><option value="MAINTENANCE">Maintenance</option><option value="HOUSEKEEPING">Entretien</option><option value="OWNER_USE">Usage propriétaire</option><option value="OTHER">Autre</option></select></label>
+              <label className="wide"><span>Note <em>facultative</em></span><textarea rows={3} maxLength={1000} value={blockForm.note ?? ""} onChange={(event) => setBlockForm((current) => ({ ...current, note: event.target.value }))} /></label>
+              <div className="wide"><button type="button" disabled={blockCreating} onClick={() => { setBlockEditorOpen(false); setBlockError(null); }}>Annuler</button><button type="submit" className="primary" disabled={blockCreating || blockForm.checkOut <= blockForm.checkIn}>{blockCreating ? "Création…" : "Bloquer la chambre"}</button></div>
+            </form>}
+            {blockError && <p className="admin-room-save-error" role="alert">{blockError}</p>}
+          </section>}
 
           {canEdit ? (
             <form className="admin-room-edit-form" onSubmit={submitRoom} noValidate aria-busy={saving || deleting}>

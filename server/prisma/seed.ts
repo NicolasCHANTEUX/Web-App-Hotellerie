@@ -199,13 +199,14 @@ async function main() {
 
     await prisma.ratePlan.upsert({
       where: { propertyId_code: { propertyId: property.id, code: entry.code } },
-      update: { roomTypeId: roomType.id, basePricePerNight: entry.price },
+      update: { roomTypeId: roomType.id, basePricePerNight: entry.price, priceTaxMode: "INCLUSIVE" },
       create: {
         propertyId: property.id,
         roomTypeId: roomType.id,
         code: entry.code,
         name: "Tarif flexible",
         basePricePerNight: entry.price,
+        priceTaxMode: "INCLUSIVE",
       },
     });
 
@@ -244,8 +245,8 @@ async function main() {
   for (const [displayOrder, [code, name, description, price, pricingUnit]] of extras.entries()) {
     await prisma.extra.upsert({
       where: { propertyId_code: { propertyId: property.id, code } },
-      update: { name, description, price, pricingUnit, taxRate: 10, displayOrder },
-      create: { propertyId: property.id, code, name, description, price, pricingUnit, taxRate: 10, displayOrder },
+      update: { name, description, price, pricingUnit, priceTaxMode: "INCLUSIVE", taxRate: 10, displayOrder },
+      create: { propertyId: property.id, code, name, description, price, pricingUnit, priceTaxMode: "INCLUSIVE", taxRate: 10, displayOrder },
     });
   }
 }

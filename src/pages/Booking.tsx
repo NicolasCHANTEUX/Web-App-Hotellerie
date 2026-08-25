@@ -1,10 +1,10 @@
 import { Check, LockKeyhole } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { createBooking, getAvailability, getExtras } from "../api/hotel";
+import { createBooking, getAvailability, getBookingQuote, getExtras } from "../api/hotel";
 import { BookingStepper } from "../components/BookingStepper";
 import { useRemoteData } from "../hooks/useRemoteData";
-import { Accommodation, AvailabilityResult, BookingOption } from "../types/hotel";
+import { Accommodation, AvailabilityResult, BookingOption, BookingQuote } from "../types/hotel";
 
 type Customer = {
   firstName: string;
@@ -66,10 +66,6 @@ function optionAmount(option: BookingOption, nights: number, guests: number) {
   return option.price;
 }
 
-function roundAmount(value: number) {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
-}
-
 export function Booking() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -89,6 +85,12 @@ export function Booking() {
   const [dateError, setDateError] = useState<string | null>(null);
   const [bookingSubmitting, setBookingSubmitting] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [quote, setQuote] = useState<BookingQuote | null>(null);
+  const [quoteKey, setQuoteKey] = useState("");
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [quoteRetry, setQuoteRetry] = useState(0);
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
   const optionsQuery = useRemoteData((signal) => getExtras(signal), []);
   const bookingOptions = optionsQuery.data ?? [];
@@ -98,18 +100,15 @@ export function Booking() {
   const nights = numberOfNights(arrival, departure);
   const guests = adults + children;
   const chosenOptions = bookingOptions.filter((item) => selectedOptions.includes(item.id));
-  const roomSubtotal = room ? room.price * nights : 0;
-  const optionsSubtotal = chosenOptions.reduce((sum, item) => sum + optionAmount(item, nights, guests), 0);
-  const taxRate = room?.taxRate ?? 0;
-  const accommodationTax = roundAmount(roomSubtotal * taxRate / 100);
-  const optionsTax = chosenOptions.reduce((sum, item) => {
-    const optionTaxRate = item.taxRate ?? taxRate;
-    return sum + roundAmount(optionAmount(item, nights, guests) * optionTaxRate / 100);
-  }, 0);
-  const vatTaxes = roundAmount(accommodationTax + optionsTax);
-  const touristTax = room?.touristTaxTotal ?? 0;
-  const taxes = roundAmount(vatTaxes + touristTax);
-  const total = roundAmount(roomSubtotal + optionsSubtotal + taxes);
+  const currentQuoteKey = room
+    ? JSON.stringify([room.id, arrival, departure, adults, children, [...selectedOptions].sort()])
+    : "";
+  const activeQuote = quoteKey === currentQuoteKey ? quote : null;
+  const roomSubtotal = activeQuote?.accommodationTotal ?? (room ? room.price * nights : 0);
+  const optionsSubtotal = activeQuote?.extrasTotal ?? chosenOptions.reduce((sum, item) => sum + optionAmount(item, nights, guests), 0);
+  const vatTaxes = activeQuote?.vatTotalIncluded ?? 0;
+  const touristTax = activeQuote?.touristTaxTotal ?? room?.touristTaxTotal ?? 0;
+  const total = activeQuote?.total ?? roomSubtotal + optionsSubtotal + touristTax;
 
   useEffect(() => {
     if (step !== 2) return;
@@ -130,6 +129,42 @@ export function Booking() {
       });
     return () => controller.abort();
   }, [step, arrival, departure, adults, children, availabilityRetry]);
+
+  useEffect(() => {
+    if (!room) {
+      setQuote(null);
+      setQuoteKey("");
+      setQuoteLoading(false);
+      setQuoteError(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    const requestedKey = currentQuoteKey;
+    setQuote(null);
+    setQuoteKey("");
+    setQuoteLoading(true);
+    setQuoteError(null);
+    getBookingQuote({
+      roomTypeId: room.id,
+      arrival,
+      departure,
+      adults,
+      children,
+      extraIds: selectedOptions,
+    }, controller.signal)
+      .then((result) => {
+        setQuote(result);
+        setQuoteKey(requestedKey);
+        setQuoteLoading(false);
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setQuoteError(error instanceof Error ? error.message : "Le prix du séjour n'a pas pu être calculé.");
+        setQuoteLoading(false);
+      });
+    return () => controller.abort();
+  }, [currentQuoteKey, room, arrival, departure, adults, children, selectedOptions, quoteRetry]);
 
   function validateDates(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -160,7 +195,7 @@ export function Booking() {
 
   async function completeBooking(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!room || bookingSubmitting) return;
+    if (!room || !activeQuote || quoteLoading || bookingSubmitting || !termsAccepted) return;
 
     setBookingSubmitting(true);
     setBookingError(null);
@@ -172,7 +207,8 @@ export function Booking() {
         adults,
         children,
         extraIds: selectedOptions,
-        expectedTotal: Math.round(total * 100),
+        expectedTotal: Math.round(activeQuote.total * 100),
+        termsAccepted: true,
         guest: {
           firstName: customer.firstName,
           lastName: customer.lastName,
@@ -295,13 +331,19 @@ export function Booking() {
                 <p>Cette option sur la chambre sera maintenue pendant 24 h, dans l'attente de la confirmation de l'hôtel.</p>
               </div>
               <div className="payment-total"><p><span>Montant du séjour</span><small>TTC · confirmation manuelle par l'hôtel</small></p><strong>{total} €</strong></div>
+              <label className="privacy-check booking-terms-check">
+                <input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} required />
+                <span>J'accepte les <Link to="/mentions-legales#cgv" target="_blank" rel="noreferrer">conditions générales de vente</Link> et reconnais avoir consulté la <Link to="/mentions-legales#confidentialite" target="_blank" rel="noreferrer">notice de confidentialité</Link>.</span>
+              </label>
+              {quoteLoading && <p className="booking-submit-error" role="status">Mise à jour du prix...</p>}
+              {quoteError && <div className="booking-submit-error" role="alert"><span>{quoteError}</span> <button type="button" onClick={() => setQuoteRetry((value) => value + 1)}>Réessayer</button></div>}
               {bookingError && <p className="booking-submit-error" role="alert">{bookingError}</p>}
-              <div className="booking-nav"><button className="btn-secondary" type="button" disabled={bookingSubmitting} onClick={() => setStep(4)}>← Retour</button><button className="btn-primary" type="submit" disabled={bookingSubmitting}>{bookingSubmitting ? "Enregistrement..." : "Enregistrer ma réservation"}</button></div>
+              <div className="booking-nav"><button className="btn-secondary" type="button" disabled={bookingSubmitting} onClick={() => setStep(4)}>← Retour</button><button className="btn-primary" type="submit" disabled={bookingSubmitting || quoteLoading || !activeQuote || !termsAccepted}>{bookingSubmitting ? "Enregistrement..." : quoteLoading ? "Calcul du prix..." : "Enregistrer ma réservation"}</button></div>
             </form>
           )}
         </div>
 
-        <BookingSummary room={room} arrival={arrival} departure={departure} adults={adults} children={children} nights={nights} options={chosenOptions} roomSubtotal={roomSubtotal} optionsSubtotal={optionsSubtotal} vatTaxes={vatTaxes} touristTax={touristTax} total={total} />
+        <BookingSummary room={room} arrival={arrival} departure={departure} adults={adults} children={children} nights={nights} options={chosenOptions} quote={activeQuote} quoteLoading={quoteLoading} roomSubtotal={roomSubtotal} optionsSubtotal={optionsSubtotal} vatTaxes={vatTaxes} touristTax={touristTax} total={total} />
       </div>
     </section>
   );
@@ -312,7 +354,7 @@ function RoomChoice({ room, nights, selected, onSelect }: { room: Accommodation;
     <button type="button" className={`booking-room ${selected ? "selected" : ""}`} onClick={onSelect} aria-pressed={selected} aria-label={`${selected ? "Hébergement sélectionné" : "Sélectionner"} : ${room.name}, ${room.price * nights} euros pour le séjour`}>
       <img src={room.hero} alt="" />
       <span className="booking-room-copy"><strong>{room.name}</strong><small>{room.rooms} · {room.surface} · max {room.capacity} pers.</small><span>{room.amenities.slice(0, 3).map((item) => <em key={item}>{item}</em>)}</span>{selected && <span className="room-selection-status"><Check />Sélectionnée</span>}</span>
-      <span className="booking-room-price"><strong>{room.price * nights} €</strong><small>{room.price} € × {nights} nuit{nights > 1 ? "s" : ""}</small></span>
+      <span className="booking-room-price">{room.promotion && <em>-{room.promotion.discountPercent}% · {room.promotion.label}</em>}{room.originalPrice && <del>{room.originalPrice * nights} €</del>}<strong>{room.price * nights} € TTC</strong><small>{room.price} € TTC × {nights} nuit{nights > 1 ? "s" : ""}</small></span>
     </button>
   );
 }
@@ -321,13 +363,13 @@ function RoomChoiceSkeleton() {
   return <div className="booking-room booking-room-skeleton" aria-hidden="true"><span className="skeleton-block skeleton-image" /><span className="skeleton-copy"><span /><span /><span /></span><span className="skeleton-price"><span /><span /></span></div>;
 }
 
-function BookingSummary({ room, arrival, departure, adults, children, nights, options, roomSubtotal, optionsSubtotal, vatTaxes, touristTax, total }: { room?: Accommodation; arrival: string; departure: string; adults: number; children: number; nights: number; options: BookingOption[]; roomSubtotal: number; optionsSubtotal: number; vatTaxes: number; touristTax: number; total: number }) {
+function BookingSummary({ room, arrival, departure, adults, children, nights, options, quote, quoteLoading, roomSubtotal, optionsSubtotal, vatTaxes, touristTax, total }: { room?: Accommodation; arrival: string; departure: string; adults: number; children: number; nights: number; options: BookingOption[]; quote: BookingQuote | null; quoteLoading: boolean; roomSubtotal: number; optionsSubtotal: number; vatTaxes: number; touristTax: number; total: number }) {
   return (
     <aside className="booking-recap">
       <h2>Récapitulatif</h2>
       {!room ? <div className="recap-placeholder">Aucun hébergement sélectionné</div> : <><img src={room.hero} alt={room.name} /><h3>{room.name}</h3><p className="recap-room-meta">{room.rooms} · {room.surface}</p></>}
       <dl className="recap-details"><div><dt>Arrivée</dt><dd>{dateLabel(arrival)}</dd></div><div><dt>Départ</dt><dd>{dateLabel(departure)}</dd></div><div><dt>Durée</dt><dd>{nights} nuit{nights > 1 ? "s" : ""}</dd></div><div><dt>Voyageurs</dt><dd>{adults} adulte{adults > 1 ? "s" : ""}{children ? ` · ${children} enfant${children > 1 ? "s" : ""}` : ""}</dd></div></dl>
-      {room && <div className="recap-pricing"><p><span>{room.name}</span><strong>{roomSubtotal} €</strong></p>{options.map((item) => <p key={item.id}><span>{item.name}</span><strong>{optionAmount(item, nights, adults + children)} €</strong></p>)}{optionsSubtotal > 0 && <p className="sr-only">Options : {optionsSubtotal} €</p>}<p><span>TVA</span><strong>{vatTaxes} €</strong></p>{touristTax > 0 && <p><span>Taxe de séjour</span><strong>{touristTax} €</strong></p>}<p className="recap-total"><span>Total</span><strong>{total} €</strong></p></div>}
+      {room && <div className="recap-pricing"><p><span>{room.name} (TTC)</span><strong>{roomSubtotal} €</strong></p>{options.map((item) => <p key={item.id}><span>{item.name} (TTC)</span><strong>{quote?.extras.find((extra) => extra.id === item.id)?.total ?? optionAmount(item, nights, adults + children)} €</strong></p>)}{optionsSubtotal > 0 && <p className="sr-only">Options TTC : {optionsSubtotal} €</p>}<p><span>dont TVA incluse</span><strong>{vatTaxes} €</strong></p>{touristTax > 0 && <p><span>Taxe de séjour</span><strong>{touristTax} €</strong></p>}<p className="recap-total"><span>Total</span><strong>{total} €</strong></p>{quoteLoading && <p role="status"><small>Mise à jour du prix...</small></p>}</div>}
       <p className="recap-security"><LockKeyhole />Demande sécurisée · confirmation par l'hôtel</p>
     </aside>
   );

@@ -9,6 +9,7 @@
     "dev:stop": "node scripts/prepare-dev.mjs",
     "build": "tsc -b && vite build --config vite.config.mjs --configLoader native",
     "build:all": "npm --prefix server run build && npm run build",
+    "verify": "npm --prefix server run db:validate && npm --prefix server run typecheck && npm --prefix server test && npm run build && node scripts/smoke-render.mjs && node scripts/smoke-admin-render.mjs",
     "smoke:render": "npm run build && node scripts/smoke-render.mjs",
     "smoke:admin": "npm run build && node scripts/smoke-admin-render.mjs",
     "preview": "vite preview --config vite.config.mjs --configLoader native"

@@ -1,5 +1,5 @@
 import { apiGet, apiPost } from "./client";
-import { Accommodation, AvailabilityResult, BookingConfirmation, BookingOption, CreateBookingInput } from "../types/hotel";
+import { Accommodation, AvailabilityResult, BookingConfirmation, BookingOption, BookingQuote, BookingSelectionInput, CreateBookingInput } from "../types/hotel";
 
 export function getRoomTypes(signal?: AbortSignal) {
   return apiGet<Accommodation[]>("/room-types", signal);
@@ -23,6 +23,23 @@ export function getAvailability(params: { arrival: string; departure: string; ad
   return apiGet<AvailabilityResult>(`/availability?${query}`, signal);
 }
 
+export function getBookingQuote(input: BookingSelectionInput, signal?: AbortSignal) {
+  return apiPost<BookingQuote>("/quotes", input, signal);
+}
+
 export function createBooking(input: CreateBookingInput, idempotencyKey: string, signal?: AbortSignal) {
   return apiPost<BookingConfirmation>("/bookings", input, signal, { "Idempotency-Key": idempotencyKey });
+}
+
+export function getPaymentConfig(signal?: AbortSignal) {
+  return apiGet<{ stripeEnabled: boolean }>("/payments/config", signal);
+}
+
+export function createStripeCheckout(reference: string, email: string, idempotencyKey: string, signal?: AbortSignal) {
+  return apiPost<{ checkoutUrl: string; sessionId: string }>(
+    "/payments/stripe/checkout",
+    { reference, email },
+    signal,
+    { "Idempotency-Key": idempotencyKey },
+  );
 }
