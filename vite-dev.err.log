@@ -1,6 +1,0 @@
-[2m02:36:09[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /extras[39m
-Error: connect ECONNREFUSED 127.0.0.1:3001
-    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)
-[2m02:36:09[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /availability?arrival=2026-08-08&departure=2026-08-09&adults=2&children=0[39m
-Error: connect ECONNREFUSED 127.0.0.1:3001
-    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)
