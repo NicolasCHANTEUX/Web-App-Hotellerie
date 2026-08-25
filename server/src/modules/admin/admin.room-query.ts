@@ -13,6 +13,7 @@ export type RoomSortOrder = "asc" | "desc";
 const blockingBookingStatuses = [
   BookingStatus.PENDING_PAYMENT,
   BookingStatus.CONFIRMED,
+  BookingStatus.CHECKED_IN,
 ];
 
 const roomNumberCollator = new Intl.Collator("fr-FR", {

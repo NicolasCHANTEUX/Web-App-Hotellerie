@@ -22,6 +22,8 @@ Les périodes hôtelières utilisent toujours l'intervalle semi-ouvert `[arrivé
 
 Une demande publique est traitée dans une transaction `SERIALIZABLE`. Le serveur recalcule le montant, choisit une chambre physique libre, crée un `ReservationHold`, son `RoomAllocation`, puis la réservation `PENDING_PAYMENT`. La contrainte d'exclusion PostgreSQL empêche deux allocations actives de se chevaucher sur une même chambre. Les reprises après conflit sont bornées et idempotentes.
 
+La création depuis l'administration réutilise exactement ce moteur de disponibilité et de tarification, avec une clé d'idempotence distincte par saisie. Elle convertit ensuite l'option en allocation confirmée, enregistre le canal (`PHONE`, `EMAIL`, `WALK_IN` ou `ADMIN`), fige l'acceptation des conditions et journalise l'administrateur à l'origine de l'opération.
+
 Les noms, tarifs, taxes, conditions et options sont figés dans des instantanés. Une modification ultérieure du catalogue ne réécrit jamais une réservation historique.
 
 ## Prix, taxes et promotions
@@ -45,6 +47,8 @@ Le formulaire public `POST /contact-requests` valide strictement les champs, exi
 ## Administration et sécurité
 
 Les routes `/admin/*` exigent un jeton Supabase Auth et une `AdminMembership` active. Les autorisations sont contrôlées côté serveur ; l'interface ne constitue jamais la barrière de sécurité. Les mutations sensibles utilisent un verrou optimiste lorsque nécessaire et écrivent un `AuditLog`.
+
+Le planning croise les allocations de chambres sur quatorze jours avec les dossiers de réservation. `ADMIN` et `RECEPTION` peuvent ouvrir les séjours et exécuter les opérations quotidiennes. `HOUSEKEEPING` voit les occupations et blocages sans identité client. Le cycle opérationnel est explicite : `CONFIRMED` → `CHECKED_IN` le jour du séjour, puis `COMPLETED` à partir du départ ; les absences et annulations suivent des transitions contrôlées côté serveur.
 
 Les tables applicatives ont RLS activée sans politique publique. Les secrets, jetons et mots de passe sont masqués dans les logs. Le rate limiting protège les créations de réservation, les connexions et les demandes de contact.
 

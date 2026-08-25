@@ -76,6 +76,9 @@ Routes disponibles :
 - `POST /admin/auth/login`
 - `GET /admin/me`
 - `GET /admin/bookings`
+- `GET /admin/booking-options?arrival=2026-08-25&departure=2026-08-26&adults=2&children=0`
+- `POST /admin/booking-quotes`
+- `POST /admin/bookings` (`ADMIN` et `RECEPTION`, clé `Idempotency-Key` UUID obligatoire)
 - `GET /admin/bookings/:id`
 - `POST /admin/bookings/:id/confirm`
 - `PATCH /admin/bookings/:id/status`
@@ -137,6 +140,10 @@ La suppression utilise elle aussi `updatedAt` comme verrou optimiste :
 Une chambre n'est supprimee physiquement que si elle n'a jamais ete reliee a une reservation, une option, un blocage de disponibilite ou une allocation, meme passee. Sinon l'API renvoie `409 ROOM_HAS_HISTORY` et demande de l'archiver. Aucune donnee metier n'est supprimee en cascade. Les creations et suppressions sont transactionnelles et produisent respectivement les actions `ROOM_CREATED` et `ROOM_DELETED` dans `AuditLog`.
 
 Une demande publique cree une option de chambre de 24 heures au statut `PENDING_PAYMENT`. La reception peut la confirmer manuellement depuis le detail : le hold est alors converti en allocation de reservation et l'action est journalisee. Les holds expires sont liberes et passent au statut `EXPIRED` lors des lectures ou creations suivantes.
+
+La création depuis l'administration est disponible aux rôles `ADMIN` et `RECEPTION`. Les disponibilités, options et devis sont toujours recalculés pour l'établissement de l'utilisateur connecté. `POST /admin/bookings` crée la réservation de façon idempotente, attribue une chambre physique libre, confirme immédiatement le séjour et enregistre la source (`PHONE`, `EMAIL`, `WALK_IN` ou `ADMIN`) ainsi que l'acceptation des CGV. Le téléphone est obligatoire pour le canal `PHONE`, l'e-mail pour `EMAIL`; ils restent facultatifs pour une arrivée sur place ou une saisie interne. L'interface conserve la même clé lors d'une relance réseau afin d'éviter tout doublon.
+
+Le planning `/admin/planning` affiche quatorze jours d'allocations par chambre. Les rôles opérationnels peuvent ouvrir un dossier depuis une occupation ; `HOUSEKEEPING` voit uniquement les mouvements anonymisés. Une réservation confirmée passe à `CHECKED_IN` uniquement pendant sa période de séjour, puis à `COMPLETED` à partir du jour de départ. Le statut `NO_SHOW` n'est disponible qu'à partir de l'arrivée. Ces transitions libèrent les allocations seulement lorsqu'elles deviennent terminales et sont toutes inscrites dans `AuditLog`.
 
 Chaque nouvelle reservation conserve maintenant une ventilation fiscale immuable (`BookingTaxLine`) et une copie des conditions acceptees. Le taux d'une option peut differer de celui de la chambre; lorsqu'il n'est pas renseigne, le taux du plan tarifaire reste utilise pour conserver le comportement historique. Une taxe de sejour n'entre dans le prix que si une `TaxRule` active et valide pour toute la periode a ete configuree. Les pages client, l'API et l'admin utilisent alors la meme ventilation et le meme arrondi par ligne.
 

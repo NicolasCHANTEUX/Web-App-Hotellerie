@@ -19,7 +19,14 @@ export function bookingReferenceFromIdempotencyKey(idempotencyKey: string) {
   return `RVG-${idempotencyKey.replaceAll("-", "").toUpperCase()}`;
 }
 
-export function bookingRequestHash(input: CreateBookingInput) {
+export function bookingRequestHash(
+  input: CreateBookingInput,
+  context?: {
+    propertyId: string;
+    source: string;
+    acceptanceChannel: string;
+  },
+) {
   const canonicalPayload = {
     roomTypeId: input.roomTypeId.toLowerCase(),
     arrival: input.arrival.toISOString().slice(0, 10),
@@ -32,11 +39,12 @@ export function bookingRequestHash(input: CreateBookingInput) {
     guest: {
       firstName: input.guest.firstName,
       lastName: input.guest.lastName,
-      email: input.guest.email,
-      phone: input.guest.phone,
+      email: input.guest.email ?? null,
+      phone: input.guest.phone ?? null,
       countryCode: input.guest.countryCode ?? null,
     },
     specialRequests: input.specialRequests ?? null,
+    ...(context ? { context } : {}),
   };
 
   return createHash("sha256").update(JSON.stringify(canonicalPayload)).digest("hex");

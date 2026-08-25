@@ -524,6 +524,9 @@
 .admin-booking-lifecycle-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .admin-booking-lifecycle-actions button { min-height: 36px; border: 1px solid #d8d0c7; border-radius: 6px; background: #faf8f5; padding: 0 11px; color: #5d554d; font-size: 9px; font-weight: 650; cursor: pointer; }
 .admin-booking-lifecycle-actions button.danger { border-color: #e2bbb6; background: #fcf2f0; color: #994d45; }
+.admin-booking-lifecycle-actions button.primary { border-color: var(--gold-dark); background: var(--gold-dark); color: white; }
+.admin-booking-lifecycle-actions button:disabled { opacity: .45; cursor: not-allowed; }
+.admin-booking-lifecycle-hint { margin: 10px 0 0; color: #8b8177; font-size: 9px; line-height: 1.5; }
 .admin-booking-status-confirm { display: grid; gap: 12px; margin-top: 13px; border-radius: 7px; background: #f7f3ed; padding: 13px; }
 .admin-booking-status-confirm > strong { color: #4c443d; font-size: 11px; }
 .admin-booking-status-confirm label { display: grid; gap: 6px; color: #665e56; font-size: 9px; font-weight: 650; }
@@ -567,6 +570,120 @@
 .admin-billing-form button:disabled, .admin-invoice-list > button:disabled { cursor: wait; opacity: .6; }
 .admin-special-request { margin: 0; border-left: 2px solid #c8a176; padding-left: 13px; color: #70675e; font-size: 10px; font-style: italic; line-height: 1.7; }
 .admin-detail-created { margin: 19px 5px 0; color: #a0978e; font-size: 8px; line-height: 1.6; text-align: center; }
+
+.admin-booking-create-dialog { width: min(1120px, 100%); max-height: min(920px, calc(100dvh - 48px)); }
+.admin-booking-create-form { background: #f7f5f1; }
+.admin-booking-create-columns { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(360px, .92fr); align-items: start; gap: 18px; }
+.admin-booking-create-columns > div { display: grid; min-width: 0; gap: 15px; }
+.admin-booking-create-columns .admin-room-dialog-section { margin-top: 0; }
+.admin-booking-create-form .admin-room-form-grid label > span { align-items: center; justify-content: flex-start; }
+.admin-booking-create-form .admin-room-form-grid label > span svg { width: 13px; color: var(--gold-dark); }
+.admin-booking-create-muted, .admin-booking-create-empty { margin: 0; border-radius: 7px; background: #f7f4ef; padding: 14px; color: #786f66; font-size: 12px; line-height: 1.55; }
+.admin-booking-create-empty { border: 1px solid #e6c4bf; background: #fcf1ef; color: #8d4c45; }
+.admin-booking-room-options, .admin-booking-extra-options { display: grid; gap: 9px; }
+.admin-booking-room-options > label, .admin-booking-extra-options > label { display: grid; min-width: 0; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 11px; border: 1px solid #ddd6ce; border-radius: 8px; background: #fdfcfa; padding: 12px; cursor: pointer; transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease; }
+.admin-booking-room-options > label:hover, .admin-booking-extra-options > label:hover { border-color: #c8b49d; }
+.admin-booking-room-options > label.selected { border-color: #b99872; background: #f8f1e8; box-shadow: 0 0 0 3px rgb(169 130 86 / 8%); }
+.admin-booking-room-options input, .admin-booking-extra-options input { width: 15px; height: 15px; accent-color: var(--gold-dark); }
+.admin-booking-room-options label > span, .admin-booking-extra-options label > span { display: grid; min-width: 0; gap: 4px; }
+.admin-booking-room-options label > span strong, .admin-booking-extra-options label > span strong { color: #49423b; font-size: 12px; }
+.admin-booking-room-options label > span small, .admin-booking-extra-options label > span small { color: #7d746b; font-size: 10px; line-height: 1.45; }
+.admin-booking-room-options label > strong, .admin-booking-extra-options label > strong { color: #4b433b; font-size: 12px; white-space: nowrap; }
+.admin-booking-room-options label > strong small { display: block; margin-top: 2px; color: #8e847a; font-size: 9px; font-weight: 500; text-align: right; }
+.admin-booking-quote-card { position: sticky; top: 0; }
+.admin-booking-quote-card dl { display: grid; gap: 10px; margin: 0; }
+.admin-booking-quote-card dl > div { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; color: #655d55; font-size: 12px; }
+.admin-booking-quote-card dt { line-height: 1.45; }
+.admin-booking-quote-card dd { margin: 0; color: #443d37; font-weight: 650; white-space: nowrap; }
+.admin-booking-quote-card dl > div.total { margin-top: 4px; border-top: 1px solid #dfd6cc; padding-top: 13px; color: #312c27; font-size: 15px; font-weight: 700; }
+.admin-booking-quote-card dl > div.total dd { color: var(--gold-dark); font-family: var(--font-serif); font-size: 23px; }
+.admin-booking-terms { display: flex; align-items: flex-start; gap: 10px; border: 1px solid #ddd4c9; border-radius: 8px; background: white; padding: 14px; color: #4c453e; cursor: pointer; }
+.admin-booking-terms > input { width: 16px; height: 16px; flex: 0 0 auto; margin-top: 2px; accent-color: var(--gold-dark); }
+.admin-booking-terms > span { display: flex; align-items: flex-start; gap: 9px; }
+.admin-booking-terms > span > svg { width: 17px; flex: 0 0 auto; color: var(--gold-dark); }
+.admin-booking-terms > span > span { display: grid; gap: 4px; }
+.admin-booking-terms strong { font-size: 11px; }
+.admin-booking-terms small { color: #786f66; font-size: 10px; font-weight: 400; line-height: 1.5; }
+.admin-booking-create-actions { margin-top: 20px; border-top: 1px solid #e0d9d0; padding-top: 17px; }
+.admin-booking-create-actions > span { max-width: 420px; line-height: 1.5; }
+
+.admin-planning-toolbar { display: flex; min-height: 64px; align-items: center; gap: 14px; margin-bottom: 15px; border: 1px solid #e2dcd4; border-radius: 9px; background: white; padding: 10px 14px; box-shadow: 0 7px 22px rgb(56 46 35 / 3%); }
+.admin-planning-toolbar > div { display: flex; gap: 7px; }
+.admin-planning-toolbar button { display: inline-flex; min-height: 38px; align-items: center; justify-content: center; gap: 7px; border: 1px solid #ddd6ce; border-radius: 6px; background: white; padding: 0 11px; color: #665e56; font-size: 11px; font-weight: 650; cursor: pointer; }
+.admin-planning-toolbar button:hover { border-color: var(--gold); color: var(--gold-dark); }
+.admin-planning-toolbar button svg { width: 15px; }
+.admin-planning-toolbar button:not(.today) { width: 38px; padding: 0; }
+.admin-planning-toolbar > label { display: grid; min-height: 38px; grid-template-columns: 16px auto minmax(125px, 1fr); align-items: center; gap: 7px; margin-left: auto; border: 1px solid #ddd6ce; border-radius: 6px; background: #fdfcfa; padding: 0 10px; color: #776e65; font-size: 10px; font-weight: 650; }
+.admin-planning-toolbar > label svg { width: 15px; color: var(--gold-dark); }
+.admin-planning-toolbar input { min-width: 0; border: 0; outline: 0; background: transparent; color: #49423b; font-size: 11px; }
+.admin-planning-toolbar > p { min-width: 195px; margin: 0; color: #655d55; font-size: 11px; font-weight: 600; text-align: right; }
+.admin-planning-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 11px; margin-bottom: 15px; }
+.admin-planning-metrics > div { display: flex; min-height: 72px; align-items: center; gap: 11px; border: 1px solid #e2dcd4; border-radius: 8px; background: white; padding: 13px 15px; }
+.admin-planning-metrics > div > svg { width: 18px; color: var(--gold-dark); }
+.admin-planning-metrics > div > span { display: flex; align-items: baseline; gap: 7px; }
+.admin-planning-metrics strong { color: #37312c; font-family: var(--font-serif); font-size: 27px; font-weight: 600; }
+.admin-planning-metrics small { color: #746b62; font-size: 11px; }
+.admin-planning-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; align-items: start; gap: 15px; }
+.admin-planning-board { min-width: 0; overflow: hidden; border: 1px solid #e1dbd3; border-radius: 10px; background: white; box-shadow: 0 9px 30px rgb(49 40 31 / 3.5%); transition: opacity 160ms ease; }
+.admin-planning-board.is-loading { opacity: .52; pointer-events: none; }
+.admin-planning-legend { display: flex; min-height: 48px; align-items: center; flex-wrap: wrap; gap: 15px; border-bottom: 1px solid #e8e2da; padding: 10px 15px; }
+.admin-planning-legend span { display: inline-flex; align-items: center; gap: 6px; color: #6f665d; font-size: 10px; }
+.admin-planning-legend i { width: 9px; height: 9px; border-radius: 3px; background: #eeeae4; }
+.admin-planning-legend i.booking { background: #7b9d7d; }
+.admin-planning-legend i.hold { background: #d2a252; }
+.admin-planning-legend i.block { background: #bd7169; }
+.admin-planning-legend i.free { border: 1px solid #d8d2cb; background: white; }
+.admin-planning-scroll { position: relative; overflow: auto; max-height: calc(100dvh - 320px); }
+.admin-planning-scroll table { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
+.admin-planning-scroll th, .admin-planning-scroll td { width: 112px; height: 70px; border-right: 1px solid #ece7e1; border-bottom: 1px solid #ece7e1; padding: 5px; vertical-align: middle; }
+.admin-planning-scroll thead th { position: sticky; z-index: 4; top: 0; height: 67px; background: #faf8f5; padding: 0; }
+.admin-planning-scroll thead th:first-child { z-index: 6; left: 0; width: 190px; padding: 0 15px; color: #766d64; font-size: 10px; letter-spacing: .07em; text-align: left; text-transform: uppercase; }
+.admin-planning-scroll thead th > button { display: grid; width: 100%; height: 100%; place-content: center; gap: 2px; border: 0; background: transparent; color: #6e655c; cursor: pointer; }
+.admin-planning-scroll thead th > button span { font-size: 9px; font-weight: 650; text-transform: capitalize; }
+.admin-planning-scroll thead th > button strong { font-family: var(--font-serif); font-size: 20px; font-weight: 600; }
+.admin-planning-scroll thead th.today { background: #f5ede3; }
+.admin-planning-scroll thead th.selected { box-shadow: inset 0 -3px var(--gold-dark); }
+.admin-planning-scroll tbody th { position: sticky; z-index: 3; left: 0; width: 190px; background: white; padding: 9px 14px; text-align: left; }
+.admin-planning-scroll tbody th strong { display: block; color: #3d3731; font-family: var(--font-serif); font-size: 20px; }
+.admin-planning-scroll tbody th span { display: block; margin-top: 3px; overflow: hidden; color: #756c63; font-size: 9px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.admin-planning-scroll td.today { background: #fdfaf6; }
+.admin-planning-scroll td.selected { box-shadow: inset 2px 0 rgb(169 130 86 / 20%), inset -2px 0 rgb(169 130 86 / 20%); }
+.admin-planning-slot { display: grid; width: 100%; min-height: 55px; place-content: center; gap: 3px; overflow: hidden; border: 0; border-radius: 6px; padding: 6px; color: #665e56; text-align: center; }
+button.admin-planning-slot { font: inherit; }
+.admin-planning-slot span { overflow: hidden; font-size: 9px; font-weight: 700; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.admin-planning-slot small { overflow: hidden; font-size: 8px; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+.admin-planning-slot svg { width: 13px; height: 13px; margin: 0 auto; }
+.admin-planning-slot.booking { background: #e8f1e8; color: #486a4b; }
+.admin-planning-slot.hold { background: #faf0dc; color: #8a6129; }
+.admin-planning-slot.block { background: #f8e8e5; color: #8f4e47; }
+.admin-planning-slot.neutral, .admin-planning-slot.out { background: #eeece9; color: #716a63; }
+.admin-planning-slot.free { color: #9b938b; font-size: 8px; }
+.admin-planning-slot.clickable { cursor: pointer; }
+.admin-planning-slot.clickable:hover { filter: brightness(.96); box-shadow: inset 0 0 0 1px currentColor; }
+.admin-planning-slot:disabled { opacity: 1; }
+.admin-planning-empty { margin: 0; padding: 38px; color: #7e756c; font-size: 12px; text-align: center; }
+.admin-daily-operations { position: sticky; top: 88px; overflow: hidden; border: 1px solid #e1dbd3; border-radius: 10px; background: white; box-shadow: 0 9px 30px rgb(49 40 31 / 3.5%); }
+.admin-daily-operations > header { border-bottom: 1px solid #e8e2da; padding: 17px 18px; }
+.admin-daily-operations > header p { margin: 0 0 5px; color: var(--gold-dark); font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.admin-daily-operations > header h2 { margin: 0; font-family: var(--font-serif); font-size: 21px; font-weight: 600; text-transform: capitalize; }
+.admin-daily-readonly { margin: 15px; border-radius: 7px; background: #f5f1eb; padding: 12px; color: #6e655c; font-size: 11px; line-height: 1.55; }
+.admin-daily-group { padding: 15px 16px 3px; }
+.admin-daily-group + .admin-daily-group { border-top: 1px solid #eee9e3; }
+.admin-daily-group h3 { display: flex; align-items: center; gap: 7px; margin: 0 0 10px; color: #5b534b; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+.admin-daily-group h3 svg { width: 14px; color: var(--gold-dark); }
+.admin-daily-group h3 span { display: grid; min-width: 20px; height: 20px; place-items: center; margin-left: auto; border-radius: 999px; background: #f0e9e0; color: #745839; font-size: 9px; }
+.admin-daily-group > p { margin: 0 0 12px; color: #91877d; font-size: 10px; }
+.admin-daily-group > div { display: grid; gap: 7px; margin-bottom: 13px; }
+.admin-daily-group button { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 9px; border: 1px solid #e3ddd5; border-radius: 7px; background: #fdfcfa; padding: 10px; color: #4c453e; cursor: pointer; text-align: left; }
+.admin-daily-group button:hover { border-color: #c9b49b; }
+.admin-daily-group button > span:first-child { display: grid; min-width: 0; gap: 3px; }
+.admin-daily-group button > span:first-child strong { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.admin-daily-group button > span:first-child small { color: #81776e; font-size: 9px; }
+.admin-daily-group button > span:last-child { display: flex; align-items: center; gap: 5px; }
+.admin-daily-group button > span:last-child > svg { width: 13px; color: #8e8379; }
+.admin-daily-group .admin-status { padding: 4px 7px; font-size: 8px; }
+.admin-daily-operations > footer { border-top: 1px solid #e8e2da; background: #faf8f5; padding: 13px 16px; }
+.admin-daily-operations > footer small { color: #776e65; font-size: 9px; line-height: 1.5; }
 
 .admin-mobile-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .admin-mobile-card-head > span { display: grid; gap: 4px; text-align: left; }
@@ -630,6 +747,10 @@
   .admin-metrics { grid-template-columns: 1fr 1fr; }
   .admin-filters { grid-template-columns: 1.25fr .75fr; }
   .admin-room-filters { grid-template-columns: 1.2fr .8fr; }
+  .admin-booking-create-columns { grid-template-columns: 1fr; }
+  .admin-booking-quote-card { position: static; }
+  .admin-planning-layout { grid-template-columns: 1fr; }
+  .admin-daily-operations { position: static; }
 }
 
 @media (max-width: 900px) {
@@ -723,6 +844,12 @@
   .admin-room-delete-trigger { width: 100%; }
   .admin-room-dialog-actions-readonly > span { margin-right: 0; }
   .admin-room-dialog-actions-readonly > button { width: 100%; }
+  .admin-booking-create-actions > span { max-width: none; }
+  .admin-planning-toolbar { align-items: stretch; flex-wrap: wrap; }
+  .admin-planning-toolbar > label { flex: 1; margin-left: 0; }
+  .admin-planning-toolbar > p { width: 100%; text-align: left; }
+  .admin-planning-metrics { grid-template-columns: 1fr 1fr; }
+  .admin-planning-scroll { max-height: 65dvh; }
 }
 
 @media (max-width: 430px) {
@@ -763,6 +890,13 @@
   .admin-room-delete-copy h3 { font-size: 21px; }
   .admin-room-delete-actions { display: grid; grid-template-columns: 1fr; }
   .admin-detail-grid { grid-template-columns: 1fr; }
+  .admin-booking-room-options > label, .admin-booking-extra-options > label { grid-template-columns: 18px minmax(0, 1fr); }
+  .admin-booking-room-options label > strong, .admin-booking-extra-options label > strong { grid-column: 2; justify-self: start; }
+  .admin-booking-room-options label > strong small { display: inline; margin-left: 4px; }
+  .admin-planning-toolbar > div, .admin-planning-toolbar > label { width: 100%; }
+  .admin-planning-toolbar > div .today { flex: 1; }
+  .admin-planning-metrics > div { min-height: 62px; padding: 10px; }
+  .admin-planning-metrics strong { font-size: 23px; }
   .admin-drawer-head { min-height: 75px; }
   .admin-drawer-head h2 { font-size: 22px; }
 }

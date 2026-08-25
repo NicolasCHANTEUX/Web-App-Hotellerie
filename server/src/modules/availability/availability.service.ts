@@ -10,13 +10,14 @@ export type AvailabilityInput = {
   children: number;
 };
 
-export async function searchAvailability(input: AvailabilityInput) {
+export async function searchAvailability(input: AvailabilityInput, propertyId?: string) {
   const now = new Date();
   const totalGuests = input.adults + input.children;
   const nights = Math.round((input.departure.getTime() - input.arrival.getTime()) / 86_400_000);
 
   const roomTypes = await prisma.roomType.findMany({
     where: {
+      ...(propertyId ? { propertyId } : {}),
       isPublished: true,
       archivedAt: null,
       maxGuests: { gte: totalGuests },

@@ -6,6 +6,7 @@ const bookingLabels: Record<BookingStatus, string> = {
   DRAFT: "Brouillon",
   PENDING_PAYMENT: "Confirmation en attente",
   CONFIRMED: "Confirmée",
+  CHECKED_IN: "Client arrivé",
   CANCELLED: "Annulée",
   EXPIRED: "Expirée",
   COMPLETED: "Terminée",
@@ -41,7 +42,7 @@ export function roomStatusLabel(status: RoomStatus) {
 }
 
 function statusTone(status: BookingStatus | PaymentStatus | RoomStatus) {
-  if (["CONFIRMED", "COMPLETED", "SUCCEEDED", "ACTIVE"].includes(status)) return "positive";
+  if (["CONFIRMED", "CHECKED_IN", "COMPLETED", "SUCCEEDED", "ACTIVE"].includes(status)) return "positive";
   if (["PENDING_PAYMENT", "REQUIRES_PAYMENT", "PROCESSING"].includes(status)) return "warning";
   if (["CANCELLED", "FAILED", "NO_SHOW", "OUT_OF_SERVICE"].includes(status)) return "danger";
   return "neutral";

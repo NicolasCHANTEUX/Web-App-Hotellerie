@@ -115,7 +115,7 @@ export type CreateBookingInput = BookingSelectionInput & {
 export type BookingConfirmation = {
   id: string;
   reference: string;
-  status: "DRAFT" | "PENDING_PAYMENT" | "CONFIRMED" | "CANCELLED" | "EXPIRED" | "COMPLETED" | "NO_SHOW";
+  status: "DRAFT" | "PENDING_PAYMENT" | "CONFIRMED" | "CHECKED_IN" | "CANCELLED" | "EXPIRED" | "COMPLETED" | "NO_SHOW";
   room: {
     name: string;
   };

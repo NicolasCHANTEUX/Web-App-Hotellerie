@@ -5,7 +5,7 @@ import { createStripeCheckout, getPaymentConfig, getStripeCheckoutStatus } from 
 
 type ConfirmationState = {
   reference?: string;
-  status?: "DRAFT" | "PENDING_PAYMENT" | "CONFIRMED" | "CANCELLED" | "EXPIRED" | "COMPLETED" | "NO_SHOW";
+  status?: "DRAFT" | "PENDING_PAYMENT" | "CONFIRMED" | "CHECKED_IN" | "CANCELLED" | "EXPIRED" | "COMPLETED" | "NO_SHOW";
   room?: string;
   arrival?: string;
   departure?: string;
@@ -66,7 +66,7 @@ export function Confirmation() {
     paymentReturn === "cancelled" ? "Le paiement a été interrompu. Votre demande reste en attente tant que l'option est active." : null,
   );
 
-  const isConfirmed = booking.status === "CONFIRMED";
+  const isConfirmed = booking.status === "CONFIRMED" || booking.status === "CHECKED_IN" || booking.status === "COMPLETED";
   const isInactive = booking.status === "CANCELLED" || booking.status === "EXPIRED" || booking.status === "NO_SHOW";
 
   useEffect(() => {
@@ -94,7 +94,7 @@ export function Confirmation() {
           return updated;
         });
 
-        if (result.booking.status === "CONFIRMED" && result.paymentStatus === "SUCCEEDED") {
+        if (["CONFIRMED", "CHECKED_IN", "COMPLETED"].includes(result.booking.status) && result.paymentStatus === "SUCCEEDED") {
           sessionStorage.removeItem(`rivage:payment-key:${result.booking.reference}`);
           setPaymentNotice("Votre paiement a été confirmé par l'hôtel.");
           setPaymentSynchronizing(false);

@@ -12,6 +12,7 @@ import {
   Filter,
   Mail,
   Phone,
+  Plus,
   Search,
   RotateCcw,
   UserRound,
@@ -19,6 +20,7 @@ import {
   X,
 } from "lucide-react";
 import { useDeferredValue, useEffect, useId, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   AdminApiError,
   AdminBooking,
@@ -40,6 +42,7 @@ import {
   updateAdminBookingStatus,
 } from "../../api/admin";
 import { useAdminAuth } from "../../admin/auth";
+import { AdminBookingCreateDialog } from "./AdminBookingCreateDialog";
 import {
   AdminEmptyState,
   AdminErrorState,
@@ -59,6 +62,7 @@ const PAGE_SIZE = 5;
 
 const bookingStatuses: BookingStatus[] = [
   "CONFIRMED",
+  "CHECKED_IN",
   "PENDING_PAYMENT",
   "COMPLETED",
   "CANCELLED",
@@ -83,10 +87,22 @@ function roomsLabel(booking: Pick<AdminBooking, "rooms">) {
   return booking.rooms.map((room) => room.roomNumber ? `${room.roomTypeName} · ${room.roomNumber}` : room.roomTypeName).join(", ");
 }
 
+function dateInTimeZone(timeZone?: string) {
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
+
 export function AdminBookings() {
   const { accessToken, logout, profile } = useAdminAuth();
   const propertyTimeZone = profile?.membership.property.timezone;
   const isAccounting = profile?.membership.role === "ACCOUNTING";
+  const canCreateBooking = profile?.membership.role === "ADMIN" || profile?.membership.role === "RECEPTION";
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const [status, setStatus] = useState<BookingStatus | "">("");
@@ -99,6 +115,13 @@ export function AdminBookings() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [urlSearchParams, setUrlSearchParams] = useSearchParams();
+
+  useEffect(() => {
+    const bookingId = urlSearchParams.get("booking");
+    if (bookingId) setSelectedBookingId(bookingId);
+  }, [urlSearchParams]);
 
   useEffect(() => {
     if (!accessToken) return;
@@ -142,6 +165,14 @@ export function AdminBookings() {
     setPage(1);
   }
 
+  function closeBookingDetail() {
+    setSelectedBookingId(null);
+    if (!urlSearchParams.has("booking")) return;
+    const nextParams = new URLSearchParams(urlSearchParams);
+    nextParams.delete("booking");
+    setUrlSearchParams(nextParams, { replace: true });
+  }
+
   return (
     <>
       <PageHeading
@@ -150,13 +181,14 @@ export function AdminBookings() {
         description={isAccounting
           ? "Consultez les règlements, remboursements et documents de chaque réservation."
           : "Consultez les arrivées, les départs et le détail de chaque séjour."}
+        action={canCreateBooking ? <button type="button" className="admin-room-create-button admin-booking-create-button" onClick={() => setCreateDialogOpen(true)}><Plus />Nouvelle réservation</button> : undefined}
       />
 
       <section className="admin-metrics" aria-label="Synthèse des réservations">
         <MetricCard label="Réservations" value={summary.total} detail="selon la recherche" icon={<CalendarCheck />} />
         <MetricCard label="Arrivées aujourd’hui" value={summary.arrivalsToday} detail="à accueillir" icon={<ArrowDownToLine />} />
         <MetricCard label="Départs aujourd’hui" value={summary.departuresToday} detail="à préparer" icon={<ArrowUpFromLine />} />
-        <MetricCard label="Confirmées" value={summary.byStatus.CONFIRMED ?? 0} detail="séjours validés" icon={<CircleCheck />} />
+        <MetricCard label="Séjours actifs" value={(summary.byStatus.CONFIRMED ?? 0) + (summary.byStatus.CHECKED_IN ?? 0)} detail="confirmés ou arrivés" icon={<CircleCheck />} />
       </section>
 
       <section className="admin-panel">
@@ -215,7 +247,16 @@ export function AdminBookings() {
         )}
       </section>
 
-      {selectedBookingId && <BookingDetailDrawer id={selectedBookingId} onClose={() => setSelectedBookingId(null)} onChanged={() => setRetryKey((value) => value + 1)} />}
+      {selectedBookingId && <BookingDetailDrawer id={selectedBookingId} onClose={closeBookingDetail} onChanged={() => setRetryKey((value) => value + 1)} />}
+      {createDialogOpen && <AdminBookingCreateDialog
+        onClose={() => setCreateDialogOpen(false)}
+        onCreated={(booking) => {
+          setCreateDialogOpen(false);
+          setSelectedBookingId(booking.id);
+          setPage(1);
+          setRetryKey((value) => value + 1);
+        }}
+      />}
     </>
   );
 }
@@ -231,7 +272,7 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
   const [confirming, setConfirming] = useState(false);
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [statusAction, setStatusAction] = useState<"CANCELLED" | "COMPLETED" | "NO_SHOW" | null>(null);
+  const [statusAction, setStatusAction] = useState<"CHECKED_IN" | "CANCELLED" | "COMPLETED" | "NO_SHOW" | null>(null);
   const [statusReason, setStatusReason] = useState("");
   const [statusUpdating, setStatusUpdating] = useState(false);
   const [availableRooms, setAvailableRooms] = useState<AdminAvailableBookingRoom[]>([]);
@@ -327,7 +368,7 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
   }, [accessToken, booking, id, logout]);
 
   useEffect(() => {
-    if (!accessToken || !canOperateBooking || booking?.status !== "CONFIRMED") {
+    if (!accessToken || !canOperateBooking || (booking?.status !== "CONFIRMED" && booking?.status !== "CHECKED_IN")) {
       setAvailableRooms([]);
       setAssignedRoomId("");
       return;
@@ -506,6 +547,10 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
     || profile?.membership.role === "RECEPTION"
     || profile?.membership.role === "ACCOUNTING";
   const canRefund = profile?.membership.role === "ADMIN" || profile?.membership.role === "ACCOUNTING";
+  const propertyToday = dateInTimeZone(propertyTimeZone);
+  const canCheckInNow = Boolean(booking && booking.checkIn <= propertyToday && booking.checkOut > propertyToday);
+  const canDeclareNoShow = Boolean(booking && booking.checkIn <= propertyToday);
+  const canCompleteNow = Boolean(booking && booking.checkOut <= propertyToday);
 
   return (
     <div className="admin-drawer-layer">
@@ -548,7 +593,7 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
                 <div className="admin-detail-lines">
                   {booking.rooms.map((room) => <p key={room.id}><span><strong>{room.roomTypeName}</strong><small>{room.roomNumber ? `Chambre ${room.roomNumber}` : "Chambre à attribuer"}</small></span>{room.lineTotal !== undefined && <strong>{formatMoney(room.lineTotal, booking.currency)}</strong>}</p>)}
                 </div>
-                {canOperateBooking && booking.status === "CONFIRMED" && <div className="admin-booking-room-assignment">
+                {canOperateBooking && (booking.status === "CONFIRMED" || booking.status === "CHECKED_IN") && <div className="admin-booking-room-assignment">
                   <label><span>Chambre physique</span><select value={assignedRoomId} disabled={roomsLoading || roomAssigning} onChange={(event) => setAssignedRoomId(event.target.value)}>{availableRooms.map((room) => <option value={room.id} key={room.id}>Chambre {room.number}{room.floor !== null ? ` · étage ${room.floor}` : ""}{room.selected ? " · actuelle" : ""}</option>)}</select></label>
                   <button type="button" disabled={roomsLoading || roomAssigning || !assignedRoomId || assignedRoomId === booking.rooms[0]?.roomId} onClick={applyRoomAssignment}>{roomAssigning ? "Affectation…" : roomsLoading ? "Chargement…" : "Affecter"}</button>
                 </div>}
@@ -581,7 +626,7 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
                   </button>
                 ))}</div>}
 
-                {canManagePayment && (booking.status === "CONFIRMED" || booking.status === "COMPLETED") && !hasSettledCharge && billingMode !== "payment" && (
+                {canManagePayment && (booking.status === "CONFIRMED" || booking.status === "CHECKED_IN" || booking.status === "COMPLETED") && !hasSettledCharge && billingMode !== "payment" && (
                   <button className="admin-billing-action" type="button" onClick={() => { setBillingMode("payment"); setActionError(null); }}><CreditCard />Enregistrer le règlement</button>
                 )}
                 {canRefund && refundablePayments.length > 0 && billingMode !== "refund" && (
@@ -607,14 +652,17 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
 
               {canOperateBooking && booking.specialRequests && <section className="admin-detail-section"><h3><Users />Demande particulière</h3><p className="admin-special-request">{booking.specialRequests}</p></section>}
 
-              {canOperateBooking && (booking.status === "PENDING_PAYMENT" || booking.status === "CONFIRMED") && <section className="admin-detail-section admin-booking-lifecycle">
+              {canOperateBooking && (booking.status === "PENDING_PAYMENT" || booking.status === "CONFIRMED" || booking.status === "CHECKED_IN") && <section className="admin-detail-section admin-booking-lifecycle">
                 <h3><Ban />Actions sur le séjour</h3>
                 <div className="admin-booking-lifecycle-actions">
-                  <button type="button" className="danger" onClick={() => { setStatusAction("CANCELLED"); setStatusReason(""); setActionError(null); }}>Annuler la réservation</button>
-                  {booking.status === "CONFIRMED" && <><button type="button" onClick={() => { setStatusAction("COMPLETED"); setStatusReason(""); setActionError(null); }}>Terminer le séjour</button><button type="button" onClick={() => { setStatusAction("NO_SHOW"); setStatusReason(""); setActionError(null); }}>Signaler une absence</button></>}
+                  {booking.status !== "CHECKED_IN" && <button type="button" className="danger" onClick={() => { setStatusAction("CANCELLED"); setStatusReason(""); setActionError(null); }}>Annuler la réservation</button>}
+                  {booking.status === "CONFIRMED" && <><button type="button" className="primary" disabled={!canCheckInNow} title={!canCheckInNow ? `Disponible pendant le séjour, du ${formatDate(booking.checkIn)} au ${formatDate(booking.checkOut)}.` : undefined} onClick={() => { setStatusAction("CHECKED_IN"); setStatusReason(""); setActionError(null); }}>Enregistrer l’arrivée</button><button type="button" disabled={!canDeclareNoShow} title={!canDeclareNoShow ? `Disponible à partir du ${formatDate(booking.checkIn)}.` : undefined} onClick={() => { setStatusAction("NO_SHOW"); setStatusReason(""); setActionError(null); }}>Signaler une absence</button></>}
+                  {booking.status === "CHECKED_IN" && <button type="button" className="primary" disabled={!canCompleteNow} title={!canCompleteNow ? `Disponible à partir du ${formatDate(booking.checkOut)}.` : undefined} onClick={() => { setStatusAction("COMPLETED"); setStatusReason(""); setActionError(null); }}>Terminer le séjour</button>}
                 </div>
+                {booking.status === "CONFIRMED" && !canCheckInNow && <p className="admin-booking-lifecycle-hint">L’arrivée s’enregistre uniquement entre le jour d’arrivée et le départ.</p>}
+                {booking.status === "CHECKED_IN" && !canCompleteNow && <p className="admin-booking-lifecycle-hint">La fin du séjour sera disponible le {formatDate(booking.checkOut)}.</p>}
                 {statusAction && <div className="admin-booking-status-confirm" role="group" aria-label="Confirmer le changement de statut">
-                  <strong>{statusAction === "CANCELLED" ? "Confirmer l’annulation" : statusAction === "COMPLETED" ? "Confirmer la fin du séjour" : "Confirmer l’absence"}</strong>
+                  <strong>{statusAction === "CANCELLED" ? "Confirmer l’annulation" : statusAction === "CHECKED_IN" ? "Confirmer l’arrivée du client" : statusAction === "COMPLETED" ? "Confirmer la fin du séjour" : "Confirmer l’absence"}</strong>
                   <label>Motif ou note <span>(facultatif)</span><textarea maxLength={500} rows={3} value={statusReason} onChange={(event) => setStatusReason(event.target.value)} /></label>
                   <div><button type="button" disabled={statusUpdating} onClick={() => { setStatusAction(null); setStatusReason(""); setActionError(null); }}>Retour</button><button type="button" className={statusAction === "CANCELLED" ? "danger" : "primary"} disabled={statusUpdating} onClick={applyStatusAction}>{statusUpdating ? "Enregistrement…" : "Confirmer"}</button></div>
                 </div>}

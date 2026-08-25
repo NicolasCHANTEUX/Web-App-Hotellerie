@@ -81,7 +81,7 @@ export async function recordManualPayment(
       },
     });
     if (!booking) throw new AdminApiError(404, "BOOKING_NOT_FOUND", "Réservation introuvable.");
-    if (!["CONFIRMED", "COMPLETED"].includes(booking.status)) {
+    if (!["CONFIRMED", "CHECKED_IN", "COMPLETED"].includes(booking.status)) {
       throw new AdminApiError(409, "BOOKING_NOT_PAYABLE", "Confirmez la réservation avant d'enregistrer son règlement.");
     }
 

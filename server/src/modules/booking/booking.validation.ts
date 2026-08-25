@@ -24,7 +24,8 @@ const QUOTE_FIELDS = new Set(["roomTypeId", "arrival", "departure", "adults", "c
 const REQUIRED_QUOTE_FIELDS = ["roomTypeId", "arrival", "departure", "adults", "children", "extraIds"] as const;
 const REQUIRED_ROOT_FIELDS = ["roomTypeId", "arrival", "departure", "adults", "children", "extraIds", "expectedTotal", "termsAccepted", "guest"] as const;
 const GUEST_FIELDS = new Set(["firstName", "lastName", "email", "phone", "countryCode"]);
-const REQUIRED_GUEST_FIELDS = ["firstName", "lastName", "email", "phone"] as const;
+const REQUIRED_PUBLIC_GUEST_FIELDS = ["firstName", "lastName", "email", "phone"] as const;
+const REQUIRED_ADMIN_GUEST_FIELDS = ["firstName", "lastName"] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -82,17 +83,25 @@ function parseIsoDate(value: unknown, label: string) {
   return date;
 }
 
-function parseGuest(value: unknown): BookingGuestInput {
+function parseGuest(value: unknown, contactRequired: boolean): BookingGuestInput {
   if (!isRecord(value)) throw invalidBooking("Les coordonnées du client sont invalides.");
-  assertExactFields(value, GUEST_FIELDS, REQUIRED_GUEST_FIELDS, "Les coordonnées du client");
+  assertExactFields(
+    value,
+    GUEST_FIELDS,
+    contactRequired ? REQUIRED_PUBLIC_GUEST_FIELDS : REQUIRED_ADMIN_GUEST_FIELDS,
+    "Les coordonnées du client",
+  );
 
   const firstName = parseString(value.firstName, "Le prénom", 100);
   const lastName = parseString(value.lastName, "Le nom", 100);
-  const email = parseString(value.email, "L'adresse email", 254).toLowerCase();
-  const phone = parseString(value.phone, "Le numéro de téléphone", 30);
+  const email = parseOptionalString(value.email, "L'adresse email", 254)?.toLowerCase();
+  const phone = parseOptionalString(value.phone, "Le numéro de téléphone", 30);
 
-  if (!EMAIL.test(email)) throw invalidBooking("L'adresse email est invalide.");
-  if (!PHONE.test(phone) || phone.replace(/\D/g, "").length < 7) {
+  if (contactRequired && (!email || !phone)) {
+    throw invalidBooking("L'adresse email et le numéro de téléphone sont obligatoires.");
+  }
+  if (email && !EMAIL.test(email)) throw invalidBooking("L'adresse email est invalide.");
+  if (phone && (!PHONE.test(phone) || phone.replace(/\D/g, "").length < 7)) {
     throw invalidBooking("Le numéro de téléphone est invalide.");
   }
 
@@ -104,7 +113,13 @@ function parseGuest(value: unknown): BookingGuestInput {
     countryCode = value.countryCode.toUpperCase();
   }
 
-  return { firstName, lastName, email, phone, ...(countryCode ? { countryCode } : {}) };
+  return {
+    firstName,
+    lastName,
+    ...(email ? { email } : {}),
+    ...(phone ? { phone } : {}),
+    ...(countryCode ? { countryCode } : {}),
+  };
 }
 
 function parseExtraIds(value: unknown) {
@@ -151,7 +166,7 @@ export function parseBookingQuoteBody(body: unknown): BookingSelectionInput {
   };
 }
 
-export function parseCreateBookingBody(body: unknown): CreateBookingInput {
+export function parseCreateBookingBody(body: unknown, options: { contactRequired?: boolean } = {}): CreateBookingInput {
   if (!isRecord(body)) throw invalidBooking();
   assertExactFields(body, ROOT_FIELDS, REQUIRED_ROOT_FIELDS, "La demande de réservation");
 
@@ -178,7 +193,7 @@ export function parseCreateBookingBody(body: unknown): CreateBookingInput {
   if (body.termsAccepted !== true) {
     throw invalidBooking("Vous devez accepter les conditions générales de vente pour réserver.");
   }
-  const guest = parseGuest(body.guest);
+  const guest = parseGuest(body.guest, options.contactRequired !== false);
   const specialRequests = parseOptionalString(body.specialRequests, "La demande particulière", 2_000);
 
   return {

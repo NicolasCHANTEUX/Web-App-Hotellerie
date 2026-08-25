@@ -94,9 +94,9 @@ export async function findRoomTypeBySlug(slug: string) {
   return roomType ? serializeRoomType(roomType) : null;
 }
 
-export async function listExtras() {
+export async function listExtras(propertyId?: string) {
   const extras = await prisma.extra.findMany({
-    where: { isActive: true, priceTaxMode: "INCLUSIVE" },
+    where: { ...(propertyId ? { propertyId } : {}), isActive: true, priceTaxMode: "INCLUSIVE" },
     orderBy: { displayOrder: "asc" },
   });
 

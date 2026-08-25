@@ -100,6 +100,72 @@ const accountingBookingDetail = {
   }],
 };
 
+const bookingOptions = {
+  query: {
+    arrival: "2026-08-25",
+    departure: "2026-08-26",
+    adults: 2,
+    children: 0,
+  },
+  nights: 1,
+  roomTypes: [{
+    id: "room-type-elegance",
+    slug: "elegance",
+    name: "Chambre Élégance",
+    category: "DOUBLE",
+    shortDescription: "Une chambre lumineuse.",
+    description: "Une chambre lumineuse avec vue sur le jardin.",
+    price: 200,
+    taxRate: 10,
+    currency: "EUR",
+    refundable: true,
+    capacity: 2,
+    maxAdults: 2,
+    maxChildren: 1,
+    surface: "24 m²",
+    surfaceSqm: 24,
+    rooms: "1 lit double",
+    hero: "/images/elegance.jpg",
+    gallery: [],
+    amenities: ["Wi-Fi"],
+    availableUnits: 2,
+    totalPrice: 200,
+    touristTaxTotal: 4,
+  }],
+  extras: [{
+    id: "extra-breakfast",
+    code: "BREAKFAST",
+    name: "Petit-déjeuner",
+    description: "Buffet maison",
+    price: 10,
+    taxRate: 10,
+    currency: "EUR",
+    unit: "PER_PERSON_PER_NIGHT",
+  }],
+};
+
+const bookingQuote = {
+  priceTaxMode: "INCLUSIVE",
+  currency: "EUR",
+  nights: 1,
+  room: {
+    id: "room-type-elegance",
+    slug: "elegance",
+    name: "Chambre Élégance",
+    unitPrice: 200,
+    subtotal: 181.82,
+    taxAmount: 18.18,
+    total: 200,
+    promotion: null,
+  },
+  extras: [],
+  accommodationTotal: 200,
+  extrasTotal: 0,
+  vatTotalIncluded: 18.18,
+  touristTaxTotal: 4,
+  total: 204,
+};
+
 const roomPage = {
   items: [{
     id: "room-101",
@@ -189,6 +255,28 @@ function roomPageForRequest(url, { stalePeriod = false } = {}) {
   };
 }
 
+function roomPageForRole(page, role) {
+  if (role !== "HOUSEKEEPING") return page;
+  const redact = (occupancy) => occupancy ? {
+    ...occupancy,
+    bookingId: null,
+    bookingReference: null,
+    guest: null,
+  } : null;
+  return {
+    ...page,
+    items: page.items.map((room) => ({
+      ...room,
+      currentOccupancy: redact(room.currentOccupancy),
+      nextOccupancy: redact(room.nextOccupancy),
+      periodAvailability: room.periodAvailability ? {
+        ...room.periodAvailability,
+        conflicts: room.periodAvailability.conflicts.map(redact),
+      } : null,
+    })),
+  };
+}
+
 function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });
 }
@@ -201,6 +289,7 @@ async function renderAdmin(pathname, {
   roomDialogAction = null,
   roomCreateAction = null,
   roomDeleteAction = null,
+  bookingCreateAction = false,
   bookingDetailAction = false,
   patchError = null,
   postError = null,
@@ -215,6 +304,11 @@ async function renderAdmin(pathname, {
   let roomPostRequests = 0;
   let roomDeleteRequests = 0;
   let availableBookingRoomRequests = 0;
+  let bookingOptionsRequests = 0;
+  let bookingQuoteRequests = 0;
+  let bookingCreateRequests = 0;
+  let bookingCreatePayload = null;
+  let bookingIdempotencyKey = null;
   window.document.body.innerHTML = '<div id="root"></div>';
   if (withToken) {
     window.sessionStorage.setItem("rivage.admin.accessToken", "smoke-test-token");
@@ -244,6 +338,39 @@ async function renderAdmin(pathname, {
     const url = String(input);
     requests.push(url);
     if (url.endsWith("/admin/me") && profile) return jsonResponse({ data: profile });
+    if (url.includes("/admin/booking-options?")) {
+      bookingOptionsRequests += 1;
+      const requestUrl = new URL(url, "http://localhost:5173");
+      return jsonResponse({ data: {
+        ...bookingOptions,
+        query: {
+          arrival: requestUrl.searchParams.get("arrival"),
+          departure: requestUrl.searchParams.get("departure"),
+          adults: Number(requestUrl.searchParams.get("adults")),
+          children: Number(requestUrl.searchParams.get("children")),
+        },
+      } });
+    }
+    if (url.endsWith("/admin/booking-quotes") && init.method === "POST") {
+      bookingQuoteRequests += 1;
+      return jsonResponse({ data: bookingQuote });
+    }
+    if (url.endsWith("/admin/bookings") && init.method === "POST") {
+      bookingCreateRequests += 1;
+      bookingCreatePayload = JSON.parse(String(init.body));
+      bookingIdempotencyKey = new Headers(init.headers).get("Idempotency-Key");
+      return jsonResponse({ data: {
+        ...accountingBookingDetail,
+        source: bookingCreatePayload.source,
+        checkIn: bookingCreatePayload.arrival,
+        checkOut: bookingCreatePayload.departure,
+        guest: {
+          firstName: bookingCreatePayload.guest.firstName,
+          lastName: bookingCreatePayload.guest.lastName,
+          email: bookingCreatePayload.guest.email,
+        },
+      } }, 201);
+    }
     if (url.includes("/admin/bookings?")) {
       return jsonResponse({ data: profile?.membership.role === "ACCOUNTING" ? accountingBookingPage : bookingPage });
     }
@@ -266,7 +393,10 @@ async function renderAdmin(pathname, {
     if (url.endsWith("/admin/bookings/booking-1")) return jsonResponse({ data: accountingBookingDetail });
     if (url.includes("/admin/rooms?")) {
       roomGetRequests += 1;
-      return jsonResponse({ data: roomPageForRequest(url, { stalePeriod: staleRoomPeriod }) });
+      return jsonResponse({ data: roomPageForRole(
+        roomPageForRequest(url, { stalePeriod: staleRoomPeriod }),
+        profile?.membership.role,
+      ) });
     }
     if (url.endsWith("/admin/rooms/room-101") && init.method === "PATCH") {
       roomPatchPayload = JSON.parse(String(init.body));
@@ -337,6 +467,64 @@ async function renderAdmin(pathname, {
     assert.ok(detailTrigger, "A booking detail trigger should render.");
     detailTrigger.click();
     await new Promise((resolveDelay) => setTimeout(resolveDelay, 180));
+  }
+
+  const bookingCreateObservation = {
+    buttonVisible: Boolean(window.document.querySelector(".admin-booking-create-button")),
+    opened: false,
+    optionsLoaded: false,
+    quoteLoaded: false,
+    submitEnabled: false,
+    postRequests: 0,
+    payload: null,
+    idempotencyKey: null,
+    closed: false,
+    detailOpened: false,
+  };
+
+  if (bookingCreateAction) {
+    const createButton = window.document.querySelector(".admin-booking-create-button");
+    assert.ok(createButton, "The booking creation button should render for operational roles.");
+    createButton.click();
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 420));
+    const createDialog = window.document.querySelector('.admin-booking-create-dialog[role="dialog"]');
+    assert.ok(createDialog, "The booking creation dialog should open.");
+    bookingCreateObservation.opened = true;
+    bookingCreateObservation.optionsLoaded = bookingOptionsRequests > 0
+      && Boolean(createDialog.querySelector('.admin-booking-room-options input[value="room-type-elegance"]'));
+    bookingCreateObservation.quoteLoaded = bookingQuoteRequests > 0
+      && createDialog.textContent.includes("Total à régler");
+
+    const plainInputs = createDialog.querySelectorAll('.admin-room-form-grid input:not([type])');
+    const emailInput = createDialog.querySelector('input[type="email"]');
+    const phoneInput = createDialog.querySelector('input[type="tel"]');
+    const termsInput = createDialog.querySelector(".admin-booking-terms input");
+    assert.ok(plainInputs[0] && plainInputs[1] && emailInput && phoneInput && termsInput, "The guest fields should render.");
+    const setInputValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+    assert.ok(setInputValue, "The booking input value setter should be available.");
+    const fill = (input, value) => {
+      setInputValue.call(input, value);
+      input.dispatchEvent(new window.Event("input", { bubbles: true }));
+      input.dispatchEvent(new window.Event("change", { bubbles: true }));
+    };
+    fill(plainInputs[0], "Nicolas");
+    fill(plainInputs[1], "Chanteux");
+    fill(emailInput, "nicolas@example.com");
+    fill(phoneInput, "+33612345678");
+    termsInput.click();
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
+
+    const submitButton = window.document.querySelector(".admin-booking-create-submit");
+    bookingCreateObservation.submitEnabled = Boolean(submitButton && !submitButton.disabled);
+    assert.ok(submitButton && !submitButton.disabled, "A complete valid admin booking should be submittable.");
+    submitButton.click();
+    submitButton.click();
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 320));
+    bookingCreateObservation.postRequests = bookingCreateRequests;
+    bookingCreateObservation.payload = bookingCreatePayload;
+    bookingCreateObservation.idempotencyKey = bookingIdempotencyKey;
+    bookingCreateObservation.closed = !window.document.querySelector(".admin-booking-create-dialog");
+    bookingCreateObservation.detailOpened = Boolean(window.document.querySelector(".admin-drawer"));
   }
 
   const roomDialogObservation = {
@@ -569,6 +757,14 @@ async function renderAdmin(pathname, {
       refundActions: window.document.querySelectorAll(".admin-billing-action.secondary").length,
       availableRoomRequests: availableBookingRoomRequests,
     },
+    bookingCreate: bookingCreateObservation,
+    planning: {
+      board: window.document.querySelectorAll(".admin-planning-board").length,
+      rows: window.document.querySelectorAll(".admin-planning-board tbody tr").length,
+      occupiedSlots: window.document.querySelectorAll(".admin-planning-slot.booking, .admin-planning-slot.hold, .admin-planning-slot.block").length,
+      clickableSlots: window.document.querySelectorAll(".admin-planning-slot.clickable").length,
+      dailyPanel: window.document.querySelectorAll(".admin-daily-operations").length,
+    },
     queriedPeriod: period ? requests.some((url) => {
       const requestUrl = new URL(url, "http://localhost:5173");
       return requestUrl.searchParams.get("from") === period.from
@@ -595,6 +791,47 @@ assert.equal(bookings.pathname, "/admin/reservations");
 assert.match(bookings.text, /RVG-2026-001/);
 assert.match(bookings.text, /Marie Dupont/);
 
+const bookingCreation = await renderAdmin("/admin/reservations", {
+  profile: adminProfile,
+  withToken: true,
+  bookingCreateAction: true,
+});
+assert.equal(bookingCreation.bookingCreate.buttonVisible, true);
+assert.equal(bookingCreation.bookingCreate.opened, true);
+assert.equal(bookingCreation.bookingCreate.optionsLoaded, true);
+assert.equal(bookingCreation.bookingCreate.quoteLoaded, true);
+assert.equal(bookingCreation.bookingCreate.submitEnabled, true);
+assert.equal(bookingCreation.bookingCreate.postRequests, 1);
+assert.match(bookingCreation.bookingCreate.idempotencyKey, /^[0-9a-f-]{36}$/i);
+assert.deepEqual(bookingCreation.bookingCreate.payload.guest, {
+  firstName: "Nicolas",
+  lastName: "Chanteux",
+  email: "nicolas@example.com",
+  phone: "+33612345678",
+  countryCode: "FR",
+});
+assert.equal(bookingCreation.bookingCreate.payload.source, "PHONE");
+assert.equal(bookingCreation.bookingCreate.payload.roomTypeId, "room-type-elegance");
+assert.equal(bookingCreation.bookingCreate.payload.expectedTotal, 20400);
+assert.equal(bookingCreation.bookingCreate.closed, true);
+assert.equal(bookingCreation.bookingCreate.detailOpened, true);
+
+const planning = await renderAdmin("/admin/planning", { profile: adminProfile, withToken: true });
+assert.equal(planning.pathname, "/admin/planning");
+assert.match(planning.navText, /Planning/);
+assert.equal(planning.planning.board, 1);
+assert.equal(planning.planning.rows, 2);
+assert.ok(planning.planning.occupiedSlots > 0);
+assert.ok(planning.planning.clickableSlots > 0);
+assert.equal(planning.planning.dailyPanel, 1);
+
+const housekeepingPlanning = await renderAdmin("/admin/planning", { profile: housekeepingProfile, withToken: true });
+assert.equal(housekeepingPlanning.pathname, "/admin/planning");
+assert.equal(housekeepingPlanning.planning.board, 1);
+assert.equal(housekeepingPlanning.planning.clickableSlots, 0);
+assert.doesNotMatch(housekeepingPlanning.text, /Sophie Martin|RVG-2026-001/);
+assert.match(housekeepingPlanning.text, /sans exposer l’identité des clients/);
+
 const housekeeping = await renderAdmin("/admin", { profile: housekeepingProfile, withToken: true });
 assert.equal(housekeeping.pathname, "/admin/chambres");
 assert.match(housekeeping.text, /État des chambres/);
@@ -609,6 +846,7 @@ assert.equal(housekeeping.periodExplanatoryBlocks, 0);
 assert.equal(housekeeping.roomPageDescriptions, 0);
 assert.equal(housekeeping.createButtons, 0);
 assert.equal(housekeeping.deleteButtons, 0);
+assert.match(housekeeping.navText, /Planning/);
 assert.doesNotMatch(housekeeping.navText, /Réservations/);
 
 const roomReadOnlyDialog = await renderAdmin("/admin/chambres", {
@@ -750,6 +988,9 @@ assert.equal(accountingProtectedRoute.pathname, "/admin/reservations");
 assert.match(accountingProtectedRoute.text, /Suivi financier/);
 assert.doesNotMatch(accountingProtectedRoute.text, /sophie@example.com/);
 
+const accountingPlanningGuard = await renderAdmin("/admin/planning", { profile: accountingProfile, withToken: true });
+assert.equal(accountingPlanningGuard.pathname, "/admin/reservations");
+
 const accountingBookingDetailView = await renderAdmin("/admin/reservations", {
   profile: accountingProfile,
   withToken: true,
@@ -766,5 +1007,5 @@ assert.equal(accountingBookingDetailView.bookingDetail.refundActions, 1);
 
 console.log(JSON.stringify({
   rendered: true,
-  checks: ["login", "auth-guard", "bookings", "room-card-semantics", "room-readonly-dialog", "room-edit-patch", "room-dirty-confirmation", "room-conflict-message", "room-create", "room-create-conflict", "room-delete", "room-delete-history", "room-period-availability", "stale-period-guard", "housekeeping-navigation", "housekeeping-guard", "accounting-financial-view", "accounting-operational-guard"],
+  checks: ["login", "auth-guard", "bookings", "admin-booking-create", "planning", "planning-housekeeping-privacy", "planning-accounting-guard", "room-card-semantics", "room-readonly-dialog", "room-edit-patch", "room-dirty-confirmation", "room-conflict-message", "room-create", "room-create-conflict", "room-delete", "room-delete-history", "room-period-availability", "stale-period-guard", "housekeeping-navigation", "housekeeping-guard", "accounting-financial-view", "accounting-operational-guard"],
 }));

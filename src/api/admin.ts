@@ -1,3 +1,5 @@
+import type { AvailabilityResult, BookingOption, BookingQuote, BookingSelectionInput, CreateBookingInput } from "../types/hotel";
+
 const API_BASE_URL = (import.meta.env.VITE_API_URL ?? "/api").replace(/\/$/, "");
 
 type ApiEnvelope<T> = { data: T };
@@ -75,6 +77,7 @@ export type BookingStatus =
   | "DRAFT"
   | "PENDING_PAYMENT"
   | "CONFIRMED"
+  | "CHECKED_IN"
   | "CANCELLED"
   | "EXPIRED"
   | "COMPLETED"
@@ -352,6 +355,21 @@ export type BookingFilters = {
   todayOnly?: boolean;
 };
 
+export type AdminBookingOptions = AvailabilityResult & {
+  extras: BookingOption[];
+};
+
+export type CreateAdminBookingInput = Omit<CreateBookingInput, "guest"> & {
+  source: "PHONE" | "EMAIL" | "WALK_IN" | "ADMIN";
+  guest: {
+    firstName: string;
+    lastName: string;
+    email?: string;
+    phone?: string;
+    countryCode?: string;
+  };
+};
+
 export type RoomFilters = {
   page: number;
   pageSize: number;
@@ -400,6 +418,34 @@ export function getAdminBooking(id: string, accessToken: string, signal?: AbortS
   );
 }
 
+export function getAdminBookingOptions(
+  params: { arrival: string; departure: string; adults: number; children: number },
+  accessToken: string,
+  signal?: AbortSignal,
+) {
+  return adminRequest<AdminBookingOptions>(
+    `/admin/booking-options${queryString(params)}`,
+    { signal },
+    accessToken,
+  );
+}
+
+export function getAdminBookingQuote(input: BookingSelectionInput, accessToken: string, signal?: AbortSignal) {
+  return adminRequest<BookingQuote>(
+    "/admin/booking-quotes",
+    { method: "POST", body: JSON.stringify(input), signal },
+    accessToken,
+  );
+}
+
+export function createAdminBooking(input: CreateAdminBookingInput, idempotencyKey: string, accessToken: string, signal?: AbortSignal) {
+  return adminRequest<AdminBookingDetail>(
+    "/admin/bookings",
+    { method: "POST", body: JSON.stringify(input), headers: { "Idempotency-Key": idempotencyKey }, signal },
+    accessToken,
+  );
+}
+
 export function confirmAdminBooking(id: string, accessToken: string, signal?: AbortSignal) {
   return adminRequest<AdminBookingDetail>(
     `/admin/bookings/${encodeURIComponent(id)}/confirm`,
@@ -408,7 +454,7 @@ export function confirmAdminBooking(id: string, accessToken: string, signal?: Ab
   );
 }
 
-export function updateAdminBookingStatus(id: string, status: "CANCELLED" | "COMPLETED" | "NO_SHOW", reason: string | null, accessToken: string, signal?: AbortSignal) {
+export function updateAdminBookingStatus(id: string, status: "CHECKED_IN" | "CANCELLED" | "COMPLETED" | "NO_SHOW", reason: string | null, accessToken: string, signal?: AbortSignal) {
   return adminRequest<AdminBookingDetail>(
     `/admin/bookings/${encodeURIComponent(id)}/status`,
     { method: "PATCH", body: JSON.stringify({ status, reason }), signal },

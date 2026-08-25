@@ -4,13 +4,14 @@ import { AdminApiError } from "./admin.errors.js";
 const allowedFields = new Set(["status", "reason"]);
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const actionableStatuses = new Set<BookingStatus>([
+  BookingStatus.CHECKED_IN,
   BookingStatus.CANCELLED,
   BookingStatus.COMPLETED,
   BookingStatus.NO_SHOW,
 ]);
 
 export type AdminBookingStatusInput = {
-  status: typeof BookingStatus.CANCELLED | typeof BookingStatus.COMPLETED | typeof BookingStatus.NO_SHOW;
+  status: typeof BookingStatus.CHECKED_IN | typeof BookingStatus.CANCELLED | typeof BookingStatus.COMPLETED | typeof BookingStatus.NO_SHOW;
   reason: string | null;
 };
 
@@ -46,10 +47,28 @@ export function bookingStatusTransitionAllowed(current: BookingStatus, next: Boo
       || current === BookingStatus.PENDING_PAYMENT
       || current === BookingStatus.CONFIRMED;
   }
-  if (next === BookingStatus.COMPLETED || next === BookingStatus.NO_SHOW) {
+  if (next === BookingStatus.CHECKED_IN || next === BookingStatus.NO_SHOW) {
     return current === BookingStatus.CONFIRMED;
   }
+  if (next === BookingStatus.COMPLETED) return current === BookingStatus.CHECKED_IN;
   return false;
+}
+
+export function assertBookingStatusTiming(
+  next: AdminBookingStatusInput["status"],
+  checkIn: Date,
+  checkOut: Date,
+  today: Date,
+) {
+  if (next === BookingStatus.CHECKED_IN && (checkIn > today || checkOut <= today)) {
+    throw new AdminApiError(409, "BOOKING_NOT_CHECK_IN_READY", "L’arrivée ne peut être enregistrée que pendant la période du séjour.");
+  }
+  if (next === BookingStatus.COMPLETED && checkOut > today) {
+    throw new AdminApiError(409, "BOOKING_NOT_FINISHABLE", "Le séjour ne peut être terminé avant sa date de départ.");
+  }
+  if (next === BookingStatus.NO_SHOW && checkIn > today) {
+    throw new AdminApiError(409, "BOOKING_NOT_NO_SHOW", "L’absence ne peut être constatée avant la date d’arrivée.");
+  }
 }
 
 export function parseAdminBookingRoomAssignmentBody(body: unknown) {

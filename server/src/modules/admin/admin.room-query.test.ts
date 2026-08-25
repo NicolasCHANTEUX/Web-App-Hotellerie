@@ -78,7 +78,7 @@ test("room blocking predicate treats standalone holds and linked booking statuse
   assert.deepEqual(holdSource.reservationHold.is.OR[0], { bookingId: null });
   assert.deepEqual(
     holdSource.reservationHold.is.OR[1],
-    { booking: { is: { status: { in: ["PENDING_PAYMENT", "CONFIRMED"] } } } },
+    { booking: { is: { status: { in: ["PENDING_PAYMENT", "CONFIRMED", "CHECKED_IN"] } } } },
   );
 });
 

@@ -246,7 +246,7 @@ export async function listAdminRoomTypes(propertyId: string) {
       where: {
         roomTypeId: { in: ids },
         booking: {
-          status: { in: ["DRAFT", "PENDING_PAYMENT", "CONFIRMED"] },
+          status: { in: ["DRAFT", "PENDING_PAYMENT", "CONFIRMED", "CHECKED_IN"] },
           checkOut: { gte: today },
         },
       },
@@ -429,7 +429,7 @@ export async function deleteAdminRoomType(
         where: {
           roomTypeId: roomType.id,
           booking: {
-            status: { in: ["DRAFT", "PENDING_PAYMENT", "CONFIRMED"] },
+            status: { in: ["DRAFT", "PENDING_PAYMENT", "CONFIRMED", "CHECKED_IN"] },
             checkOut: { gte: today },
           },
         },

@@ -3,12 +3,12 @@ import { BookingError } from "./booking.errors.js";
 import type { BookingQuote, BookingSelectionInput } from "./booking.types.js";
 import { prisma } from "../../lib/prisma.js";
 
-export async function getBookingQuote(input: BookingSelectionInput): Promise<BookingQuote> {
+export async function getBookingQuote(input: BookingSelectionInput, propertyId?: string): Promise<BookingQuote> {
   const now = new Date();
   const nights = Math.round((input.departure.getTime() - input.arrival.getTime()) / 86_400_000);
   const guests = input.adults + input.children;
-  const roomType = await prisma.roomType.findUnique({
-    where: { id: input.roomTypeId },
+  const roomType = await prisma.roomType.findFirst({
+    where: { id: input.roomTypeId, ...(propertyId ? { propertyId } : {}) },
     include: {
       property: {
         select: {

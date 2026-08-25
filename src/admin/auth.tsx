@@ -143,10 +143,22 @@ export function canReadReservations(role?: AdminRole) {
   return role === "ADMIN" || role === "RECEPTION" || role === "ACCOUNTING";
 }
 
+export function canUsePlanning(role?: AdminRole) {
+  return role === "ADMIN" || role === "RECEPTION" || role === "HOUSEKEEPING";
+}
+
 export function RequireReservationAccess({ children }: { children: ReactNode }) {
   const { profile } = useAdminAuth();
   if (!canReadReservations(profile?.membership.role)) {
     return <Navigate to="/admin/chambres" replace />;
+  }
+  return children;
+}
+
+export function RequirePlanningAccess({ children }: { children: ReactNode }) {
+  const { profile } = useAdminAuth();
+  if (!canUsePlanning(profile?.membership.role)) {
+    return <Navigate to="/admin/reservations" replace />;
   }
   return children;
 }

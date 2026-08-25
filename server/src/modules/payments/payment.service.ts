@@ -182,9 +182,12 @@ async function finalizePayment(transaction: Prisma.TransactionClient, paymentId:
       data: { roomId: hold.roomId, bookingRoomId: room.id, source: "BOOKING", status: "ACTIVE", checkIn: booking.checkIn, checkOut: booking.checkOut },
     });
     await transaction.booking.update({ where: { id: booking.id }, data: { status: BookingStatus.CONFIRMED, confirmedAt: new Date() } });
-  } else if (booking.status !== BookingStatus.CONFIRMED && booking.status !== BookingStatus.COMPLETED) {
+  } else if (booking.status !== BookingStatus.CONFIRMED && booking.status !== BookingStatus.CHECKED_IN && booking.status !== BookingStatus.COMPLETED) {
     throw new PaymentApiError(409, "BOOKING_NOT_CONFIRMABLE", "Le paiement concerne une réservation qui ne peut plus être confirmée automatiquement.");
   }
+  const bookingStatusAfterPayment = booking.status === BookingStatus.PENDING_PAYMENT
+    ? BookingStatus.CONFIRMED
+    : booking.status;
 
   const updated = await transaction.payment.update({
     where: { id: payment.id },
@@ -199,7 +202,7 @@ async function finalizePayment(transaction: Prisma.TransactionClient, paymentId:
       entityType: "Payment",
       entityId: payment.id,
       before: { paymentStatus: payment.status, bookingStatus: booking.status },
-      after: { paymentStatus: updated.status, bookingStatus: BookingStatus.CONFIRMED },
+      after: { paymentStatus: updated.status, bookingStatus: bookingStatusAfterPayment },
       metadata: { invoiceNumber: invoice.number },
     },
   });

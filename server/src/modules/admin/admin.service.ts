@@ -25,7 +25,7 @@ import {
   type AdminRoomCreateInput,
   type AdminRoomDeleteInput,
 } from "./admin.room-create-delete.js";
-import { bookingStatusTransitionAllowed, type AdminBookingStatusInput } from "./admin.booking-actions.js";
+import { assertBookingStatusTiming, bookingStatusTransitionAllowed, type AdminBookingStatusInput } from "./admin.booking-actions.js";
 import type { AdminAvailabilityBlockInput } from "./admin.availability-block.js";
 import { enqueueBookingNotification } from "../notifications/notification.service.js";
 
@@ -339,8 +339,8 @@ export async function listAdminBookings(
   const where = bookingWhere(membership.propertyId, input, today, true, includeContactDetails);
   const summaryWhere = bookingWhere(membership.propertyId, input, today, false, includeContactDetails);
   const operationalStatuses: BookingStatus[] = [
-    BookingStatus.PENDING_PAYMENT,
     BookingStatus.CONFIRMED,
+    BookingStatus.CHECKED_IN,
   ];
 
   const [bookings, total, summaryTotal, statusGroups, arrivalsToday, departuresToday] =
@@ -457,6 +457,10 @@ export async function confirmAdminBooking(
   adminUserId: string,
   bookingId: string,
   ipAddress?: string,
+  audit?: {
+    action: string;
+    metadata: Record<string, string>;
+  },
 ) {
   await expirePropertyHolds(membership.propertyId);
 
@@ -533,12 +537,12 @@ export async function confirmAdminBooking(
         propertyId: membership.propertyId,
         adminUserId,
         bookingId: booking.id,
-        action: "BOOKING_CONFIRMED_MANUALLY",
+        action: audit?.action ?? "BOOKING_CONFIRMED_MANUALLY",
         entityType: "Booking",
         entityId: booking.id,
         before: { status: BookingStatus.PENDING_PAYMENT, holdStatus: "ACTIVE" },
         after: { status: BookingStatus.CONFIRMED, holdStatus: "CONVERTED" },
-        metadata: { source: "ADMIN_MVP" },
+        metadata: audit?.metadata ?? { source: "ADMIN_MVP" },
         ...(ipAddress ? { ipAddress } : {}),
       },
     });
@@ -610,27 +614,24 @@ export async function updateAdminBookingStatus(
         }
 
         const today = propertyDate(membership.property.timezone);
-        if (input.status === BookingStatus.COMPLETED && booking.checkOut > today) {
-          throw new AdminApiError(409, "BOOKING_NOT_FINISHABLE", "Le séjour ne peut être terminé avant sa date de départ.");
-        }
-        if (input.status === BookingStatus.NO_SHOW && booking.checkIn > today) {
-          throw new AdminApiError(409, "BOOKING_NOT_NO_SHOW", "L’absence ne peut être constatée avant la date d’arrivée.");
-        }
+        assertBookingStatusTiming(input.status, booking.checkIn, booking.checkOut, today);
 
-        await transaction.roomAllocation.updateMany({
-          where: {
-            status: "ACTIVE",
-            OR: [
-              { bookingRoom: { is: { bookingId: booking.id } } },
-              { reservationHold: { is: { bookingId: booking.id } } },
-            ],
-          },
-          data: { status: "RELEASED" },
-        });
-        await transaction.reservationHold.updateMany({
-          where: { bookingId: booking.id, status: "ACTIVE" },
-          data: { status: "RELEASED" },
-        });
+        if (input.status !== BookingStatus.CHECKED_IN) {
+          await transaction.roomAllocation.updateMany({
+            where: {
+              status: "ACTIVE",
+              OR: [
+                { bookingRoom: { is: { bookingId: booking.id } } },
+                { reservationHold: { is: { bookingId: booking.id } } },
+              ],
+            },
+            data: { status: "RELEASED" },
+          });
+          await transaction.reservationHold.updateMany({
+            where: { bookingId: booking.id, status: "ACTIVE" },
+            data: { status: "RELEASED" },
+          });
+        }
         const now = new Date();
         await transaction.booking.update({
           where: { id: booking.id },
@@ -751,8 +752,8 @@ export async function assignAdminBookingRoom(
     });
     const bookingRoom = booking?.rooms[0];
     if (!booking || !bookingRoom) throw new AdminApiError(404, "BOOKING_NOT_FOUND", "Réservation introuvable.");
-    if (booking.status !== BookingStatus.CONFIRMED) {
-      throw new AdminApiError(409, "BOOKING_ROOM_NOT_ASSIGNABLE", "Seule une réservation confirmée peut changer de chambre.");
+    if (booking.status !== BookingStatus.CONFIRMED && booking.status !== BookingStatus.CHECKED_IN) {
+      throw new AdminApiError(409, "BOOKING_ROOM_NOT_ASSIGNABLE", "Seule une réservation confirmée ou en cours peut changer de chambre.");
     }
     if (bookingRoom.roomId === roomId) return booking.id;
 

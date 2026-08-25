@@ -37,6 +37,15 @@ import { recordManualPayment, refundPayment } from "../billing/billing.service.j
 import { getInvoiceForProperty, listBookingInvoices, renderInvoicePdf } from "../billing/invoice.service.js";
 import { storeRoomTypeCover } from "../media/media.service.js";
 import {
+  createAdminBooking,
+  getAdminBookingOptions,
+  getAdminBookingQuote,
+  parseAdminBookingCreateBody,
+  parseAdminBookingIdempotencyKey,
+  parseAdminBookingOptionsQuery,
+  parseAdminBookingQuoteBody,
+} from "./admin.booking-create.js";
+import {
   confirmAdminBooking,
   assignAdminBookingRoom,
   createAdminAvailabilityBlock,
@@ -66,6 +75,13 @@ type BookingListQuery = {
   from?: string;
   to?: string;
   todayOnly?: string;
+};
+
+type BookingOptionsQuery = {
+  arrival?: string;
+  departure?: string;
+  adults?: string;
+  children?: string;
 };
 
 type BookingParams = {
@@ -292,6 +308,44 @@ export async function adminRoutes(app: FastifyInstance) {
       handleAdminRoute(reply, async () => ({
         data: await listAdminBookings(bookingReadMembership(request), parseBookingQuery(request.query)),
       })),
+  );
+
+  app.get<{ Querystring: BookingOptionsQuery }>(
+    "/admin/booking-options",
+    { preHandler: authenticateAdmin },
+    async (request, reply) => handleAdminRoute(reply, async () => ({
+      data: await getAdminBookingOptions(
+        bookingOperationsMembership(request),
+        parseAdminBookingOptionsQuery(request.query),
+      ),
+    })),
+  );
+
+  app.post<{ Body: unknown }>(
+    "/admin/booking-quotes",
+    { preHandler: authenticateAdmin, config: { rateLimit: { max: 120, timeWindow: "15 minutes" } } },
+    async (request, reply) => handleAdminRoute(reply, async () => ({
+      data: await getAdminBookingQuote(
+        bookingOperationsMembership(request),
+        parseAdminBookingQuoteBody(request.body),
+      ),
+    })),
+  );
+
+  app.post<{ Body: unknown }>(
+    "/admin/bookings",
+    { preHandler: authenticateAdmin, config: { rateLimit: { max: 30, timeWindow: "15 minutes" } } },
+    async (request, reply) => handleAdminRoute(reply, async () => {
+      const context = requireAdminContext(request);
+      const booking = await createAdminBooking(
+        bookingOperationsMembership(request),
+        context.user.id,
+        parseAdminBookingCreateBody(request.body),
+        parseAdminBookingIdempotencyKey(request.headers["idempotency-key"]),
+        request.ip,
+      );
+      return reply.code(201).send({ data: booking });
+    }),
   );
 
   app.get<{ Params: BookingParams }>(

@@ -1,5 +1,6 @@
 import {
   BedDouble,
+  CalendarClock,
   CalendarRange,
   ChevronRight,
   Hotel,
@@ -10,10 +11,11 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { AdminRole } from "../api/admin";
-import { canReadReservations, useAdminAuth } from "./auth";
+import { canReadReservations, canUsePlanning, useAdminAuth } from "./auth";
 
 const navigation = [
   { to: "/admin/reservations", label: "Réservations", icon: CalendarRange },
+  { to: "/admin/planning", label: "Planning", icon: CalendarClock },
   { to: "/admin/chambres", label: "Chambres", icon: BedDouble },
 ];
 
@@ -39,9 +41,11 @@ export function AdminLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const visibleNavigation = !canReadReservations(profile?.membership.role)
-    ? navigation.filter((item) => item.to === "/admin/chambres")
-    : navigation;
+  const visibleNavigation = navigation.filter((item) => {
+    if (item.to === "/admin/reservations") return canReadReservations(profile?.membership.role);
+    if (item.to === "/admin/planning") return canUsePlanning(profile?.membership.role);
+    return true;
+  });
 
   useEffect(() => setMobileOpen(false), [pathname]);
   useEffect(() => {

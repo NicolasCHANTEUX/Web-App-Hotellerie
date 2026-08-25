@@ -1,8 +1,8 @@
 export type BookingGuestInput = {
   firstName: string;
   lastName: string;
-  email: string;
-  phone: string;
+  email?: string;
+  phone?: string;
   countryCode?: string;
 };
 
@@ -62,7 +62,7 @@ export type BookingQuote = {
 export type BookingConfirmation = {
   id: string;
   reference: string;
-  status: "DRAFT" | "PENDING_PAYMENT" | "CONFIRMED" | "CANCELLED" | "EXPIRED" | "COMPLETED" | "NO_SHOW";
+  status: "DRAFT" | "PENDING_PAYMENT" | "CONFIRMED" | "CHECKED_IN" | "CANCELLED" | "EXPIRED" | "COMPLETED" | "NO_SHOW";
   room: {
     name: string;
   };

@@ -71,6 +71,22 @@ test("le hash change si le payload ou le prix attendu change", () => {
   );
 });
 
+test("le contexte de création administrateur participe à l'idempotence", () => {
+  const original = input();
+  const first = bookingRequestHash(original, {
+    propertyId: "property-1",
+    source: "PHONE",
+    acceptanceChannel: "ADMIN",
+  });
+  const second = bookingRequestHash(original, {
+    propertyId: "property-1",
+    source: "EMAIL",
+    acceptanceChannel: "ADMIN",
+  });
+
+  assert.notEqual(first, second);
+});
+
 test("refuse explicitement le réemploi d'une clé avec un autre payload", () => {
   assert.doesNotThrow(() => assertIdempotencyRequestMatches("same", "same"));
   assert.throws(

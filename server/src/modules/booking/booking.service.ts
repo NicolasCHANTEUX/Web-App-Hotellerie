@@ -1,4 +1,4 @@
-import { Prisma } from "../../generated/prisma/client.js";
+import { Prisma, type BookingSource } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import { BookingError } from "./booking.errors.js";
 import { expireStaleBookingHolds } from "./booking.holds.js";
@@ -14,6 +14,14 @@ import { retentionDeadlineFrom } from "../privacy/retention.service.js";
 
 const MAX_TRANSACTION_ATTEMPTS = 3;
 const HOLD_DURATION_MS = 24 * 60 * 60 * 1_000;
+
+export type BookingCreationOptions = {
+  propertyId: string;
+  source: BookingSource;
+  acceptanceChannel: "ADMIN";
+  recordedByAdminUserId: string;
+  notifyOptioned?: boolean;
+};
 
 function dateOnly(date: Date) {
   return date.toISOString().slice(0, 10);
@@ -65,9 +73,14 @@ function idempotencyRequestHash(snapshot: unknown) {
 export async function createBooking(
   input: CreateBookingInput,
   idempotencyKey: string,
+  options?: BookingCreationOptions,
 ): Promise<BookingConfirmation> {
   const reference = bookingReferenceFromIdempotencyKey(idempotencyKey);
-  const requestHash = bookingRequestHash(input);
+  const requestHash = bookingRequestHash(input, options ? {
+    propertyId: options.propertyId,
+    source: options.source,
+    acceptanceChannel: options.acceptanceChannel,
+  } : undefined);
 
   for (let attempt = 1; attempt <= MAX_TRANSACTION_ATTEMPTS; attempt += 1) {
     try {
@@ -138,7 +151,7 @@ export async function createBooking(
             options: existingBooking.extras.map((extra) => extra.nameSnapshot),
             total: Number(existingBooking.total),
             currency: existingBooking.currency,
-            email: existingGuest.email ?? input.guest.email,
+            email: existingGuest.email ?? input.guest.email ?? "",
             holdExpiresAt: existingBooking.hold.expiresAt.toISOString(),
           };
         }
@@ -221,7 +234,12 @@ export async function createBooking(
           },
         });
 
-        if (!roomType || !roomType.isPublished || roomType.archivedAt) {
+        if (
+          !roomType
+          || !roomType.isPublished
+          || roomType.archivedAt
+          || (options && roomType.propertyId !== options.propertyId)
+        ) {
           throw new BookingError(404, "ROOM_TYPE_NOT_FOUND", "Ce type de chambre est introuvable.");
         }
         if (input.adults > roomType.maxAdults || input.children > roomType.maxChildren || guests > roomType.maxGuests) {
@@ -304,7 +322,8 @@ export async function createBooking(
               cancellationPolicy: termsVersion.cancellationPolicy,
               acceptedAt: now.toISOString(),
               acceptedExplicitly: input.termsAccepted,
-              acceptanceChannel: "WEBSITE",
+              acceptanceChannel: options?.acceptanceChannel ?? "WEBSITE",
+              ...(options ? { recordedByAdminUserId: options.recordedByAdminUserId } : {}),
             }
           : {
               source: "RATE_PLAN_FALLBACK",
@@ -312,7 +331,8 @@ export async function createBooking(
               ratePlanCode: ratePlan.code,
               acceptedAt: now.toISOString(),
               acceptedExplicitly: input.termsAccepted,
-              acceptanceChannel: "WEBSITE",
+              acceptanceChannel: options?.acceptanceChannel ?? "WEBSITE",
+              ...(options ? { recordedByAdminUserId: options.recordedByAdminUserId } : {}),
             };
 
         const pricingSnapshot = {
@@ -390,31 +410,40 @@ export async function createBooking(
           taxTotal: moneySnapshot(taxTotal),
           total: moneySnapshot(total),
           currency: ratePlan.currency,
+          creation: {
+            source: options?.source ?? "WEBSITE",
+            channel: options?.acceptanceChannel ?? "WEBSITE",
+          },
         };
 
         await expireStaleBookingHolds(transaction, now, roomType.propertyId);
 
-        const activeRequestsForContact = await transaction.booking.count({
-          where: {
-            propertyId: roomType.propertyId,
-            status: "PENDING_PAYMENT",
-            hold: { is: { status: "ACTIVE", expiresAt: { gt: now } } },
-            guests: {
-              some: {
-                OR: [
-                  { email: input.guest.email },
-                  { phone: input.guest.phone },
-                ],
+        if (!options) {
+          if (!input.guest.email || !input.guest.phone) {
+            throw new BookingError(400, "INVALID_BOOKING", "Les coordonnées du client sont incomplètes.");
+          }
+          const activeRequestsForContact = await transaction.booking.count({
+            where: {
+              propertyId: roomType.propertyId,
+              status: "PENDING_PAYMENT",
+              hold: { is: { status: "ACTIVE", expiresAt: { gt: now } } },
+              guests: {
+                some: {
+                  OR: [
+                    { email: input.guest.email },
+                    { phone: input.guest.phone },
+                  ],
+                },
               },
             },
-          },
-        });
-        if (activeRequestsForContact >= 2) {
-          throw new BookingError(
-            429,
-            "BOOKING_CONTACT_LIMITED",
-            "Deux demandes sont déjà actives pour ces coordonnées. Contactez l'hôtel pour réserver plusieurs chambres.",
-          );
+          });
+          if (activeRequestsForContact >= 2) {
+            throw new BookingError(
+              429,
+              "BOOKING_CONTACT_LIMITED",
+              "Deux demandes sont déjà actives pour ces coordonnées. Contactez l'hôtel pour réserver plusieurs chambres.",
+            );
+          }
         }
 
         const booking = await transaction.booking.create({
@@ -422,7 +451,7 @@ export async function createBooking(
             propertyId: roomType.propertyId,
             reference,
             status: "PENDING_PAYMENT",
-            source: "WEBSITE",
+            source: options?.source ?? "WEBSITE",
             checkIn: input.arrival,
             checkOut: input.departure,
             adults: input.adults,
@@ -546,23 +575,25 @@ export async function createBooking(
           },
         });
 
-        await enqueueBookingNotification(transaction, {
-          propertyId: roomType.propertyId,
-          bookingId: booking.id,
-          recipient: input.guest.email,
-          template: "BOOKING_OPTIONED",
-          idempotencyKey: `booking:${booking.id}:optioned`,
-          payload: {
-            firstName: input.guest.firstName,
-            reference: booking.reference,
-            roomName: roomType.name,
-            arrival: dateOnly(input.arrival),
-            departure: dateOnly(input.departure),
-            total: Number(total),
-            currency: ratePlan.currency,
-            holdExpiresAt: hold.expiresAt.toISOString(),
-          },
-        });
+        if (options?.notifyOptioned !== false && input.guest.email) {
+          await enqueueBookingNotification(transaction, {
+            propertyId: roomType.propertyId,
+            bookingId: booking.id,
+            recipient: input.guest.email,
+            template: "BOOKING_OPTIONED",
+            idempotencyKey: `booking:${booking.id}:optioned`,
+            payload: {
+              firstName: input.guest.firstName,
+              reference: booking.reference,
+              roomName: roomType.name,
+              arrival: dateOnly(input.arrival),
+              departure: dateOnly(input.departure),
+              total: Number(total),
+              currency: ratePlan.currency,
+              holdExpiresAt: hold.expiresAt.toISOString(),
+            },
+          });
+        }
 
         return {
           id: booking.id,
@@ -576,7 +607,7 @@ export async function createBooking(
           options: pricedExtras.map(({ extra }) => extra.name),
           total: Number(total),
           currency: ratePlan.currency,
-          email: input.guest.email,
+          email: input.guest.email ?? "",
           holdExpiresAt: hold.expiresAt.toISOString(),
         };
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
