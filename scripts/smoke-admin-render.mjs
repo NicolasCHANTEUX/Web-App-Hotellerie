@@ -311,6 +311,8 @@ async function renderAdmin(pathname, {
   deleteError = null,
 } = {}) {
   const window = new Window({ url: `http://localhost:5173${pathname}` });
+  let unmountReact = () => {};
+  window.__RIVAGE_CAPTURE_ROOT__ = (unmount) => { unmountReact = unmount; };
   const requests = [];
   let roomGetRequests = 0;
   let roomPatchPayload = null;
@@ -460,7 +462,10 @@ async function renderAdmin(pathname, {
   };
 
   await import(`${bundleUrl}?admin-smoke=${Date.now()}-${Math.random()}`);
-  await new Promise((resolveDelay) => setTimeout(resolveDelay, 180));
+  const routeDeadline = Date.now() + 2_000;
+  while (!window.document.querySelector(".admin-login-page, .admin-shell") && Date.now() < routeDeadline) {
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 25));
+  }
 
   if (period) {
     const [arrivalInput, departureInput] = window.document.querySelectorAll('.admin-room-date-controls input[type="date"]');
@@ -495,7 +500,10 @@ async function renderAdmin(pathname, {
     const editButton = window.document.querySelector(".admin-booking-edit-button");
     assert.ok(editButton, "The booking edit action should render for operational roles.");
     editButton.click();
-    await new Promise((resolveDelay) => setTimeout(resolveDelay, 180));
+    const editDeadline = Date.now() + 2_000;
+    while (!window.document.querySelector('.admin-booking-edit-dialog[role="dialog"]') && Date.now() < editDeadline) {
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 25));
+    }
     const editDialog = window.document.querySelector('.admin-booking-edit-dialog[role="dialog"]');
     assert.ok(editDialog, "The booking edit dialog should open.");
     const stayInput = editDialog.querySelector('input[type="date"]');
@@ -523,7 +531,10 @@ async function renderAdmin(pathname, {
     const createButton = window.document.querySelector(".admin-booking-create-button");
     assert.ok(createButton, "The booking creation button should render for operational roles.");
     createButton.click();
-    await new Promise((resolveDelay) => setTimeout(resolveDelay, 420));
+    const createDeadline = Date.now() + 2_000;
+    while (bookingQuoteRequests === 0 && Date.now() < createDeadline) {
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 25));
+    }
     const createDialog = window.document.querySelector('.admin-booking-create-dialog[role="dialog"]');
     assert.ok(createDialog, "The booking creation dialog should open.");
     bookingCreateObservation.opened = true;
@@ -812,6 +823,8 @@ async function renderAdmin(pathname, {
     departureMax: dateInputs[1]?.getAttribute("max") ?? null,
     childElements: root?.children.length ?? 0,
   };
+  unmountReact();
+  await new Promise((resolveDelay) => setTimeout(resolveDelay, 0));
   window.close();
   return result;
 }

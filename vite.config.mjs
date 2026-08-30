@@ -1,16 +1,21 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { visualizer } from "rollup-plugin-visualizer";
 
-export default defineConfig({
-  plugins: [react(), tailwindcss()],
+export default defineConfig(({ mode }) => ({
+  plugins: [
+    react(),
+    tailwindcss(),
+    ...(mode === "analyze" ? [visualizer({ filename: "dist/bundle-report.html", gzipSize: true, brotliSize: true })] : []),
+  ],
   build: {
     rollupOptions: {
       output: {
         manualChunks(id) {
           const normalized = id.replaceAll("\\", "/");
           if (/node_modules\/(react|react-dom|react-router|react-router-dom)\//.test(normalized)) return "react-vendor";
-          if (normalized.includes("/src/admin/") || normalized.endsWith("/src/api/admin.ts")) return "admin-core";
+          if (normalized.includes("/node_modules/lucide-react/")) return "icons";
           return undefined;
         },
       },
@@ -28,4 +33,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

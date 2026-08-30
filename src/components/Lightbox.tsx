@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ResponsiveImage } from "./ResponsiveImage";
 
 type Props = {
   images: string[];
@@ -21,7 +22,7 @@ export function Lightbox({ images, index, alt, onClose, onChange }: Props) {
       <button className="lightbox-nav left-4" onClick={previous} aria-label="Image precedente">
         <ChevronLeft />
       </button>
-      <img src={images[index]} alt={alt} className="max-h-[82vh] w-full max-w-5xl object-contain" />
+      <ResponsiveImage priority src={images[index]} sizes="100vw" width={1600} height={1000} alt={alt} className="max-h-[82vh] w-full max-w-5xl object-contain" />
       <button className="lightbox-nav right-4" onClick={next} aria-label="Image suivante">
         <ChevronRight />
       </button>

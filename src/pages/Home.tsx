@@ -13,11 +13,13 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { getRoomTypes } from "../api/hotel";
 import { Lightbox } from "../components/Lightbox";
+import { ResponsiveImage } from "../components/ResponsiveImage";
 import { SearchWidget } from "../components/SearchWidget";
 import { StayCta } from "../components/StayCta";
 import { useRemoteData } from "../hooks/useRemoteData";
 
-const heroImage = "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1800&q=88";
+const heroImage = "/images/hotel/hero-1280.webp";
+const heroSourceSet = "/images/hotel/hero-768.webp 768w, /images/hotel/hero-1280.webp 1280w, /images/hotel/hero-1920.webp 1920w";
 
 const hotelImages = [
   "https://images.unsplash.com/photo-1595576508898-0ad5c879a061?auto=format&fit=crop&w=1200&q=88",
@@ -71,7 +73,7 @@ export function Home() {
   return (
     <>
       <section className="rivage-hero">
-        <img src={heroImage} alt="Hôtel Rivage et sa piscine au crépuscule" />
+        <ResponsiveImage priority src={heroImage} srcSet={heroSourceSet} sizes="100vw" width={1920} height={1080} alt="Hôtel Rivage et sa piscine au crépuscule" />
         <div className="rivage-hero-content">
           <p className="eyebrow light">Cannes, Côte d'Azur</p>
           <h1>Une parenthèse de<br />calme au cœur de la<br />Côte d'Azur</h1>
@@ -97,7 +99,7 @@ export function Home() {
               <span><Coffee /> Petit-déjeuner maison</span><span><MapPin /> Centre-ville proche</span>
             </div>
           </div>
-          <div className="intro-visual"><img src={heroImage} alt="Piscine de l'Hôtel Rivage bordée de palmiers" /></div>
+          <div className="intro-visual"><ResponsiveImage src={heroImage} srcSet={heroSourceSet} sizes="(max-width: 900px) 100vw, 50vw" width={1280} height={900} alt="Piscine de l'Hôtel Rivage bordée de palmiers" /></div>
         </div>
       </section>
 
@@ -110,7 +112,7 @@ export function Home() {
             <Link className="text-link" to="/hebergements">Découvrir nos hébergements <span>→</span></Link>
           </div>
           <div className="stays-gallery">
-            {stayImages.map((image, index) => <button type="button" key={image} onClick={() => setLightboxIndex(index)} aria-label={`Agrandir la photo ${index + 1}`}><img src={image} alt={`Aperçu des hébergements de l'Hôtel Rivage ${index + 1}`} /></button>)}
+            {stayImages.map((image, index) => <button type="button" key={image} onClick={() => setLightboxIndex(index)} aria-label={`Agrandir la photo ${index + 1}`}><ResponsiveImage src={image} sizes="(max-width: 900px) 50vw, 28vw" width={800} height={640} alt={`Aperçu des hébergements de l'Hôtel Rivage ${index + 1}`} /></button>)}
           </div>
         </div>
       </section>
@@ -132,7 +134,7 @@ export function Home() {
       <section className="home-band location-band">
         <div className="home-container location-grid">
           <div><p className="eyebrow">Localisation</p><h2>Tout à portée de pas</h2><div className="nearby-list">{nearby.map(([name, time]) => <div key={name}><MapPin /><p><strong>{name}</strong><span>{time}</span></p></div>)}</div></div>
-          <div className="location-visual"><img src="https://pierretravel.rs/media/sys/place/image/letovanje_francuska_azurna-obala_kan.jpg" alt="Plage et hôtels de la Croisette à Cannes" /><div><MapPin /><p><strong>Hôtel Rivage</strong><span>26 avenue des Pins, 06400 Cannes</span></p><a href="https://maps.google.com" target="_blank" rel="noreferrer">Voir l'itinéraire →</a></div></div>
+          <div className="location-visual"><ResponsiveImage src="/images/hotel/cannes-1280.webp" srcSet="/images/hotel/cannes-768.webp 768w, /images/hotel/cannes-1280.webp 1280w" sizes="(max-width: 900px) 100vw, 60vw" width={1280} height={760} alt="Littoral méditerranéen à proximité de Cannes" /><div><MapPin /><p><strong>Hôtel Rivage</strong><span>26 avenue des Pins, 06400 Cannes</span></p><a href="https://maps.google.com" target="_blank" rel="noreferrer">Voir l'itinéraire →</a></div></div>
         </div>
       </section>
 

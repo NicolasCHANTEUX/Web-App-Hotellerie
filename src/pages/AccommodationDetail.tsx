@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getRoomType } from "../api/hotel";
 import { Lightbox } from "../components/Lightbox";
+import { ResponsiveImage } from "../components/ResponsiveImage";
 import { useRemoteData } from "../hooks/useRemoteData";
 
 export function AccommodationDetail() {
@@ -16,7 +17,7 @@ export function AccommodationDetail() {
   return (
     <>
       <section className="detail-hero">
-        <img src={accommodation.hero} alt={accommodation.name} />
+        <ResponsiveImage priority src={accommodation.hero} sizes="100vw" width={1600} height={900} alt={accommodation.name} />
         <div>
           <p className="eyebrow text-ivory/80">{accommodation.category}</p>
           <h1>{accommodation.name}</h1>
@@ -48,7 +49,7 @@ export function AccommodationDetail() {
         <div className="gallery-grid">
           {accommodation.gallery.map((image, index) => (
             <button key={image} type="button" onClick={() => setLightboxIndex(index)}>
-              <img src={image} alt={`${accommodation.name} ${index + 1}`} />
+              <ResponsiveImage src={image} sizes="(max-width: 900px) 100vw, 33vw" width={900} height={680} alt={`${accommodation.name} ${index + 1}`} />
               <span><Maximize2 size={18} /> Agrandir</span>
             </button>
           ))}

@@ -20,7 +20,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { useDeferredValue, useEffect, useId, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useId, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   AdminApiError,
@@ -43,8 +43,7 @@ import {
   updateAdminBookingStatus,
 } from "../../api/admin";
 import { useAdminAuth } from "../../admin/auth";
-import { AdminBookingCreateDialog } from "./AdminBookingCreateDialog";
-import { AdminBookingEditDialog } from "./AdminBookingEditDialog";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import {
   AdminEmptyState,
   AdminErrorState,
@@ -59,6 +58,15 @@ import {
   formatMoney,
   stayNights,
 } from "../../admin/ui";
+
+const AdminBookingCreateDialog = lazy(async () => {
+  const module = await import("./AdminBookingCreateDialog");
+  return { default: module.AdminBookingCreateDialog };
+});
+const AdminBookingEditDialog = lazy(async () => {
+  const module = await import("./AdminBookingEditDialog");
+  return { default: module.AdminBookingEditDialog };
+});
 
 const PAGE_SIZE = 5;
 
@@ -106,7 +114,7 @@ export function AdminBookings() {
   const isAccounting = profile?.membership.role === "ACCOUNTING";
   const canCreateBooking = profile?.membership.role === "ADMIN" || profile?.membership.role === "RECEPTION";
   const [search, setSearch] = useState("");
-  const deferredSearch = useDeferredValue(search);
+  const deferredSearch = useDebouncedValue(search);
   const [status, setStatus] = useState<BookingStatus | "">("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -250,7 +258,7 @@ export function AdminBookings() {
       </section>
 
       {selectedBookingId && <BookingDetailDrawer id={selectedBookingId} onClose={closeBookingDetail} onChanged={() => setRetryKey((value) => value + 1)} />}
-      {createDialogOpen && <AdminBookingCreateDialog
+      {createDialogOpen && <Suspense fallback={<AdminDialogLoading />}><AdminBookingCreateDialog
         onClose={() => setCreateDialogOpen(false)}
         onCreated={(booking) => {
           setCreateDialogOpen(false);
@@ -258,7 +266,7 @@ export function AdminBookings() {
           setPage(1);
           setRetryKey((value) => value + 1);
         }}
-      />}
+      /></Suspense>}
     </>
   );
 }
@@ -731,7 +739,7 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
           </div>
         )}
       </aside>
-      {canOperateBooking && editOpen && booking && <AdminBookingEditDialog
+      {canOperateBooking && editOpen && booking && <Suspense fallback={<AdminDialogLoading />}><AdminBookingEditDialog
         booking={booking}
         onClose={closeEditDialog}
         onSaved={(updated) => {
@@ -740,7 +748,11 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
           setBooking(updated);
           onChanged();
         }}
-      />}
+      /></Suspense>}
     </div>
   );
+}
+
+function AdminDialogLoading() {
+  return <div className="admin-auth-loading" role="status"><span className="admin-spinner" /><p>Ouverture…</p></div>;
 }

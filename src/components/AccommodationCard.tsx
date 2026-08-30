@@ -1,11 +1,12 @@
 import { Link } from "react-router-dom";
 import { Accommodation } from "../types/hotel";
+import { ResponsiveImage } from "./ResponsiveImage";
 
 export function AccommodationCard({ accommodation }: { accommodation: Accommodation }) {
   return (
     <article className="room-card">
       <Link to={`/hebergements/${accommodation.slug}`} className="room-image">
-        <img src={accommodation.hero} alt={accommodation.name} />
+        <ResponsiveImage src={accommodation.hero} sizes="(max-width: 760px) 100vw, 50vw" width={800} height={500} alt={accommodation.name} />
         <span>{accommodation.surface}</span>
         {accommodation.promotion && <em className="room-promotion-badge">-{accommodation.promotion.discountPercent}% · {accommodation.promotion.label}</em>}
       </Link>

@@ -16,7 +16,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { useDeferredValue, useEffect, useId, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useId, useRef, useState } from "react";
 import type { FormEvent, RefObject } from "react";
 import {
   AdminApiError,
@@ -36,6 +36,7 @@ import {
   updateAdminRoom,
 } from "../../api/admin";
 import { useAdminAuth } from "../../admin/auth";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import {
   AdminEmptyState,
   AdminErrorState,
@@ -46,7 +47,11 @@ import {
   formatDateTime,
   roomStatusLabel,
 } from "../../admin/ui";
-import { AdminRoomTypesDialog } from "./AdminRoomTypesDialog";
+
+const AdminRoomTypesDialog = lazy(async () => {
+  const module = await import("./AdminRoomTypesDialog");
+  return { default: module.AdminRoomTypesDialog };
+});
 
 const PAGE_SIZE = 20;
 const roomStatuses: RoomStatus[] = ["ACTIVE", "OUT_OF_SERVICE", "ARCHIVED"];
@@ -120,7 +125,7 @@ export function AdminRooms() {
   const { accessToken, logout, profile } = useAdminAuth();
   const propertyTimeZone = profile?.membership.property.timezone;
   const [search, setSearch] = useState("");
-  const deferredSearch = useDeferredValue(search);
+  const deferredSearch = useDebouncedValue(search);
   const [status, setStatus] = useState<RoomStatus | "">("");
   const [roomTypeId, setRoomTypeId] = useState("");
   const [from, setFrom] = useState("");
@@ -358,13 +363,13 @@ export function AdminRooms() {
       )}
 
       {managingRoomTypes && canManageRooms && (
-        <AdminRoomTypesDialog
+        <Suspense fallback={<div className="admin-auth-loading" role="status"><span className="admin-spinner" /><p>Ouverture…</p></div>}><AdminRoomTypesDialog
           onClose={() => setManagingRoomTypes(false)}
           onChanged={() => {
             setPage(1);
             setRetryKey((value) => value + 1);
           }}
-        />
+        /></Suspense>
       )}
     </>
   );

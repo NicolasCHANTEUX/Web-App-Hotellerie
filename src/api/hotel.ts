@@ -1,16 +1,17 @@
 import { apiGet, apiPost } from "./client";
+import { cachedCatalogGet } from "./catalogCache";
 import { Accommodation, AvailabilityResult, BookingConfirmation, BookingOption, BookingQuote, BookingSelectionInput, CreateBookingInput } from "../types/hotel";
 
 export function getRoomTypes(signal?: AbortSignal) {
-  return apiGet<Accommodation[]>("/room-types", signal);
+  return cachedCatalogGet<Accommodation[]>("/room-types", signal);
 }
 
 export function getRoomType(slug: string, signal?: AbortSignal) {
-  return apiGet<Accommodation>(`/room-types/${encodeURIComponent(slug)}`, signal);
+  return cachedCatalogGet<Accommodation>(`/room-types/${encodeURIComponent(slug)}`, signal);
 }
 
 export function getExtras(signal?: AbortSignal) {
-  return apiGet<BookingOption[]>("/extras", signal);
+  return cachedCatalogGet<BookingOption[]>("/extras", signal);
 }
 
 export function getAvailability(params: { arrival: string; departure: string; adults: number; children: number }, signal?: AbortSignal) {

@@ -4,8 +4,42 @@ import { RouterProvider } from "react-router-dom";
 import { router } from "./router";
 import "./index.css";
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <RouterProvider router={router} />
-  </StrictMode>,
-);
+if (window.location.pathname === "/") {
+  const heroPreload = document.createElement("link");
+  heroPreload.rel = "preload";
+  heroPreload.as = "image";
+  heroPreload.href = "/images/hotel/hero-1280.webp";
+  heroPreload.setAttribute("imagesrcset", "/images/hotel/hero-768.webp 768w, /images/hotel/hero-1280.webp 1280w, /images/hotel/hero-1920.webp 1920w");
+  heroPreload.setAttribute("imagesizes", "100vw");
+  heroPreload.setAttribute("fetchpriority", "high");
+  document.head.append(heroPreload);
+}
+
+const root = createRoot(document.getElementById("root")!);
+const smokeWindow = window as Window & { __RIVAGE_CAPTURE_ROOT__?: (unmount: () => void) => void };
+const isSmokeRender = Boolean(smokeWindow.__RIVAGE_CAPTURE_ROOT__);
+smokeWindow.__RIVAGE_CAPTURE_ROOT__?.(() => root.unmount());
+
+const routerPromise = window.location.pathname.startsWith("/admin")
+  ? import("./admin/router").then((module) => module.createAdminRouter())
+  : Promise.resolve(router);
+
+void routerPromise.then(async (activeRouter) => {
+  if (!activeRouter.state.initialized) {
+    await new Promise<void>((resolve) => {
+      const unsubscribe = activeRouter.subscribe((state) => {
+        if (!state.initialized) return;
+        unsubscribe();
+        resolve();
+      });
+    });
+  }
+  const application = (
+    <RouterProvider router={activeRouter} />
+  );
+  root.render(isSmokeRender ? application : (
+    <StrictMode>
+      {application}
+    </StrictMode>,
+  ));
+});

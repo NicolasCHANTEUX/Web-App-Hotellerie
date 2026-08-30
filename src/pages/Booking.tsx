@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { createBooking, getAvailability, getBookingQuote, getExtras } from "../api/hotel";
 import { BookingStepper } from "../components/BookingStepper";
+import { ResponsiveImage } from "../components/ResponsiveImage";
 import { useRemoteData } from "../hooks/useRemoteData";
 import { Accommodation, AvailabilityResult, BookingOption, BookingQuote } from "../types/hotel";
 
@@ -349,7 +350,7 @@ export function Booking() {
 function RoomChoice({ room, nights, selected, onSelect }: { room: Accommodation; nights: number; selected: boolean; onSelect: () => void }) {
   return (
     <button type="button" className={`booking-room ${selected ? "selected" : ""}`} onClick={onSelect} aria-pressed={selected} aria-label={`${selected ? "Hébergement sélectionné" : "Sélectionner"} : ${room.name}, ${room.price * nights} euros pour le séjour`}>
-      <img src={room.hero} alt="" />
+      <ResponsiveImage src={room.hero} sizes="110px" width={220} height={160} alt="" />
       <span className="booking-room-copy"><strong>{room.name}</strong><small>{room.rooms} · {room.surface} · max {room.capacity} pers.</small><span>{room.amenities.slice(0, 3).map((item) => <em key={item}>{item}</em>)}</span>{selected && <span className="room-selection-status"><Check />Sélectionnée</span>}</span>
       <span className="booking-room-price">{room.promotion && <em>-{room.promotion.discountPercent}% · {room.promotion.label}</em>}{room.originalPrice && <del>{room.originalPrice * nights} €</del>}<strong>{room.price * nights} € TTC</strong><small>{room.price} € TTC × {nights} nuit{nights > 1 ? "s" : ""}</small></span>
     </button>
@@ -364,7 +365,7 @@ function BookingSummary({ room, arrival, departure, adults, children, nights, op
   return (
     <aside className="booking-recap">
       <h2>Récapitulatif</h2>
-      {!room ? <div className="recap-placeholder">Aucun hébergement sélectionné</div> : <><img src={room.hero} alt={room.name} /><h3>{room.name}</h3><p className="recap-room-meta">{room.rooms} · {room.surface}</p></>}
+      {!room ? <div className="recap-placeholder">Aucun hébergement sélectionné</div> : <><ResponsiveImage src={room.hero} sizes="290px" width={580} height={320} alt={room.name} /><h3>{room.name}</h3><p className="recap-room-meta">{room.rooms} · {room.surface}</p></>}
       <dl className="recap-details"><div><dt>Arrivée</dt><dd>{dateLabel(arrival)}</dd></div><div><dt>Départ</dt><dd>{dateLabel(departure)}</dd></div><div><dt>Durée</dt><dd>{nights} nuit{nights > 1 ? "s" : ""}</dd></div><div><dt>Voyageurs</dt><dd>{adults} adulte{adults > 1 ? "s" : ""}{children ? ` · ${children} enfant${children > 1 ? "s" : ""}` : ""}</dd></div></dl>
       {room && <div className="recap-pricing"><p><span>{room.name} (TTC)</span><strong>{roomSubtotal} €</strong></p>{options.map((item) => <p key={item.id}><span>{item.name} (TTC)</span><strong>{quote?.extras.find((extra) => extra.id === item.id)?.total ?? optionAmount(item, nights, adults + children)} €</strong></p>)}{optionsSubtotal > 0 && <p className="sr-only">Options TTC : {optionsSubtotal} €</p>}<p><span>dont TVA incluse</span><strong>{vatTaxes} €</strong></p>{touristTax > 0 && <p><span>Taxe de séjour</span><strong>{touristTax} €</strong></p>}<p className="recap-total"><span>Total</span><strong>{total} €</strong></p>{quoteLoading && <p role="status"><small>Mise à jour du prix...</small></p>}</div>}
       <p className="recap-security"><LockKeyhole />Demande sécurisée · confirmation par l'hôtel</p>

@@ -63,31 +63,34 @@ export async function searchAvailability(input: AvailabilityInput, propertyId?: 
         },
         orderBy: [{ validFrom: "desc" }, { createdAt: "desc" }],
       },
-      rooms: {
-        where: {
-          status: "ACTIVE",
-          allocations: {
-            none: {
+      _count: {
+        select: {
+          rooms: {
+            where: {
               status: "ACTIVE",
-              checkIn: { lt: input.departure },
-              checkOut: { gt: input.arrival },
-              OR: [
-                { source: { in: ["BOOKING", "BLOCK"] } },
-                {
-                  source: "HOLD",
-                  reservationHold: { is: { status: "ACTIVE", expiresAt: { gt: now } } },
+              allocations: {
+                none: {
+                  status: "ACTIVE",
+                  checkIn: { lt: input.departure },
+                  checkOut: { gt: input.arrival },
+                  OR: [
+                    { source: { in: ["BOOKING", "BLOCK"] } },
+                    {
+                      source: "HOLD",
+                      reservationHold: { is: { status: "ACTIVE", expiresAt: { gt: now } } },
+                    },
+                  ],
                 },
-              ],
+              },
             },
           },
         },
-        select: { id: true },
       },
     },
   });
 
   const availableRoomTypes = roomTypes.flatMap((roomType) => {
-    if (!roomType.rooms.length) return [];
+    if (!roomType._count.rooms) return [];
     const serialized = serializeRoomType(roomType, { arrival: input.arrival, departure: input.departure });
     if (!serialized) return [];
     const accommodationSubtotal = new Prisma.Decimal(serialized.price).mul(nights);
@@ -103,7 +106,7 @@ export async function searchAvailability(input: AvailabilityInput, propertyId?: 
     );
     return [{
       ...serialized,
-      availableUnits: roomType.rooms.length,
+      availableUnits: roomType._count.rooms,
       totalPrice: serialized.price * nights,
       touristTaxTotal: Number(touristTaxTotal),
     }];

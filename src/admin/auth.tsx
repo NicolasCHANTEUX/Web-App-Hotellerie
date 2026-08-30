@@ -10,6 +10,7 @@ import {
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { AdminMe, AdminRole, getAdminMe, loginAdmin } from "../api/admin";
 import { RouteMetadata } from "../components/RouteMetadata";
+import "../styles/admin.css";
 
 const ACCESS_TOKEN_KEY = "rivage.admin.accessToken";
 const EXPIRES_AT_KEY = "rivage.admin.expiresAt";

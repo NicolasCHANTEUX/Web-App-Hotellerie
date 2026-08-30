@@ -349,7 +349,7 @@ export function AdminRoomTypesDialog({ onClose, onChanged }: { onClose: () => vo
                 <div className="admin-room-type-list">
                   {roomTypes.map((roomType) => (
                     <article className="admin-room-type-card" key={roomType.id}>
-                      <img src={roomType.coverImageUrl} alt="" />
+                      <img src={roomType.coverImageUrl} alt="" loading="lazy" decoding="async" width="220" height="180" />
                       <div className="admin-room-type-card-copy">
                         <span className={roomType.isPublished ? "published" : "unpublished"}>{roomType.isPublished ? <Eye /> : <EyeOff />}{roomType.isPublished ? "Publié" : "Dépublié"}</span>
                         <h3>{roomType.name}</h3>
@@ -457,7 +457,7 @@ function RoomTypeEditor({ roomType, displayOrder, onCancel, onSaved }: {
 
       <section className="admin-room-type-cover-field">
         <div className="admin-room-type-cover-preview">
-          {form.coverImageUrl ? <img src={form.coverImageUrl} alt="Aperçu de la couverture" /> : <span><ImagePlus />Aucune image</span>}
+          {form.coverImageUrl ? <img src={form.coverImageUrl} alt="Aperçu de la couverture" decoding="async" width="480" height="300" /> : <span><ImagePlus />Aucune image</span>}
         </div>
         <div>
           <strong>Image de couverture</strong>

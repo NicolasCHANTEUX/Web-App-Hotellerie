@@ -2,6 +2,7 @@ import { useState } from "react";
 import { getRoomTypes } from "../api/hotel";
 import { AccommodationCard } from "../components/AccommodationCard";
 import { Lightbox } from "../components/Lightbox";
+import { ResponsiveImage } from "../components/ResponsiveImage";
 import { SearchWidget } from "../components/SearchWidget";
 import { useRemoteData } from "../hooks/useRemoteData";
 
@@ -62,7 +63,7 @@ export function Accommodations() {
         <div className="page-container">
           <div className="center-heading"><p className="eyebrow">Photos</p><h2>Galerie de l'hôtel</h2></div>
           <div className="accommodations-gallery">
-            {displayedGallery.map((image, index) => <button type="button" key={image} onClick={() => setLightboxIndex(index)} aria-label={`Agrandir la photo ${index + 1}`}><img src={image} alt={`Hébergement de l'Hôtel Rivage ${index + 1}`} /></button>)}
+            {displayedGallery.map((image, index) => <button type="button" key={image} onClick={() => setLightboxIndex(index)} aria-label={`Agrandir la photo ${index + 1}`}><ResponsiveImage src={image} sizes="(max-width: 640px) 50vw, 33vw" width={720} height={520} alt={`Hébergement de l'Hôtel Rivage ${index + 1}`} /></button>)}
           </div>
         </div>
       </section>
