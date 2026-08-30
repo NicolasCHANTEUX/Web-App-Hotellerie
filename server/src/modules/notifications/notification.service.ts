@@ -57,6 +57,7 @@ export function notificationSubject(template: NotificationTemplate, payload: Not
   switch (template) {
     case "BOOKING_OPTIONED": return `Votre demande de réservation ${payload.reference}`;
     case "BOOKING_CONFIRMED": return `Votre réservation ${payload.reference} est confirmée`;
+    case "BOOKING_UPDATED": return `Votre réservation ${payload.reference} a été modifiée`;
     case "BOOKING_CANCELLED": return `Votre réservation ${payload.reference} est annulée`;
     case "PAYMENT_SUCCEEDED": return `Paiement reçu pour la réservation ${payload.reference}`;
     case "PAYMENT_REFUNDED": return `Remboursement de la réservation ${payload.reference}`;
@@ -96,6 +97,10 @@ export function renderNotification(template: NotificationTemplate, payload: Noti
       headline = "Votre séjour est confirmé";
       message = `La réservation ${payload.reference} est désormais confirmée.`;
       break;
+    case "BOOKING_UPDATED":
+      headline = "Votre séjour a été mis à jour";
+      message = `Les informations de la réservation ${payload.reference} ont été modifiées par notre équipe.`;
+      break;
     case "BOOKING_CANCELLED":
       headline = "Votre réservation est annulée";
       message = `La réservation ${payload.reference} a été annulée.${payload.reason ? ` Motif : ${payload.reason}` : ""}`;
@@ -110,7 +115,10 @@ export function renderNotification(template: NotificationTemplate, payload: Noti
       break;
   }
 
-  const paragraphs = [greeting, message, stay, "L'équipe de l'Hôtel Rivage"]
+  const updatedTotal = template === "BOOKING_UPDATED" && total
+    ? `Nouveau total du séjour : ${total}.`
+    : null;
+  const paragraphs = [greeting, message, stay, updatedTotal, "L'équipe de l'Hôtel Rivage"]
     .filter((value): value is string => Boolean(value));
   const text = paragraphs.join("\n\n");
   const html = `<!doctype html><html lang="fr"><body style="margin:0;background:#f4f0ea;color:#28231e;font-family:Arial,sans-serif"><div style="max-width:620px;margin:0 auto;padding:32px 20px"><div style="background:#fff;border:1px solid #ded4c8;border-radius:14px;padding:32px"><p style="margin:0 0 24px;color:#9a7345;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase">Hôtel Rivage</p><h1 style="margin:0 0 24px;font-family:Georgia,serif;font-size:30px;font-weight:500">${escapeHtml(headline)}</h1>${paragraphs.map((paragraph) => `<p style="margin:0 0 16px;line-height:1.65">${escapeHtml(paragraph)}</p>`).join("")}<p style="margin:28px 0 0;color:#776f66;font-size:12px">Message automatique - merci de ne pas transmettre votre référence de réservation.</p></div></div></body></html>`;

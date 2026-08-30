@@ -148,6 +148,8 @@ export type AdminBookingDetail = AdminBooking & {
   guests: AdminGuest[];
   extras: Array<{
     id: string;
+    extraId: string;
+    code: string;
     name: string;
     unitPrice: number;
     pricingUnit: string;
@@ -370,6 +372,11 @@ export type CreateAdminBookingInput = Omit<CreateBookingInput, "guest"> & {
   };
 };
 
+export type UpdateAdminBookingInput = Omit<CreateAdminBookingInput, "source" | "termsAccepted"> & {
+  updatedAt: string;
+  reason?: string | null;
+};
+
 export type RoomFilters = {
   page: number;
   pageSize: number;
@@ -438,10 +445,26 @@ export function getAdminBookingQuote(input: BookingSelectionInput, accessToken: 
   );
 }
 
+export function getAdminBookingUpdateQuote(id: string, input: BookingSelectionInput, accessToken: string, signal?: AbortSignal) {
+  return adminRequest<BookingQuote>(
+    `/admin/bookings/${encodeURIComponent(id)}/quote`,
+    { method: "POST", body: JSON.stringify(input), signal },
+    accessToken,
+  );
+}
+
 export function createAdminBooking(input: CreateAdminBookingInput, idempotencyKey: string, accessToken: string, signal?: AbortSignal) {
   return adminRequest<AdminBookingDetail>(
     "/admin/bookings",
     { method: "POST", body: JSON.stringify(input), headers: { "Idempotency-Key": idempotencyKey }, signal },
+    accessToken,
+  );
+}
+
+export function updateAdminBooking(id: string, input: UpdateAdminBookingInput, accessToken: string, signal?: AbortSignal) {
+  return adminRequest<AdminBookingDetail>(
+    `/admin/bookings/${encodeURIComponent(id)}`,
+    { method: "PATCH", body: JSON.stringify(input), signal },
     accessToken,
   );
 }

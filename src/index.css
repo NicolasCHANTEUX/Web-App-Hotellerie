@@ -473,6 +473,12 @@
 .admin-confirm-booking { display: inline-flex; width: 100%; min-height: 43px; align-items: center; justify-content: center; gap: 8px; margin: 0 0 16px; border: 0; border-radius: 6px; background: var(--gold-dark); color: white; font-size: 10px; font-weight: 600; cursor: pointer; }
 .admin-confirm-booking:disabled { opacity: .6; cursor: wait; }
 .admin-confirm-booking > svg { width: 16px; }
+.admin-booking-edit-button { display: inline-flex; width: 100%; min-height: 41px; align-items: center; justify-content: center; gap: 8px; margin: -7px 0 16px; border: 1px solid #d9c9b5; border-radius: 6px; background: #fffdf9; color: #765a39; font-size: 10px; font-weight: 650; cursor: pointer; }
+.admin-booking-edit-button:hover { border-color: var(--gold-dark); background: #f8f1e8; }
+.admin-booking-edit-button:focus-visible { outline: 3px solid rgb(146 112 71 / 25%); outline-offset: 2px; }
+.admin-booking-edit-button > svg { width: 15px; }
+.admin-booking-edit-lock { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 13px; border: 1px solid #e1d3c2; border-radius: 6px; background: #faf5ee; padding: 10px 12px; color: #705c46; font-size: 11px; line-height: 1.5; }
+.admin-booking-edit-lock > svg { width: 15px; flex: 0 0 auto; margin-top: 1px; }
 .admin-action-error { margin: -6px 0 16px; border-radius: 5px; background: #fcf3f1; padding: 10px 12px; color: #934b43; font-size: 10px; }
 .admin-booking-confirm-layer { position: absolute; z-index: 8; inset: 0; display: grid; place-items: center; overflow-y: auto; background: rgb(39 34 29 / 43%); padding: 20px; backdrop-filter: blur(3px); animation: admin-fade-in 150ms ease; }
 .admin-booking-confirm-dialog { display: grid; width: min(470px, 100%); max-height: calc(100dvh - 40px); grid-template-columns: 44px minmax(0, 1fr); gap: 17px 15px; overflow-y: auto; border: 1px solid #dfd6cc; border-radius: 11px; background: white; padding: 24px; box-shadow: 0 22px 68px rgb(29 24 19 / 27%); animation: admin-dialog-in 190ms ease-out; }
@@ -727,6 +733,7 @@ button.admin-planning-slot { font: inherit; }
 .admin-hold-notice strong,
 .admin-hold-notice small,
 .admin-confirm-booking,
+.admin-booking-edit-button,
 .admin-action-error { font-size: 12px; }
 .admin-detail-client strong { font-size: 14px; }
 .admin-detail-client a { color: #685f57; font-size: 12px; }

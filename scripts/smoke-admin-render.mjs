@@ -305,6 +305,7 @@ async function renderAdmin(pathname, {
   roomDeleteAction = null,
   bookingCreateAction = false,
   bookingDetailAction = false,
+  bookingEditAction = false,
   patchError = null,
   postError = null,
   deleteError = null,
@@ -476,11 +477,33 @@ async function renderAdmin(pathname, {
     await new Promise((resolveDelay) => setTimeout(resolveDelay, 220));
   }
 
-  if (bookingDetailAction) {
+  if (bookingDetailAction || bookingEditAction) {
     const detailTrigger = window.document.querySelector(".admin-reference");
     assert.ok(detailTrigger, "A booking detail trigger should render.");
     detailTrigger.click();
     await new Promise((resolveDelay) => setTimeout(resolveDelay, 180));
+  }
+
+  const bookingEditObservation = {
+    opened: false,
+    financialLockVisible: false,
+    stayFieldsDisabled: false,
+    guestFieldsEnabled: false,
+  };
+
+  if (bookingEditAction) {
+    const editButton = window.document.querySelector(".admin-booking-edit-button");
+    assert.ok(editButton, "The booking edit action should render for operational roles.");
+    editButton.click();
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 180));
+    const editDialog = window.document.querySelector('.admin-booking-edit-dialog[role="dialog"]');
+    assert.ok(editDialog, "The booking edit dialog should open.");
+    const stayInput = editDialog.querySelector('input[type="date"]');
+    const guestInput = editDialog.querySelector('input[type="email"]');
+    bookingEditObservation.opened = true;
+    bookingEditObservation.financialLockVisible = Boolean(editDialog.querySelector(".admin-booking-edit-lock"));
+    bookingEditObservation.stayFieldsDisabled = Boolean(stayInput?.disabled);
+    bookingEditObservation.guestFieldsEnabled = Boolean(guestInput && !guestInput.disabled);
   }
 
   const bookingCreateObservation = {
@@ -772,6 +795,7 @@ async function renderAdmin(pathname, {
       availableRoomRequests: availableBookingRoomRequests,
     },
     bookingCreate: bookingCreateObservation,
+    bookingEdit: bookingEditObservation,
     planning: {
       board: window.document.querySelectorAll(".admin-planning-board").length,
       rows: window.document.querySelectorAll(".admin-planning-board tbody tr").length,
@@ -829,6 +853,16 @@ assert.equal(bookingCreation.bookingCreate.payload.roomTypeId, "room-type-elegan
 assert.equal(bookingCreation.bookingCreate.payload.expectedTotal, 20400);
 assert.equal(bookingCreation.bookingCreate.closed, true);
 assert.equal(bookingCreation.bookingCreate.detailOpened, true);
+
+const bookingEdition = await renderAdmin("/admin/reservations", {
+  profile: adminProfile,
+  withToken: true,
+  bookingEditAction: true,
+});
+assert.equal(bookingEdition.bookingEdit.opened, true);
+assert.equal(bookingEdition.bookingEdit.financialLockVisible, true);
+assert.equal(bookingEdition.bookingEdit.stayFieldsDisabled, true);
+assert.equal(bookingEdition.bookingEdit.guestFieldsEnabled, true);
 
 const planning = await renderAdmin("/admin/planning", { profile: adminProfile, withToken: true });
 assert.equal(planning.pathname, "/admin/planning");
@@ -1021,5 +1055,5 @@ assert.equal(accountingBookingDetailView.bookingDetail.refundActions, 1);
 
 console.log(JSON.stringify({
   rendered: true,
-  checks: ["login", "auth-guard", "bookings", "admin-booking-create", "planning", "planning-housekeeping-privacy", "planning-accounting-guard", "room-card-semantics", "room-readonly-dialog", "room-edit-patch", "room-dirty-confirmation", "room-conflict-message", "room-create", "room-create-conflict", "room-delete", "room-delete-history", "room-period-availability", "stale-period-guard", "housekeeping-navigation", "housekeeping-guard", "accounting-financial-view", "accounting-operational-guard"],
+  checks: ["login", "auth-guard", "bookings", "admin-booking-create", "admin-booking-edit-financial-lock", "planning", "planning-housekeeping-privacy", "planning-accounting-guard", "room-card-semantics", "room-readonly-dialog", "room-edit-patch", "room-dirty-confirmation", "room-conflict-message", "room-create", "room-create-conflict", "room-delete", "room-delete-history", "room-period-availability", "stale-period-guard", "housekeeping-navigation", "housekeeping-guard", "accounting-financial-view", "accounting-operational-guard"],
 }));

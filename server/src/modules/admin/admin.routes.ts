@@ -31,6 +31,11 @@ import {
   parseAdminBookingRoomAssignmentBody,
   parseAdminBookingStatusBody,
 } from "./admin.booking-actions.js";
+import {
+  getAdminBookingUpdateQuote,
+  parseAdminBookingUpdateBody,
+  updateAdminBooking,
+} from "./admin.booking-update.js";
 import { parseAdminAvailabilityBlockBody } from "./admin.availability-block.js";
 import { parseIdempotencyKey, parseManualPaymentBody, parseRefundBody } from "../billing/billing.validation.js";
 import { recordManualPayment, refundPayment } from "../billing/billing.service.js";
@@ -363,6 +368,50 @@ export async function adminRoutes(app: FastifyInstance) {
         }
         return { data: booking };
       }),
+  );
+
+  app.patch<{ Params: BookingParams; Body: unknown }>(
+    "/admin/bookings/:id",
+    {
+      preHandler: authenticateAdmin,
+      config: { rateLimit: { max: 30, timeWindow: "15 minutes" } },
+    },
+    async (request, reply) => handleAdminRoute(reply, async () => {
+      if (!uuidPattern.test(request.params.id)) {
+        throw new AdminApiError(400, "INVALID_BOOKING_ID", "L'identifiant de réservation est invalide.");
+      }
+      const context = requireAdminContext(request);
+      return {
+        data: await updateAdminBooking(
+          bookingOperationsMembership(request),
+          context.user.id,
+          request.params.id,
+          parseAdminBookingUpdateBody(request.body),
+          request.ip,
+        ),
+      };
+    }),
+  );
+
+  app.post<{ Params: BookingParams; Body: unknown }>(
+    "/admin/bookings/:id/quote",
+    {
+      preHandler: authenticateAdmin,
+      config: { rateLimit: { max: 120, timeWindow: "15 minutes" } },
+    },
+    async (request, reply) => handleAdminRoute(reply, async () => {
+      if (!uuidPattern.test(request.params.id)) {
+        throw new AdminApiError(400, "INVALID_BOOKING_ID", "L'identifiant de réservation est invalide.");
+      }
+      const membership = bookingOperationsMembership(request);
+      return {
+        data: await getAdminBookingUpdateQuote(
+          membership.propertyId,
+          request.params.id,
+          parseAdminBookingQuoteBody(request.body),
+        ),
+      };
+    }),
   );
 
   app.post<{ Params: BookingParams }>(

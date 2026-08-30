@@ -74,6 +74,8 @@ Routes disponibles :
 - `POST /admin/booking-quotes`
 - `POST /admin/bookings` (`ADMIN` et `RECEPTION`, clé `Idempotency-Key` UUID obligatoire)
 - `GET /admin/bookings/:id`
+- `POST /admin/bookings/:id/quote`
+- `PATCH /admin/bookings/:id`
 - `POST /admin/bookings/:id/confirm`
 - `PATCH /admin/bookings/:id/status`
 - `GET /admin/bookings/:id/available-rooms`
@@ -142,6 +144,8 @@ Le planning `/admin/planning` affiche quatorze jours d'allocations par chambre. 
 Chaque nouvelle reservation conserve maintenant une ventilation fiscale immuable (`BookingTaxLine`) et une copie des conditions acceptees. Le taux d'une option peut differer de celui de la chambre; lorsqu'il n'est pas renseigne, le taux du plan tarifaire reste utilise pour conserver le comportement historique. Une taxe de sejour n'entre dans le prix que si une `TaxRule` active et valide pour toute la periode a ete configuree. Les pages client, l'API et l'admin utilisent alors la meme ventilation et le meme arrondi par ligne.
 
 Le modele de facturation accepte plusieurs documents par reservation, les avoirs rattaches a leur facture d'origine et une sequence annuelle par etablissement. Une facture immuable est emise lorsque le solde est enregistre; un remboursement total ou partiel cree un avoir distinct et conserve l'original. Les PDF sont generes cote serveur depuis ces instantanes et telecharges par une route admin protegee. `StoredFile` reste disponible pour une future copie d'archivage privee. `PaymentProviderEvent` conserve l'identifiant fournisseur et une empreinte de payload, jamais le contenu bancaire brut.
+
+La modification d'une reservation est reservee aux roles `ADMIN` et `RECEPTION` et aux statuts `PENDING_PAYMENT` ou `CONFIRMED`. Le client envoie le `updatedAt` courant comme verrou optimiste. Le serveur recalcule toujours la disponibilite, le tarif, les options et les taxes; il conserve la chambre physique actuelle lorsqu'elle reste compatible. Une reservation possedant deja un paiement ou une facture ne peut plus etre retarifee, mais ses coordonnees et demandes particulieres restent modifiables. La mise a jour est transactionnelle : allocation ou hold, instantanes tarifaires, lignes fiscales, journal d'audit et notification client sont valides ensemble.
 
 ## Paiements et notifications optionnels
 

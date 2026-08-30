@@ -27,3 +27,20 @@ test("prépare un message de contact destiné à l'hôtel sans interpréter son 
   assert.doesNotMatch(rendered.html, /<script>/);
   assert.match(rendered.text, /camille@example.com/);
 });
+
+test("prepare le recapitulatif d'une reservation modifiee", () => {
+  const rendered = renderNotification("BOOKING_UPDATED", {
+    firstName: "Nicolas",
+    reference: "RVG-TEST-002",
+    roomName: "Chambre Deluxe",
+    arrival: "2026-09-12",
+    departure: "2026-09-15",
+    total: 555,
+    currency: "EUR",
+  });
+  assert.match(rendered.subject, /RVG-TEST-002/);
+  assert.match(rendered.text, /modifi/);
+  assert.match(rendered.text, /Chambre Deluxe/);
+  assert.match(rendered.text, /15 septembre 2026/);
+  assert.match(rendered.text, /555/);
+});

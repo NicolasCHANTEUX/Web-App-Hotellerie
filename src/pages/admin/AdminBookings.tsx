@@ -12,6 +12,7 @@ import {
   Filter,
   Mail,
   Phone,
+  Pencil,
   Plus,
   Search,
   RotateCcw,
@@ -43,6 +44,7 @@ import {
 } from "../../api/admin";
 import { useAdminAuth } from "../../admin/auth";
 import { AdminBookingCreateDialog } from "./AdminBookingCreateDialog";
+import { AdminBookingEditDialog } from "./AdminBookingEditDialog";
 import {
   AdminEmptyState,
   AdminErrorState,
@@ -271,6 +273,7 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
   const [retryKey, setRetryKey] = useState(0);
   const [confirming, setConfirming] = useState(false);
   const [confirmationOpen, setConfirmationOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [statusAction, setStatusAction] = useState<"CHECKED_IN" | "CANCELLED" | "COMPLETED" | "NO_SHOW" | null>(null);
   const [statusReason, setStatusReason] = useState("");
@@ -289,6 +292,7 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
   const [billingBusy, setBillingBusy] = useState(false);
   const refundAttemptRef = useRef<{ signature: string; key: string } | null>(null);
   const confirmationOpenRef = useRef(false);
+  const editOpenRef = useRef(false);
   const confirmingRef = useRef(false);
   const drawerRef = useRef<HTMLElement>(null);
   const confirmationDialogRef = useRef<HTMLDivElement>(null);
@@ -304,6 +308,7 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
     document.body.style.overflow = "hidden";
     const focusFrame = window.requestAnimationFrame(() => closeButtonRef.current?.focus());
     const handleKeyboard = (event: KeyboardEvent) => {
+      if (editOpenRef.current) return;
       if (event.key === "Escape") {
         event.preventDefault();
         if (confirmationOpenRef.current) {
@@ -412,6 +417,17 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
     } finally {
       setRoomAssigning(false);
     }
+  }
+
+  function openEditDialog() {
+    editOpenRef.current = true;
+    setEditOpen(true);
+    setActionError(null);
+  }
+
+  function closeEditDialog() {
+    editOpenRef.current = false;
+    setEditOpen(false);
   }
 
   async function saveManualPayment() {
@@ -554,14 +570,14 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
 
   return (
     <div className="admin-drawer-layer">
-      <button type="button" className="admin-drawer-backdrop" aria-label="Fermer le détail" disabled={confirmationOpen} aria-hidden={confirmationOpen || undefined} onClick={onClose} />
+      <button type="button" className="admin-drawer-backdrop" aria-label="Fermer le détail" disabled={confirmationOpen || editOpen} aria-hidden={confirmationOpen || editOpen || undefined} onClick={onClose} />
       <aside ref={drawerRef} className="admin-drawer" role="dialog" aria-modal="true" aria-labelledby="booking-detail-title">
-        <header className="admin-drawer-head" inert={confirmationOpen || undefined} aria-hidden={confirmationOpen || undefined}>
+        <header className="admin-drawer-head" inert={confirmationOpen || editOpen || undefined} aria-hidden={confirmationOpen || editOpen || undefined}>
           <div><p>Détail de la réservation</p><h2 id="booking-detail-title">{booking?.reference ?? "Chargement…"}</h2></div>
           <button ref={closeButtonRef} type="button" onClick={onClose} aria-label="Fermer"><X /></button>
         </header>
 
-        <div className="admin-drawer-body" inert={confirmationOpen || undefined} aria-hidden={confirmationOpen || undefined}>
+        <div className="admin-drawer-body" inert={confirmationOpen || editOpen || undefined} aria-hidden={confirmationOpen || editOpen || undefined}>
           {loading && <AdminTableSkeleton columns={2} rows={7} />}
           {error && <AdminErrorState message={error} retry={() => setRetryKey((value) => value + 1)} />}
           {!loading && booking && (
@@ -569,6 +585,7 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
               <div className="admin-detail-statuses"><StatusBadge status={booking.status} kind="booking" />{booking.paymentStatus ? <StatusBadge status={booking.paymentStatus} kind="payment" /> : <span className="admin-status admin-status-neutral"><i />Paiement non initié</span>}</div>
               {booking.hold && <div className={`admin-hold-notice ${booking.hold.isActive ? "is-active" : ""}`}><CalendarCheck /><span><strong>{booking.hold.isActive ? "Chambre optionnée" : "Option terminée"}</strong><small>{booking.hold.isActive ? `À confirmer avant le ${formatDateTime(booking.hold.expiresAt, propertyTimeZone)}` : `Échéance : ${formatDateTime(booking.hold.expiresAt, propertyTimeZone)}`} · heure locale de l’hôtel</small></span></div>}
               {canOperateBooking && booking.status === "PENDING_PAYMENT" && booking.hold?.isActive && <button ref={confirmationTriggerRef} type="button" className="admin-confirm-booking" disabled={confirming} aria-haspopup="dialog" onClick={openConfirmation}><CircleCheck />Confirmer manuellement la réservation</button>}
+              {canOperateBooking && (booking.status === "PENDING_PAYMENT" || booking.status === "CONFIRMED") && <button type="button" className="admin-booking-edit-button" aria-haspopup="dialog" onClick={openEditDialog}><Pencil />Modifier le séjour</button>}
 
               <section className="admin-detail-section">
                 <h3><UserRound />Client principal</h3>
@@ -714,6 +731,16 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
           </div>
         )}
       </aside>
+      {canOperateBooking && editOpen && booking && <AdminBookingEditDialog
+        booking={booking}
+        onClose={closeEditDialog}
+        onSaved={(updated) => {
+          editOpenRef.current = false;
+          setEditOpen(false);
+          setBooking(updated);
+          onChanged();
+        }}
+      />}
     </div>
   );
 }
