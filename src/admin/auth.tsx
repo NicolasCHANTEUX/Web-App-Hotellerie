@@ -9,6 +9,7 @@ import {
 } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { AdminMe, AdminRole, getAdminMe, loginAdmin } from "../api/admin";
+import { RouteMetadata } from "../components/RouteMetadata";
 
 const ACCESS_TOKEN_KEY = "rivage.admin.accessToken";
 const EXPIRES_AT_KEY = "rivage.admin.expiresAt";
@@ -109,6 +110,7 @@ export function useAdminAuth() {
 export function AdminRoot() {
   return (
     <AdminAuthProvider>
+      <RouteMetadata />
       <Outlet />
     </AdminAuthProvider>
   );

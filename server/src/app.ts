@@ -3,6 +3,7 @@ import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import multipart from "@fastify/multipart";
 import Fastify from "fastify";
+import { startBackgroundWorker } from "./background-worker.js";
 import { env } from "./config/env.js";
 import { prisma } from "./lib/prisma.js";
 import { adminRoutes } from "./modules/admin/index.js";
@@ -10,7 +11,6 @@ import { availabilityRoutes } from "./modules/availability/availability.routes.j
 import { bookingRoutes } from "./modules/booking/booking.routes.js";
 import { catalogRoutes } from "./modules/catalog/catalog.routes.js";
 import { contactRoutes } from "./modules/contact/contact.routes.js";
-import { startNotificationWorker } from "./modules/notifications/notification.service.js";
 import { paymentRoutes, stripeWebhookRoutes } from "./modules/payments/payment.routes.js";
 
 export async function buildApp() {
@@ -76,7 +76,9 @@ export async function buildApp() {
   await app.register(stripeWebhookRoutes);
   await app.register(adminRoutes);
 
-  const notificationWorker = startNotificationWorker(app.log);
+  const backgroundWorker = env.backgroundWorkerMode === "embedded"
+    ? startBackgroundWorker(app.log)
+    : null;
 
   app.setErrorHandler((error, _request, reply) => {
     if (
@@ -99,7 +101,7 @@ export async function buildApp() {
   });
 
   app.addHook("onClose", async () => {
-    if (notificationWorker) clearInterval(notificationWorker);
+    backgroundWorker?.stop();
     await prisma.$disconnect();
   });
   return app;

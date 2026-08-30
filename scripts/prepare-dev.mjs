@@ -48,22 +48,43 @@ if (!Number.isInteger(targetPid) || targetPid <= 0) {
   console.error("Le fichier d'état de l'API contient un identifiant de processus invalide. Aucun processus n'a été arrêté.");
   process.exit(1);
 }
-if (process.platform === "win32") {
-  spawnSync("taskkill", ["/PID", String(targetPid), "/T", "/F"], { stdio: "ignore" });
-} else {
+function stopProcess(pid) {
+  if (process.platform === "win32") {
+    spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore" });
+    return;
+  }
   try {
-    process.kill(targetPid, "SIGTERM");
+    process.kill(pid, "SIGTERM");
   } catch {
     // The process may already have stopped between the health check and here.
   }
 }
 
-for (let attempt = 0; attempt < 20; attempt += 1) {
+stopProcess(targetPid);
+
+for (let attempt = 0; attempt < 10; attempt += 1) {
   await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
   if (!await readHealth()) {
     await unlink(statePath).catch(() => undefined);
     console.log("Ancienne instance API arrêtée proprement.");
     process.exit(0);
+  }
+}
+
+const orphanedHealth = await readHealth();
+if (
+  targetPid !== state.pid &&
+  orphanedHealth?.service === state.service &&
+  orphanedHealth.pid === state.pid
+) {
+  stopProcess(state.pid);
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
+    if (!await readHealth()) {
+      await unlink(statePath).catch(() => undefined);
+      console.log("Ancienne instance API orpheline arrêtée proprement.");
+      process.exit(0);
+    }
   }
 }
 

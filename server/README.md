@@ -169,11 +169,15 @@ NOTIFICATION_DELIVERY="resend"   # envoi reel, exige RESEND_API_KEY et EMAIL_FRO
 
 Le worker traite les messages par petits lots, reprend les envois interrompus et applique un delai progressif apres un echec. Tester d'abord `log`, puis le domaine d'expedition Resend, avant d'activer `resend`.
 
+En local et sur une API unique, `BACKGROUND_WORKER_MODE=embedded` conserve ce worker dans le processus Fastify. Pour plusieurs instances, utiliser `BACKGROUND_WORKER_MODE=standalone` sur l'API et lancer un seul processus dedie avec `npm run worker:notifications` en developpement ou `npm run start:notifications` apres compilation.
+
 Le formulaire public enregistre chaque demande dans `contact_requests` avant de créer la notification destinée à l'établissement. Il exige une clé `Idempotency-Key` UUID, applique une limite de cinq demandes par heure et utilise `PUBLIC_PROPERTY_SLUG` pour sélectionner l'établissement destinataire.
 
 ## Images du catalogue
 
 Les couvertures téléversées depuis l'administration sont validées d'après leur signature réelle, limitées à 5 Mo puis envoyées dans le bucket Supabase Storage public défini par `SUPABASE_STORAGE_BUCKET`. Seule l'URL publique est conservée dans `RoomType`; les métadonnées et l'empreinte SHA-256 sont enregistrées dans `StoredFile`.
+
+Le worker d'arriere-plan purge aussi les anciennes couvertures remplacees et les fichiers televerses qui ne sont rattaches a aucun type de chambre apres 24 heures. L'horodatage `purgedAt` rend cette operation observable et idempotente.
 
 Pour vérifier les anciennes images encore intégrées en base64, puis les migrer explicitement :
 

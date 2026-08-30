@@ -1039,7 +1039,6 @@ img { display: block; }
 .testimonials-band { padding-top: 80px; border-top: 1px solid var(--line); }
 .testimonials-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; align-items: stretch; }
 .testimonial { display: flex; min-height: 280px; height: 100%; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius-md); background: white; padding: 30px; box-shadow: 0 8px 28px rgb(43 35 26 / 4%); }
-.stars { color: var(--gold); font-size: 15px; letter-spacing: 3px; }
 .testimonial > p { flex: 1; margin: 22px 0 28px; color: #615950; font-size: 16px; font-style: italic; line-height: 1.75; }
 .testimonial footer { display: grid; gap: 5px; }
 .testimonial footer strong { font-size: 14px; }

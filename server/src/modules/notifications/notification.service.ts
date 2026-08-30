@@ -224,12 +224,12 @@ export async function dispatchPendingNotifications(logger?: FastifyBaseLogger) {
   return { processed: sent + failed, sent, failed };
 }
 
-export function startNotificationWorker(logger?: FastifyBaseLogger) {
+export function startNotificationWorker(logger?: FastifyBaseLogger, unref = true) {
   if (env.notificationDelivery === "disabled") return null;
   void dispatchPendingNotifications(logger).catch((error) => logger?.error(error, "Notification worker failed"));
   const timer = setInterval(() => {
     void dispatchPendingNotifications(logger).catch((error) => logger?.error(error, "Notification worker failed"));
   }, 30_000);
-  timer.unref();
+  if (unref) timer.unref();
   return timer;
 }

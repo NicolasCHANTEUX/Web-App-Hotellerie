@@ -7,6 +7,7 @@ import { prisma } from "../../lib/prisma.js";
 import { AdminApiError } from "../admin/admin.errors.js";
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const ORPHAN_GRACE_PERIOD_MS = 24 * 60 * 60 * 1_000;
 const MIME_EXTENSIONS = {
   "image/jpeg": "jpg",
   "image/png": "png",
@@ -122,4 +123,45 @@ export async function attachRoomTypeCover(
     data: { deletedAt: new Date() },
   });
   await transaction.storedFile.update({ where: { id: file.id }, data: { roomTypeId } });
+}
+
+export async function purgeUnusedRoomTypeCovers(now = new Date(), limit = 50) {
+  if (!env.supabaseSecretKey) return { processed: 0, purged: 0, failed: 0, skipped: true };
+
+  const orphanCutoff = new Date(now.getTime() - ORPHAN_GRACE_PERIOD_MS);
+  const candidates = await prisma.storedFile.findMany({
+    where: {
+      kind: "ROOM_TYPE_COVER",
+      purgedAt: null,
+      OR: [
+        { deletedAt: { not: null } },
+        {
+          deletedAt: null,
+          roomTypeId: null,
+          bookingId: null,
+          createdAt: { lte: orphanCutoff },
+        },
+      ],
+    },
+    orderBy: { createdAt: "asc" },
+    take: limit,
+    select: { id: true, bucket: true, objectKey: true, deletedAt: true },
+  });
+
+  let purged = 0;
+  let failed = 0;
+  for (const candidate of candidates) {
+    const removed = await storageClient().storage.from(candidate.bucket).remove([candidate.objectKey]);
+    if (removed.error) {
+      failed += 1;
+      continue;
+    }
+    await prisma.storedFile.updateMany({
+      where: { id: candidate.id, purgedAt: null },
+      data: { deletedAt: candidate.deletedAt ?? now, purgedAt: now },
+    });
+    purged += 1;
+  }
+
+  return { processed: candidates.length, purged, failed, skipped: false };
 }

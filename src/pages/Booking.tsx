@@ -254,7 +254,7 @@ export function Booking() {
     <section className="booking-page">
       <header className="booking-heading">
         <h1>Réserver votre séjour</h1>
-        <p>Réservation directe · Meilleur tarif garanti</p>
+        <p>Réservation directe · Tarif affiché en toute transparence</p>
       </header>
 
       <div className="booking-container">

@@ -30,16 +30,16 @@ const services = [
   { icon: Car, title: "Parking privé", text: "Accès sécurisé sur réservation" },
   { icon: Wifi, title: "Wi-Fi gratuit", text: "Très haut débit dans tout l'hôtel" },
   { icon: Snowflake, title: "Climatisation", text: "Confort réglable dans chaque chambre" },
-  { icon: UtensilsCrossed, title: "Restauration 24h", text: "Une carte disponible à toute heure" },
+  { icon: UtensilsCrossed, title: "Collations sur demande", text: "Une sélection disponible auprès de la réception" },
   { icon: Accessibility, title: "Accessibilité", text: "Chambres et accès adaptés" },
   { icon: Waves, title: "Piscine", text: "Ouverte de juin à septembre" },
   { icon: Flower2, title: "Jardin", text: "Espaces végétalisés et calmes" },
 ];
 
-const testimonials = [
-  { text: "Un séjour absolument parfait. La chambre était magnifique, la literie exceptionnelle et l'accueil très chaleureux.", name: "Sophie M.", source: "Google", date: "Octobre 2026" },
-  { text: "Notre plus belle pause au soleil sur la Côte d'Azur. La terrasse, le service et l'emplacement étaient irréprochables.", name: "Thomas & Claire", source: "Google", date: "Septembre 2026" },
-  { text: "Une adresse découverte par hasard et devenue une favorite. Le petit-déjeuner est excellent, je recommande vivement.", name: "Jean-Pierre V.", source: "Google", date: "Juillet 2026" },
+const guestHighlights = [
+  { text: "Des chambres pensées pour le repos, avec une literie premium et des matières naturelles.", title: "Le confort avant tout", label: "Dans chaque chambre" },
+  { text: "Une équipe disponible pour anticiper les arrivées et personnaliser les attentions du séjour.", title: "Un accueil attentionné", label: "Avant et pendant le séjour" },
+  { text: "La mer, le centre historique et les adresses de Cannes restent accessibles en quelques minutes.", title: "Cannes à portée de pas", label: "Une situation centrale" },
 ];
 
 const nearby = [
@@ -124,8 +124,8 @@ export function Home() {
 
       <section className="home-band testimonials-band">
         <div className="home-container">
-          <div className="center-heading"><p className="eyebrow">Avis clients</p><h2>Ce qu'ils disent de nous</h2></div>
-          <div className="testimonials-grid">{testimonials.map((item) => <article className="testimonial" key={item.name}><div className="stars">★★★★★</div><p>“{item.text}”</p><footer><strong>{item.name}</strong><span>{item.source} · {item.date}</span></footer></article>)}</div>
+          <div className="center-heading"><p className="eyebrow">L'expérience Rivage</p><h2>Les attentions qui font la différence</h2></div>
+          <div className="testimonials-grid">{guestHighlights.map((item) => <article className="testimonial" key={item.title}><p>{item.text}</p><footer><strong>{item.title}</strong><span>{item.label}</span></footer></article>)}</div>
         </div>
       </section>
 

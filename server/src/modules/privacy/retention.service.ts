@@ -10,6 +10,22 @@ export function retentionDeadlineFrom(date: Date, years = ACCOUNTING_RETENTION_Y
   return deadline;
 }
 
+export function anonymizedPricingSnapshot(snapshot: Prisma.JsonValue): Prisma.InputJsonObject {
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) return {};
+
+  const result = { ...snapshot } as Record<string, Prisma.JsonValue>;
+  const idempotency = result.idempotency;
+  if (idempotency && typeof idempotency === "object" && !Array.isArray(idempotency)) {
+    const { requestHash: _requestHash, ...retainedIdempotency } = idempotency;
+    if (Object.keys(retainedIdempotency).length > 0) {
+      result.idempotency = retainedIdempotency;
+    } else {
+      delete result.idempotency;
+    }
+  }
+  return result as Prisma.InputJsonObject;
+}
+
 export async function previewExpiredBookings(now = new Date(), limit = 100) {
   return prisma.booking.findMany({
     where: {
@@ -23,6 +39,7 @@ export async function previewExpiredBookings(now = new Date(), limit = 100) {
       propertyId: true,
       reference: true,
       status: true,
+      pricingSnapshot: true,
       personalDataRetainUntil: true,
     },
   });
@@ -43,6 +60,7 @@ export async function anonymizeExpiredBookings(now = new Date(), limit = 100) {
           specialRequests: null,
           publicAccessTokenHash: null,
           publicAccessTokenExpiresAt: null,
+          pricingSnapshot: anonymizedPricingSnapshot(candidate.pricingSnapshot),
           anonymizedAt: now,
         },
       });
@@ -172,7 +190,7 @@ export async function anonymizeExpiredContactRequests(now = new Date(), limit = 
           action: "CONTACT_PERSONAL_DATA_ANONYMIZED",
           entityType: "ContactRequest",
           entityId: candidate.id,
-          before: { anonymizedAt: null, subject: candidate.subject },
+          before: { anonymizedAt: null },
           after: { anonymizedAt: now.toISOString() },
           metadata: { source: "RETENTION_JOB", retentionDeadline: candidate.personalDataRetainUntil.toISOString() },
         },

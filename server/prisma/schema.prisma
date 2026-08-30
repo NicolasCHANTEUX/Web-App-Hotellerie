@@ -790,6 +790,7 @@ model StoredFile {
   sortOrder      Int                  @default(0)
   createdAt      DateTime             @default(now()) @db.Timestamptz(3)
   deletedAt      DateTime?            @db.Timestamptz(3)
+  purgedAt       DateTime?            @db.Timestamptz(3)
 
   property Property  @relation(fields: [propertyId], references: [id], onDelete: Restrict)
   roomType RoomType? @relation(fields: [roomTypeId], references: [id], onDelete: SetNull)
@@ -800,6 +801,7 @@ model StoredFile {
   @@index([propertyId, kind, createdAt])
   @@index([roomTypeId, sortOrder])
   @@index([bookingId, createdAt])
+  @@index([kind, deletedAt, purgedAt])
   @@map("stored_files")
 }
 

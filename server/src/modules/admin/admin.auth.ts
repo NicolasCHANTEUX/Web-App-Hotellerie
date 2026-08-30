@@ -1,9 +1,11 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { prisma } from "../../lib/prisma.js";
+import { ExpiringTokenCache } from "./admin.auth-cache.js";
 import { getAdminAuthConfig } from "./admin.config.js";
 import { AdminApiError, sendAdminError } from "./admin.errors.js";
 
 const AUTH_TIMEOUT_MS = 8_000;
+const validatedUserCache = new ExpiringTokenCache<SupabaseUser>();
 
 type SupabaseUser = {
   id: string;
@@ -59,6 +61,9 @@ function bearerToken(request: FastifyRequest) {
 }
 
 async function fetchSupabaseUser(accessToken: string) {
+  const cachedUser = validatedUserCache.get(accessToken);
+  if (cachedUser) return cachedUser;
+
   const { supabaseUrl, publishableKey } = getAdminAuthConfig();
   let response: Response;
 
@@ -97,6 +102,7 @@ async function fetchSupabaseUser(accessToken: string) {
       "Le service d'authentification a retourné une réponse invalide.",
     );
   }
+  validatedUserCache.set(accessToken, payload);
   return payload;
 }
 

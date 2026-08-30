@@ -39,11 +39,20 @@ La migration et le démarrage de l'API sont séparés volontairement : plusieurs
 - `SUPABASE_STORAGE_BUCKET` ;
 - `CORS_ORIGIN` et `FRONTEND_URL` avec les domaines HTTPS réels ;
 - `PUBLIC_PROPERTY_SLUG`, correspondant à l'établissement affiché par le site public ;
+- `BACKGROUND_WORKER_MODE=embedded` pour une seule instance, ou `standalone` lorsque les traitements sont exécutés par un processus dédié ;
 - `NODE_ENV=production`, `HOST=0.0.0.0` et `TRUST_PROXY=true` uniquement derrière un proxy maîtrisé.
 
 Stripe et Resend restent facultatifs. S'ils sont activés, configurer le webhook Stripe, vérifier le domaine d'expédition et utiliser exclusivement des secrets de production côté serveur.
 
 ## Exploitation
+
+En production avec plusieurs instances API, définir `BACKGROUND_WORKER_MODE=standalone` partout puis lancer exactement un processus dédié :
+
+```sh
+npm --prefix server run start:notifications
+```
+
+Ce processus traite l'outbox de notifications et purge chaque heure les images de catalogue remplacées, ainsi que les téléversements restés sans rattachement pendant plus de 24 heures. Le mode `embedded` reste le comportement par défaut pour le développement et les déploiements mono-instance.
 
 - Exécuter `npm run privacy:anonymize` sans option pour prévisualiser les échéances, puis avec `-- --apply` après contrôle. Planifier ce job au moins une fois par mois.
 - Sauvegarder PostgreSQL et définir une politique de restauration testée.
