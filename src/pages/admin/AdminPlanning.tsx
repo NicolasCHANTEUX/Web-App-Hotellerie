@@ -97,7 +97,20 @@ export function AdminPlanning() {
       from: rangeStart,
       to: rangeEnd,
       sortOrder: "asc",
-    }, accessToken, controller.signal);
+    }, accessToken, controller.signal).then(async (firstPage) => {
+      if (firstPage.totalPages <= 1) return firstPage;
+      const remainingPages = await Promise.all(Array.from(
+        { length: firstPage.totalPages - 1 },
+        (_, index) => getAdminRooms({
+          page: index + 2,
+          pageSize: 100,
+          from: rangeStart,
+          to: rangeEnd,
+          sortOrder: "asc",
+        }, accessToken, controller.signal),
+      ));
+      return { ...firstPage, items: [firstPage, ...remainingPages].flatMap((page) => page.items) };
+    });
     const bookingRequest = canOpenBookings
       ? getAdminBookings({
           page: 1,

@@ -74,5 +74,6 @@ export type BookingConfirmation = {
   total: number;
   currency: string;
   email: string;
+  accessToken?: string;
   holdExpiresAt: string;
 };

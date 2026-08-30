@@ -4,7 +4,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --config vite.config.mjs --configLoader native",
+    "dev": "node scripts/dev-web.mjs",
+    "dev:vite": "vite --config vite.config.mjs --configLoader native",
     "dev:full": "node scripts/prepare-dev.mjs && node scripts/dev-full.mjs",
     "dev:stop": "node scripts/prepare-dev.mjs",
     "build": "tsc -b && vite build --config vite.config.mjs --configLoader native",

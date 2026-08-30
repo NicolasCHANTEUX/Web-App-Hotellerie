@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Prisma, type BookingSource } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import { BookingError } from "./booking.errors.js";
@@ -11,6 +12,7 @@ import { assertExpectedTotal, buildTaxInclusivePrice } from "./booking.pricing.j
 import type { BookingConfirmation, CreateBookingInput } from "./booking.types.js";
 import { enqueueBookingNotification } from "../notifications/notification.service.js";
 import { retentionDeadlineFrom } from "../privacy/retention.service.js";
+import { bookingAccessToken, bookingAccessTokenExpiresAt, bookingAccessTokenHash } from "./booking.access.js";
 
 const MAX_TRANSACTION_ATTEMPTS = 3;
 const HOLD_DURATION_MS = 24 * 60 * 60 * 1_000;
@@ -76,6 +78,7 @@ export async function createBooking(
   options?: BookingCreationOptions,
 ): Promise<BookingConfirmation> {
   const reference = bookingReferenceFromIdempotencyKey(idempotencyKey);
+  const bookingId = randomUUID();
   const requestHash = bookingRequestHash(input, options ? {
     propertyId: options.propertyId,
     source: options.source,
@@ -117,6 +120,18 @@ export async function createBooking(
           }
 
           let existingStatus = existingBooking.status;
+          const accessToken = bookingAccessToken(existingBooking.id);
+          const accessTokenHash = bookingAccessTokenHash(accessToken);
+          const accessTokenExpiresAt = bookingAccessTokenExpiresAt(existingBooking.checkOut);
+          if (
+            existingBooking.publicAccessTokenHash !== accessTokenHash
+            || existingBooking.publicAccessTokenExpiresAt?.getTime() !== accessTokenExpiresAt.getTime()
+          ) {
+            await transaction.booking.update({
+              where: { id: existingBooking.id },
+              data: { publicAccessTokenHash: accessTokenHash, publicAccessTokenExpiresAt: accessTokenExpiresAt },
+            });
+          }
           if (
             existingBooking.status === "PENDING_PAYMENT" &&
             (existingBooking.hold.status === "EXPIRED" ||
@@ -152,6 +167,7 @@ export async function createBooking(
             total: Number(existingBooking.total),
             currency: existingBooking.currency,
             email: existingGuest.email ?? input.guest.email ?? "",
+            ...(!options ? { accessToken } : {}),
             holdExpiresAt: existingBooking.hold.expiresAt.toISOString(),
           };
         }
@@ -448,6 +464,7 @@ export async function createBooking(
 
         const booking = await transaction.booking.create({
           data: {
+            id: bookingId,
             propertyId: roomType.propertyId,
             reference,
             status: "PENDING_PAYMENT",
@@ -468,6 +485,8 @@ export async function createBooking(
             termsSnapshot,
             specialRequests: input.specialRequests,
             personalDataRetainUntil: retentionDeadlineFrom(input.departure),
+            publicAccessTokenHash: bookingAccessTokenHash(bookingAccessToken(bookingId)),
+            publicAccessTokenExpiresAt: bookingAccessTokenExpiresAt(input.departure),
             guests: {
               create: {
                 isPrimary: true,
@@ -608,6 +627,7 @@ export async function createBooking(
           total: Number(total),
           currency: ratePlan.currency,
           email: input.guest.email ?? "",
+          ...(!options ? { accessToken: bookingAccessToken(booking.id) } : {}),
           holdExpiresAt: hold.expiresAt.toISOString(),
         };
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });

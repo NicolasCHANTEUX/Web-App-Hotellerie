@@ -479,7 +479,7 @@ export function assignAdminBookingRoom(id: string, roomId: string, accessToken: 
 }
 
 export function recordManualAdminPayment(id: string, paymentMethodType: string, note: string | null, accessToken: string, signal?: AbortSignal) {
-  return adminRequest<{ paymentId: string; invoiceId: string; invoiceNumber: string }>(
+  return adminRequest<{ paymentId: string; status: PaymentStatus; invoiceId?: string; invoiceNumber?: string }>(
     `/admin/bookings/${encodeURIComponent(id)}/payments/manual`,
     { method: "POST", body: JSON.stringify({ paymentMethodType, note }), headers: { "Idempotency-Key": `manual:${crypto.randomUUID()}` }, signal },
     accessToken,
@@ -487,7 +487,7 @@ export function recordManualAdminPayment(id: string, paymentMethodType: string, 
 }
 
 export function refundAdminPayment(id: string, paymentId: string, amount: number | undefined, reason: string, idempotencyKey: string, accessToken: string, signal?: AbortSignal) {
-  return adminRequest<{ paymentId: string; invoiceId: string; invoiceNumber: string }>(
+  return adminRequest<{ paymentId: string; status: PaymentStatus; invoiceId?: string; invoiceNumber?: string }>(
     `/admin/bookings/${encodeURIComponent(id)}/refunds`,
     { method: "POST", body: JSON.stringify({ paymentId, ...(amount === undefined ? {} : { amount }), reason }), headers: { "Idempotency-Key": idempotencyKey }, signal },
     accessToken,

@@ -1,12 +1,19 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
-import { createStripeCheckout, constructStripeEvent, getStripeCheckoutStatus, PaymentApiError, processStripeEvent, stripeEnabled } from "./payment.service.js";
+import { createStripeCheckout, constructStripeEvent, getPublicBooking, getStripeCheckoutStatus, PaymentApiError, processStripeEvent, stripeEnabled } from "./payment.service.js";
 import { parseStripeCheckoutSessionId } from "./payment.validation.js";
+import { parseBookingAccessToken } from "../booking/booking.access.js";
+import { BookingError } from "../booking/booking.errors.js";
 
-type CheckoutBody = { reference?: unknown; email?: unknown };
+type CheckoutBody = { accessToken?: unknown };
 
 function sendPaymentError(reply: FastifyReply, error: unknown) {
   if (error instanceof PaymentApiError) return reply.code(error.statusCode).send({ error: { code: error.code, message: error.message } });
+  if (error instanceof BookingError) return reply.code(error.statusCode).send({ error: { code: error.code, message: error.message } });
   throw error;
+}
+
+function accessTokenHeader(value: string | string[] | undefined) {
+  return parseBookingAccessToken(Array.isArray(value) ? value[0] : value);
 }
 
 function idempotencyKey(value: string | string[] | undefined) {
@@ -19,11 +26,23 @@ function idempotencyKey(value: string | string[] | undefined) {
 
 export async function paymentRoutes(app: FastifyInstance) {
   app.get("/payments/config", async () => ({ data: { stripeEnabled: stripeEnabled() } }));
+  app.get("/bookings/public", {
+    config: { rateLimit: { max: 30, timeWindow: "15 minutes" } },
+  }, async (request, reply) => {
+    try {
+      return { data: await getPublicBooking(accessTokenHeader(request.headers["x-booking-access-token"])) };
+    } catch (error) {
+      return sendPaymentError(reply, error);
+    }
+  });
   app.get<{ Querystring: { sessionId?: unknown } }>("/payments/stripe/status", {
     config: { rateLimit: { max: 30, timeWindow: "15 minutes" } },
   }, async (request, reply) => {
     try {
-      return { data: await getStripeCheckoutStatus(parseStripeCheckoutSessionId(request.query.sessionId)) };
+      return { data: await getStripeCheckoutStatus(
+        parseStripeCheckoutSessionId(request.query.sessionId),
+        accessTokenHeader(request.headers["x-booking-access-token"]),
+      ) };
     } catch (error) {
       return sendPaymentError(reply, error);
     }
@@ -33,13 +52,11 @@ export async function paymentRoutes(app: FastifyInstance) {
   }, async (request, reply) => {
     try {
       const keys = request.body && typeof request.body === "object" ? Object.keys(request.body) : [];
-      if (keys.some((key) => !["reference", "email"].includes(key))) throw new PaymentApiError(400, "INVALID_PAYMENT_INPUT", "La demande de paiement est invalide.");
-      const reference = typeof request.body?.reference === "string" ? request.body.reference.trim() : "";
-      const email = typeof request.body?.email === "string" ? request.body.email.trim().toLowerCase() : "";
-      if (!/^RVG-[A-Za-z0-9-]{6,80}$/.test(reference) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        throw new PaymentApiError(400, "INVALID_PAYMENT_INPUT", "La demande de paiement est invalide.");
-      }
-      return { data: await createStripeCheckout(reference, email, idempotencyKey(request.headers["idempotency-key"])) };
+      if (keys.some((key) => key !== "accessToken")) throw new PaymentApiError(400, "INVALID_PAYMENT_INPUT", "La demande de paiement est invalide.");
+      return { data: await createStripeCheckout(
+        parseBookingAccessToken(request.body?.accessToken),
+        idempotencyKey(request.headers["idempotency-key"]),
+      ) };
     } catch (error) {
       return sendPaymentError(reply, error);
     }

@@ -11,6 +11,7 @@ node_modules/
 server/node_modules/
 *.tsbuildinfo
 .vite/
+.npm-cache/
 
 # Build outputs
 dist/

@@ -8,7 +8,12 @@ import { issueCreditNote, issuePaidInvoice } from "./invoice.service.js";
 import type { ManualPaymentInput, RefundInput } from "./billing.validation.js";
 import Stripe from "stripe";
 
-type BillingResult = { paymentId: string; invoiceId: string; invoiceNumber: string };
+type BillingResult = {
+  paymentId: string;
+  status: PaymentStatus;
+  invoiceId?: string;
+  invoiceNumber?: string;
+};
 
 function decimalSum(values: Prisma.Decimal[]) {
   return values.reduce((sum, value) => sum.add(value), new Prisma.Decimal(0));
@@ -44,17 +49,18 @@ async function existingRefundResult(
     || existing.kind !== PaymentKind.REFUND
     || existing.parentPaymentId !== input.paymentId
     || (input.amount !== undefined && !existing.amount.equals(input.amount))
+    || existing.refundReason !== input.reason
   ) {
     throw new AdminApiError(409, "IDEMPOTENCY_KEY_REUSED", "Cette clé de remboursement a déjà été utilisée pour une autre opération.");
+  }
+  if (existing.status !== PaymentStatus.SUCCEEDED) {
+    return { paymentId: existing.id, status: existing.status };
   }
   const credit = await client.invoice.findFirst({
     where: { bookingId, documentType: "CREDIT_NOTE", creditReason: { contains: `[remboursement ${existing.id}]` } },
   });
   if (!credit) throw new AdminApiError(409, "REFUND_CREDIT_NOTE_PENDING", "Le remboursement existe mais son avoir doit être régularisé.");
-  if (credit.creditReason !== `${input.reason} [remboursement ${existing.id}]`) {
-    throw new AdminApiError(409, "IDEMPOTENCY_KEY_REUSED", "Cette clé de remboursement a déjà été utilisée avec un autre motif.");
-  }
-  return { paymentId: existing.id, invoiceId: credit.id, invoiceNumber: credit.number };
+  return { paymentId: existing.id, status: existing.status, invoiceId: credit.id, invoiceNumber: credit.number };
 }
 
 export async function recordManualPayment(
@@ -68,9 +74,18 @@ export async function recordManualPayment(
   return prisma.$transaction(async (transaction) => {
     const existing = await transaction.payment.findUnique({ where: { idempotencyKey } });
     if (existing) {
+      if (
+        existing.propertyId !== membership.propertyId
+        || existing.bookingId !== bookingId
+        || existing.provider !== PaymentProvider.MANUAL
+        || existing.kind !== PaymentKind.CHARGE
+        || existing.paymentMethodType !== input.paymentMethodType
+      ) {
+        throw new AdminApiError(409, "IDEMPOTENCY_KEY_REUSED", "Cette clé de paiement a déjà été utilisée pour une autre opération.");
+      }
       const invoice = await transaction.invoice.findFirst({ where: { bookingId: existing.bookingId, documentType: "INVOICE" } });
       if (!invoice) throw new AdminApiError(409, "PAYMENT_INVOICE_PENDING", "Le paiement existe mais sa facture doit être régularisée.");
-      return { paymentId: existing.id, invoiceId: invoice.id, invoiceNumber: invoice.number };
+      return { paymentId: existing.id, status: existing.status, invoiceId: invoice.id, invoiceNumber: invoice.number };
     }
 
     const booking = await transaction.booking.findFirst({
@@ -129,8 +144,147 @@ export async function recordManualPayment(
         payload: { firstName: guest.firstName, reference: booking.reference, total: Number(payment.amount), currency: booking.currency, invoiceNumber: invoice.number },
       });
     }
-    return { paymentId: payment.id, invoiceId: invoice.id, invoiceNumber: invoice.number };
+    return { paymentId: payment.id, status: payment.status, invoiceId: invoice.id, invoiceNumber: invoice.number };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
+export async function finalizeRefundPayment(
+  transaction: Prisma.TransactionClient,
+  refundId: string,
+  providerReference?: string,
+): Promise<BillingResult> {
+  const refund = await transaction.payment.findUnique({
+    where: { id: refundId },
+    include: {
+      parentPayment: { include: { refunds: { where: { status: PaymentStatus.SUCCEEDED }, select: { amount: true } } } },
+      booking: { include: { guests: { where: { isPrimary: true }, take: 1, select: { firstName: true, email: true } } } },
+    },
+  });
+  if (!refund || refund.kind !== PaymentKind.REFUND || !refund.parentPayment) {
+    throw new AdminApiError(404, "REFUND_NOT_FOUND", "Le remboursement est introuvable.");
+  }
+
+  if (refund.status === PaymentStatus.SUCCEEDED) {
+    const credit = await transaction.invoice.findFirst({
+      where: { bookingId: refund.bookingId, documentType: "CREDIT_NOTE", creditReason: { contains: `[remboursement ${refund.id}]` } },
+    });
+    if (!credit) throw new AdminApiError(409, "REFUND_CREDIT_NOTE_PENDING", "Le remboursement existe mais son avoir doit être régularisé.");
+    return { paymentId: refund.id, status: refund.status, invoiceId: credit.id, invoiceNumber: credit.number };
+  }
+  if (refund.status !== PaymentStatus.PROCESSING && refund.status !== PaymentStatus.REQUIRES_PAYMENT) {
+    return { paymentId: refund.id, status: refund.status };
+  }
+
+  const parent = refund.parentPayment;
+  const refundedBefore = decimalSum(parent.refunds.map((item) => item.amount));
+  if (refund.amount.gt(parent.amount.minus(refundedBefore))) {
+    throw new AdminApiError(409, "PAYMENT_CHANGED", "Le montant remboursable a changé.");
+  }
+  const parentStatus = refundedBefore.add(refund.amount).gte(parent.amount)
+    ? PaymentStatus.REFUNDED
+    : PaymentStatus.PARTIALLY_REFUNDED;
+  const updatedRefund = await transaction.payment.update({
+    where: { id: refund.id },
+    data: {
+      status: PaymentStatus.SUCCEEDED,
+      providerReference: providerReference ?? refund.providerReference,
+      processedAt: new Date(),
+      failureReason: null,
+    },
+  });
+  await transaction.payment.update({ where: { id: parent.id }, data: { status: parentStatus } });
+  const originalInvoice = await issuePaidInvoice(transaction, refund.bookingId);
+  const reason = refund.refundReason ?? "Remboursement client";
+  const credit = await issueCreditNote(transaction, originalInvoice.id, refund.amount, `${reason} [remboursement ${refund.id}]`);
+  await transaction.auditLog.create({
+    data: {
+      propertyId: refund.propertyId,
+      bookingId: refund.bookingId,
+      action: "PAYMENT_REFUNDED",
+      entityType: "Payment",
+      entityId: refund.id,
+      before: { refundStatus: refund.status, parentStatus: parent.status },
+      after: { refundStatus: updatedRefund.status, parentStatus, amount: refund.amount.toString() },
+      metadata: { reason, creditNoteNumber: credit.number, provider: refund.provider },
+    },
+  });
+  const guest = primaryGuest(refund.booking);
+  if (guest?.email) {
+    await enqueueBookingNotification(transaction, {
+      propertyId: refund.propertyId,
+      bookingId: refund.bookingId,
+      recipient: guest.email,
+      template: "PAYMENT_REFUNDED",
+      idempotencyKey: `payment:${refund.id}:refunded`,
+      payload: { firstName: guest.firstName, reference: refund.booking.reference, total: Number(refund.amount), currency: refund.currency, reason, invoiceNumber: credit.number },
+    });
+  }
+  return { paymentId: refund.id, status: updatedRefund.status, invoiceId: credit.id, invoiceNumber: credit.number };
+}
+
+export async function failRefundPayment(
+  transaction: Prisma.TransactionClient,
+  refundId: string,
+  failureReason: string,
+  cancelled = false,
+) {
+  await transaction.payment.updateMany({
+    where: { id: refundId, kind: PaymentKind.REFUND, status: { in: [PaymentStatus.REQUIRES_PAYMENT, PaymentStatus.PROCESSING] } },
+    data: { status: cancelled ? PaymentStatus.CANCELLED : PaymentStatus.FAILED, failureReason: failureReason.slice(0, 500), processedAt: new Date() },
+  });
+}
+
+async function submitStripeRefund(refundId: string, idempotencyKey: string): Promise<BillingResult> {
+  const refund = await prisma.payment.findUnique({ where: { id: refundId }, include: { parentPayment: true } });
+  if (!refund || refund.kind !== PaymentKind.REFUND || !refund.parentPayment) {
+    throw new AdminApiError(404, "REFUND_NOT_FOUND", "Le remboursement est introuvable.");
+  }
+  if (refund.status !== PaymentStatus.PROCESSING) return { paymentId: refund.id, status: refund.status };
+  if (refund.providerReference) return { paymentId: refund.id, status: refund.status };
+  if (!refund.parentPayment.providerReference?.startsWith("pi_")) {
+    throw new AdminApiError(409, "STRIPE_PAYMENT_REFERENCE_MISSING", "La référence Stripe du paiement est absente.");
+  }
+
+  try {
+    const stripeRefund = await stripe().refunds.create({
+      payment_intent: refund.parentPayment.providerReference,
+      amount: refund.amount.mul(100).toDecimalPlaces(0).toNumber(),
+      reason: "requested_by_customer",
+      metadata: {
+        bookingId: refund.bookingId,
+        parentPaymentId: refund.parentPayment.id,
+        refundPaymentId: refund.id,
+      },
+    }, { idempotencyKey });
+
+    if (stripeRefund.status === "succeeded") {
+      return prisma.$transaction(
+        (transaction) => finalizeRefundPayment(transaction, refund.id, stripeRefund.id),
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    }
+    if (stripeRefund.status === "failed" || stripeRefund.status === "canceled") {
+      await prisma.$transaction((transaction) => failRefundPayment(
+        transaction,
+        refund.id,
+        stripeRefund.failure_reason ?? `Stripe refund ${stripeRefund.status}`,
+        stripeRefund.status === "canceled",
+      ));
+      throw new AdminApiError(502, "REFUND_PROVIDER_FAILED", "Stripe n'a pas pu exécuter le remboursement.");
+    }
+    await prisma.payment.update({
+      where: { id: refund.id },
+      data: { providerReference: stripeRefund.id, failureReason: null },
+    });
+    return { paymentId: refund.id, status: PaymentStatus.PROCESSING };
+  } catch (error) {
+    if (error instanceof AdminApiError) throw error;
+    await prisma.payment.updateMany({
+      where: { id: refund.id, status: PaymentStatus.PROCESSING },
+      data: { failureReason: error instanceof Error ? error.message.slice(0, 500) : "Stripe refund error" },
+    });
+    throw new AdminApiError(502, "REFUND_PROVIDER_UNAVAILABLE", "Stripe ne répond pas. Vous pouvez relancer la même demande sans risque de doublon.");
+  }
 }
 
 export async function refundPayment(
@@ -141,102 +295,82 @@ export async function refundPayment(
   input: RefundInput,
   ipAddress?: string,
 ): Promise<BillingResult> {
-  const completedAttempt = await existingRefundResult(prisma, membership, bookingId, idempotencyKey, input);
-  if (completedAttempt) return completedAttempt;
-
-  const charge = await prisma.payment.findFirst({
-    where: {
-      id: input.paymentId,
-      bookingId,
-      propertyId: membership.propertyId,
-      kind: PaymentKind.CHARGE,
-      status: { in: [PaymentStatus.SUCCEEDED, PaymentStatus.PARTIALLY_REFUNDED] },
-    },
-    include: { refunds: { where: { status: PaymentStatus.SUCCEEDED }, select: { amount: true } } },
-  });
-  if (!charge) throw new AdminApiError(404, "PAYMENT_NOT_REFUNDABLE", "Ce paiement est introuvable ou ne peut plus être remboursé.");
-  const alreadyRefunded = decimalSum(charge.refunds.map((refund) => refund.amount));
-  const refundable = charge.amount.minus(alreadyRefunded).toDecimalPlaces(2);
-  const amount = new Prisma.Decimal(input.amount ?? refundable);
-  if (amount.lte(0) || amount.gt(refundable)) throw new AdminApiError(409, "INVALID_REFUND_AMOUNT", `Le montant remboursable maximal est de ${refundable.toFixed(2)} ${charge.currency}.`);
-
-  let providerReference: string | undefined;
-  if (charge.provider === PaymentProvider.STRIPE) {
-    if (!charge.providerReference?.startsWith("pi_")) throw new AdminApiError(409, "STRIPE_PAYMENT_REFERENCE_MISSING", "La référence Stripe du paiement est absente.");
-    const stripeRefund = await stripe().refunds.create({
-      payment_intent: charge.providerReference,
-      amount: amount.mul(100).toDecimalPlaces(0).toNumber(),
-      reason: "requested_by_customer",
-      metadata: { bookingId, paymentId: charge.id, reason: input.reason.slice(0, 450) },
-    }, { idempotencyKey });
-    providerReference = stripeRefund.id;
+  const existing = await existingRefundResult(prisma, membership, bookingId, idempotencyKey, input);
+  if (existing) {
+    if (existing.status === PaymentStatus.PROCESSING) return submitStripeRefund(existing.paymentId, idempotencyKey);
+    return existing;
   }
 
+  let refund: { id: string; provider: PaymentProvider };
   try {
-    return await prisma.$transaction(async (transaction) => {
+    refund = await prisma.$transaction(async (transaction) => {
       const concurrentAttempt = await existingRefundResult(transaction, membership, bookingId, idempotencyKey, input);
-      if (concurrentAttempt) return concurrentAttempt;
-    const current = await transaction.payment.findUnique({
-      where: { id: charge.id },
-      include: { refunds: { where: { status: PaymentStatus.SUCCEEDED }, select: { amount: true } }, booking: { include: { guests: { where: { isPrimary: true }, take: 1, select: { firstName: true, email: true } } } } },
-    });
-    if (!current || !successful(current.status)) throw new AdminApiError(409, "PAYMENT_CHANGED", "Le paiement a changé. Rechargez avant de réessayer.");
-    const refundedNow = decimalSum(current.refunds.map((refund) => refund.amount));
-    if (amount.gt(current.amount.minus(refundedNow))) throw new AdminApiError(409, "PAYMENT_CHANGED", "Le montant remboursable a changé.");
-
-    const refund = await transaction.payment.create({
-      data: {
-        propertyId: current.propertyId,
-        bookingId: current.bookingId,
-        parentPaymentId: current.id,
-        provider: current.provider,
-        providerReference,
-        idempotencyKey,
-        kind: PaymentKind.REFUND,
-        status: PaymentStatus.SUCCEEDED,
-        amount,
-        currency: current.currency,
-        paymentMethodType: current.paymentMethodType,
-        processedAt: new Date(),
-      },
-    });
-    const fullyRefunded = refundedNow.add(amount).gte(current.amount);
-    await transaction.payment.update({ where: { id: current.id }, data: { status: fullyRefunded ? PaymentStatus.REFUNDED : PaymentStatus.PARTIALLY_REFUNDED } });
-    const originalInvoice = await issuePaidInvoice(transaction, current.bookingId);
-    const creditReason = `${input.reason} [remboursement ${refund.id}]`;
-    const credit = await issueCreditNote(transaction, originalInvoice.id, amount, creditReason);
-    await transaction.auditLog.create({
-      data: {
-        propertyId: current.propertyId,
-        adminUserId,
-        bookingId: current.bookingId,
-        action: "PAYMENT_REFUNDED",
-        entityType: "Payment",
-        entityId: refund.id,
-        before: { parentStatus: current.status },
-        after: { parentStatus: fullyRefunded ? PaymentStatus.REFUNDED : PaymentStatus.PARTIALLY_REFUNDED, amount: amount.toString() },
-        metadata: { reason: input.reason, creditNoteNumber: credit.number, provider: current.provider },
-        ...(ipAddress ? { ipAddress } : {}),
-      },
-    });
-    const guest = primaryGuest(current.booking);
-    if (guest?.email) {
-      await enqueueBookingNotification(transaction, {
-        propertyId: current.propertyId,
-        bookingId: current.bookingId,
-        recipient: guest.email,
-        template: "PAYMENT_REFUNDED",
-        idempotencyKey: `payment:${refund.id}:refunded`,
-        payload: { firstName: guest.firstName, reference: current.booking.reference, total: Number(amount), currency: current.currency, reason: input.reason, invoiceNumber: credit.number },
+      if (concurrentAttempt) {
+        const payment = await transaction.payment.findUniqueOrThrow({ where: { id: concurrentAttempt.paymentId }, select: { id: true, provider: true } });
+        return payment;
+      }
+      const charge = await transaction.payment.findFirst({
+        where: {
+          id: input.paymentId,
+          bookingId,
+          propertyId: membership.propertyId,
+          kind: PaymentKind.CHARGE,
+          status: { in: [PaymentStatus.SUCCEEDED, PaymentStatus.PARTIALLY_REFUNDED] },
+        },
+        include: { refunds: { where: { status: { in: [PaymentStatus.SUCCEEDED, PaymentStatus.PROCESSING] } }, select: { amount: true } } },
       });
-    }
-      return { paymentId: refund.id, invoiceId: credit.id, invoiceNumber: credit.number };
+      if (!charge) throw new AdminApiError(404, "PAYMENT_NOT_REFUNDABLE", "Ce paiement est introuvable ou ne peut plus être remboursé.");
+      const reserved = decimalSum(charge.refunds.map((item) => item.amount));
+      const refundable = charge.amount.minus(reserved).toDecimalPlaces(2);
+      const amount = new Prisma.Decimal(input.amount ?? refundable);
+      if (amount.lte(0) || amount.gt(refundable)) {
+        throw new AdminApiError(409, "INVALID_REFUND_AMOUNT", `Le montant remboursable maximal est de ${refundable.toFixed(2)} ${charge.currency}.`);
+      }
+      const createdRefund = await transaction.payment.create({
+        data: {
+          propertyId: charge.propertyId,
+          bookingId: charge.bookingId,
+          parentPaymentId: charge.id,
+          provider: charge.provider,
+          idempotencyKey,
+          kind: PaymentKind.REFUND,
+          status: PaymentStatus.PROCESSING,
+          amount,
+          currency: charge.currency,
+          paymentMethodType: charge.paymentMethodType,
+          refundReason: input.reason,
+          failureReason: null,
+        },
+        select: { id: true, provider: true },
+      });
+      await transaction.auditLog.create({
+        data: {
+          propertyId: charge.propertyId,
+          adminUserId,
+          bookingId: charge.bookingId,
+          action: "PAYMENT_REFUND_REQUESTED",
+          entityType: "Payment",
+          entityId: createdRefund.id,
+          after: { status: PaymentStatus.PROCESSING, amount: amount.toString(), currency: charge.currency },
+          metadata: { reason: input.reason, provider: charge.provider },
+          ...(ipAddress ? { ipAddress } : {}),
+        },
+      });
+      return createdRefund;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       const recovered = await existingRefundResult(prisma, membership, bookingId, idempotencyKey, input);
-      if (recovered) return recovered;
+      if (recovered) return recovered.status === PaymentStatus.PROCESSING
+        ? submitStripeRefund(recovered.paymentId, idempotencyKey)
+        : recovered;
     }
     throw error;
   }
+
+  if (refund.provider === PaymentProvider.STRIPE) return submitStripeRefund(refund.id, idempotencyKey);
+  return prisma.$transaction(
+    (transaction) => finalizeRefundPayment(transaction, refund.id),
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+  );
 }

@@ -35,10 +35,10 @@ export function getPaymentConfig(signal?: AbortSignal) {
   return apiGet<{ stripeEnabled: boolean }>("/payments/config", signal);
 }
 
-export function createStripeCheckout(reference: string, email: string, idempotencyKey: string, signal?: AbortSignal) {
+export function createStripeCheckout(accessToken: string, idempotencyKey: string, signal?: AbortSignal) {
   return apiPost<{ checkoutUrl: string; sessionId: string }>(
     "/payments/stripe/checkout",
-    { reference, email },
+    { accessToken },
     signal,
     { "Idempotency-Key": idempotencyKey },
   );
@@ -61,7 +61,19 @@ export type StripeCheckoutStatus = {
   };
 };
 
-export function getStripeCheckoutStatus(sessionId: string, signal?: AbortSignal) {
+export function getPublicBooking(accessToken: string, signal?: AbortSignal) {
+  return apiGet<StripeCheckoutStatus["booking"]>(
+    "/bookings/public",
+    signal,
+    { "X-Booking-Access-Token": accessToken },
+  );
+}
+
+export function getStripeCheckoutStatus(sessionId: string, accessToken: string, signal?: AbortSignal) {
   const query = new URLSearchParams({ sessionId });
-  return apiGet<StripeCheckoutStatus>(`/payments/stripe/status?${query}`, signal);
+  return apiGet<StripeCheckoutStatus>(
+    `/payments/stripe/status?${query}`,
+    signal,
+    { "X-Booking-Access-Token": accessToken },
+  );
 }

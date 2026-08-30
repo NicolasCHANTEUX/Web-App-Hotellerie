@@ -27,6 +27,9 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
   throw new Error("PORT must be a valid TCP port.");
 }
 
+const bookingAccessTokenSecret = process.env.BOOKING_ACCESS_TOKEN_SECRET?.trim()
+  || (nodeEnv === "production" ? required("BOOKING_ACCESS_TOKEN_SECRET") : "hotel-rivage-local-booking-token-secret-change-me");
+
 export const env = {
   nodeEnv: nodeEnv as "development" | "test" | "production",
   databaseUrl: required("DATABASE_URL"),
@@ -49,4 +52,5 @@ export const env = {
   emailFrom: process.env.EMAIL_FROM?.trim() || null,
   stripeSecretKey: process.env.STRIPE_SECRET_KEY?.trim() || null,
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET?.trim() || null,
+  bookingAccessTokenSecret,
 };

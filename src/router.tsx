@@ -2,37 +2,26 @@ import { createBrowserRouter } from "react-router-dom";
 import { App } from "./App";
 import { AdminLayout } from "./admin/AdminLayout";
 import { AdminIndexRedirect, AdminRoot, RequireAdminAuth, RequirePlanningAccess, RequireReservationAccess } from "./admin/auth";
-import { Home } from "./pages/Home";
-import { Accommodations } from "./pages/Accommodations";
-import { AccommodationDetail } from "./pages/AccommodationDetail";
-import { Booking } from "./pages/Booking";
-import { Confirmation } from "./pages/Confirmation";
-import { Contact } from "./pages/Contact";
-import { Legal } from "./pages/Legal";
-import { AdminBookings } from "./pages/admin/AdminBookings";
-import { AdminLogin } from "./pages/admin/AdminLogin";
-import { AdminRooms } from "./pages/admin/AdminRooms";
-import { AdminPlanning } from "./pages/admin/AdminPlanning";
 
 export const router = createBrowserRouter([
   {
     path: "/",
     element: <App />,
     children: [
-      { index: true, element: <Home /> },
-      { path: "hebergements", element: <Accommodations /> },
-      { path: "hebergements/:slug", element: <AccommodationDetail /> },
-      { path: "reservation", element: <Booking /> },
-      { path: "confirmation", element: <Confirmation /> },
-      { path: "contact", element: <Contact /> },
-      { path: "mentions-legales", element: <Legal /> },
+      { index: true, lazy: async () => ({ Component: (await import("./pages/Home")).Home }) },
+      { path: "hebergements", lazy: async () => ({ Component: (await import("./pages/Accommodations")).Accommodations }) },
+      { path: "hebergements/:slug", lazy: async () => ({ Component: (await import("./pages/AccommodationDetail")).AccommodationDetail }) },
+      { path: "reservation", lazy: async () => ({ Component: (await import("./pages/Booking")).Booking }) },
+      { path: "confirmation", lazy: async () => ({ Component: (await import("./pages/Confirmation")).Confirmation }) },
+      { path: "contact", lazy: async () => ({ Component: (await import("./pages/Contact")).Contact }) },
+      { path: "mentions-legales", lazy: async () => ({ Component: (await import("./pages/Legal")).Legal }) },
     ],
   },
   {
     path: "/admin",
     element: <AdminRoot />,
     children: [
-      { path: "connexion", element: <AdminLogin /> },
+      { path: "connexion", lazy: async () => ({ Component: (await import("./pages/admin/AdminLogin")).AdminLogin }) },
       {
         element: <RequireAdminAuth />,
         children: [
@@ -40,9 +29,21 @@ export const router = createBrowserRouter([
             element: <AdminLayout />,
             children: [
               { index: true, element: <AdminIndexRedirect /> },
-              { path: "reservations", element: <RequireReservationAccess><AdminBookings /></RequireReservationAccess> },
-              { path: "planning", element: <RequirePlanningAccess><AdminPlanning /></RequirePlanningAccess> },
-              { path: "chambres", element: <AdminRooms /> },
+              {
+                path: "reservations",
+                lazy: async () => {
+                  const { AdminBookings } = await import("./pages/admin/AdminBookings");
+                  return { Component: () => <RequireReservationAccess><AdminBookings /></RequireReservationAccess> };
+                },
+              },
+              {
+                path: "planning",
+                lazy: async () => {
+                  const { AdminPlanning } = await import("./pages/admin/AdminPlanning");
+                  return { Component: () => <RequirePlanningAccess><AdminPlanning /></RequirePlanningAccess> };
+                },
+              },
+              { path: "chambres", lazy: async () => ({ Component: (await import("./pages/admin/AdminRooms")).AdminRooms }) },
             ],
           },
         ],

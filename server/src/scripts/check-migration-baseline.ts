@@ -32,6 +32,12 @@ const requiredConstraints = [
   "bookings_non_negative_amounts",
 ] as const;
 
+const requiredColumns = [
+  ["bookings", "publicAccessTokenHash"],
+  ["bookings", "publicAccessTokenExpiresAt"],
+  ["payments", "refundReason"],
+] as const;
+
 async function main() {
   const tables = await prisma.$queryRaw<Array<{ table_name: string }>>`
     SELECT table_name
@@ -43,6 +49,14 @@ async function main() {
     SELECT conname AS constraint_name
     FROM pg_constraint
     WHERE conname IN (${Prisma.join([...requiredConstraints])})
+  `;
+  const columns = await prisma.$queryRaw<Array<{ table_name: string; column_name: string }>>`
+    SELECT table_name, column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND (table_name, column_name) IN (${Prisma.join(
+        requiredColumns.map(([table, column]) => Prisma.sql`(${table}, ${column})`),
+      )})
   `;
   const rlsTables = await prisma.$queryRaw<Array<{ table_name: string }>>`
     SELECT c.relname AS table_name
@@ -56,9 +70,13 @@ async function main() {
 
   const presentTables = new Set(tables.map((item) => item.table_name));
   const presentConstraints = new Set(constraints.map((item) => item.constraint_name));
+  const presentColumns = new Set(columns.map((item) => `${item.table_name}.${item.column_name}`));
   const presentRls = new Set(rlsTables.map((item) => item.table_name));
   const missingTables = requiredTables.filter((name) => !presentTables.has(name));
   const missingConstraints = requiredConstraints.filter((name) => !presentConstraints.has(name));
+  const missingColumns = requiredColumns
+    .map(([table, column]) => `${table}.${column}`)
+    .filter((name) => !presentColumns.has(name));
   const missingRls = requiredTables.filter((name) => !presentRls.has(name));
 
   console.log(JSON.stringify({
@@ -66,10 +84,11 @@ async function main() {
     presentTables: presentTables.size,
     missingTables,
     missingConstraints,
+    missingColumns,
     missingRls,
   }, null, 2));
 
-  if (missingTables.length || missingConstraints.length || missingRls.length) {
+  if (missingTables.length || missingConstraints.length || missingColumns.length || missingRls.length) {
     process.exitCode = 1;
   }
 }

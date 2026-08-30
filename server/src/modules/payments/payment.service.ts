@@ -1,10 +1,12 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash } from "node:crypto";
 import Stripe from "stripe";
 import { BookingStatus, PaymentStatus, Prisma } from "../../generated/prisma/client.js";
 import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
 import { issuePaidInvoice } from "../billing/invoice.service.js";
+import { failRefundPayment, finalizeRefundPayment } from "../billing/billing.service.js";
 import { enqueueBookingNotification } from "../notifications/notification.service.js";
+import { bookingAccessTokenHash } from "../booking/booking.access.js";
 
 export class PaymentApiError extends Error {
   constructor(readonly statusCode: number, readonly code: string, message: string) {
@@ -18,28 +20,55 @@ function stripeClient() {
   return new Stripe(env.stripeSecretKey);
 }
 
-function sameEmail(left: string, right: string) {
-  const first = Buffer.from(left.trim().toLowerCase());
-  const second = Buffer.from(right.trim().toLowerCase());
-  return first.length === second.length && timingSafeEqual(first, second);
-}
-
 export function stripeEnabled() {
   return Boolean(env.stripeSecretKey && env.stripeWebhookSecret);
 }
 
-export async function createStripeCheckout(reference: string, email: string, requestKey: string) {
-  if (!stripeEnabled()) throw new PaymentApiError(503, "ONLINE_PAYMENT_DISABLED", "Le paiement en ligne n'est pas encore activé.");
-  const booking = await prisma.booking.findUnique({
-    where: { reference },
-    include: {
-      guests: { where: { isPrimary: true }, take: 1, select: { firstName: true, lastName: true, email: true } },
-      rooms: { orderBy: { createdAt: "asc" }, take: 1, select: { roomTypeNameSnapshot: true } },
-      hold: true,
+const publicBookingInclude = {
+  guests: { where: { isPrimary: true }, take: 1, select: { firstName: true, lastName: true, email: true } },
+  rooms: { orderBy: { createdAt: "asc" }, take: 1, select: { roomTypeNameSnapshot: true } },
+  extras: { orderBy: { createdAt: "asc" }, select: { nameSnapshot: true } },
+  hold: true,
+} satisfies Prisma.BookingInclude;
+
+async function bookingForPublicAccess(accessToken: string) {
+  const booking = await prisma.booking.findFirst({
+    where: {
+      publicAccessTokenHash: bookingAccessTokenHash(accessToken),
+      publicAccessTokenExpiresAt: { gt: new Date() },
+      anonymizedAt: null,
     },
+    include: publicBookingInclude,
   });
+  if (!booking) throw new PaymentApiError(404, "BOOKING_NOT_FOUND", "Réservation introuvable.");
+  return booking;
+}
+
+function publicBookingState(booking: Awaited<ReturnType<typeof bookingForPublicAccess>>) {
+  return {
+    reference: booking.reference,
+    status: booking.status,
+    room: booking.rooms[0]?.roomTypeNameSnapshot ?? "Hôtel Rivage",
+    arrival: booking.checkIn.toISOString().slice(0, 10),
+    departure: booking.checkOut.toISOString().slice(0, 10),
+    adults: booking.adults,
+    children: booking.children,
+    options: booking.extras.map((extra) => extra.nameSnapshot),
+    total: Number(booking.total),
+    currency: booking.currency,
+    holdExpiresAt: booking.hold?.expiresAt.toISOString(),
+  };
+}
+
+export async function getPublicBooking(accessToken: string) {
+  return publicBookingState(await bookingForPublicAccess(accessToken));
+}
+
+export async function createStripeCheckout(accessToken: string, requestKey: string) {
+  if (!stripeEnabled()) throw new PaymentApiError(503, "ONLINE_PAYMENT_DISABLED", "Le paiement en ligne n'est pas encore activé.");
+  const booking = await bookingForPublicAccess(accessToken);
   const guest = booking?.guests[0];
-  if (!booking || !guest?.email || !sameEmail(guest.email, email)) {
+  if (!guest?.email) {
     throw new PaymentApiError(404, "BOOKING_NOT_FOUND", "Réservation introuvable.");
   }
   if (booking.status !== BookingStatus.PENDING_PAYMENT || !booking.hold || booking.hold.status !== "ACTIVE" || booking.hold.expiresAt <= new Date()) {
@@ -105,7 +134,8 @@ export async function createStripeCheckout(reference: string, email: string, req
   }
 }
 
-export async function getStripeCheckoutStatus(sessionId: string) {
+export async function getStripeCheckoutStatus(sessionId: string, accessToken: string) {
+  const authorizedBooking = await bookingForPublicAccess(accessToken);
   const payment = await prisma.payment.findUnique({
     where: { checkoutSessionId: sessionId },
     select: {
@@ -127,29 +157,19 @@ export async function getStripeCheckoutStatus(sessionId: string) {
       },
     },
   });
-  if (!payment) throw new PaymentApiError(404, "CHECKOUT_SESSION_NOT_FOUND", "La session de paiement est introuvable.");
+  if (!payment || payment.booking.reference !== authorizedBooking.reference) {
+    throw new PaymentApiError(404, "CHECKOUT_SESSION_NOT_FOUND", "La session de paiement est introuvable.");
+  }
 
   return {
     paymentStatus: payment.status,
-    booking: {
-      reference: payment.booking.reference,
-      status: payment.booking.status,
-      room: payment.booking.rooms[0]?.roomTypeNameSnapshot ?? "Hôtel Rivage",
-      arrival: payment.booking.checkIn.toISOString().slice(0, 10),
-      departure: payment.booking.checkOut.toISOString().slice(0, 10),
-      adults: payment.booking.adults,
-      children: payment.booking.children,
-      options: payment.booking.extras.map((extra) => extra.nameSnapshot),
-      total: Number(payment.booking.total),
-      currency: payment.booking.currency,
-      holdExpiresAt: payment.booking.hold?.expiresAt.toISOString(),
-    },
+    booking: publicBookingState(authorizedBooking),
   };
 }
 
 function paymentIdFromEvent(event: Stripe.Event) {
   if (!("metadata" in event.data.object)) return null;
-  const value = event.data.object.metadata?.paymentId;
+  const value = event.data.object.metadata?.refundPaymentId ?? event.data.object.metadata?.paymentId;
   return typeof value === "string" && /^[0-9a-f-]{36}$/i.test(value) ? value : null;
 }
 
@@ -167,6 +187,7 @@ async function finalizePayment(transaction: Prisma.TransactionClient, paymentId:
     },
   });
   if (!payment || payment.provider !== "STRIPE") throw new PaymentApiError(404, "PAYMENT_NOT_FOUND", "Paiement introuvable.");
+  if (payment.status === PaymentStatus.SUCCEEDED || payment.status === PaymentStatus.PARTIALLY_REFUNDED || payment.status === PaymentStatus.REFUNDED) return;
   const booking = payment.booking;
 
   if (booking.status === BookingStatus.PENDING_PAYMENT) {
@@ -266,10 +287,32 @@ export async function processStripeEvent(event: Stripe.Event, rawBody: Buffer) {
           await finalizePayment(transaction, paymentId, event.data.object.id, event.data.object.payment_method_types[0] ?? "card");
           break;
         case "payment_intent.payment_failed":
-          await transaction.payment.update({ where: { id: paymentId }, data: { status: PaymentStatus.FAILED, providerReference: event.data.object.id, failureReason: event.data.object.last_payment_error?.message?.slice(0, 500) ?? "Payment failed" } });
+          await transaction.payment.updateMany({ where: { id: paymentId, status: { in: [PaymentStatus.REQUIRES_PAYMENT, PaymentStatus.PROCESSING, PaymentStatus.FAILED] } }, data: { status: PaymentStatus.FAILED, providerReference: event.data.object.id, failureReason: event.data.object.last_payment_error?.message?.slice(0, 500) ?? "Payment failed" } });
           break;
         case "checkout.session.expired":
           await transaction.payment.updateMany({ where: { id: paymentId, status: { in: [PaymentStatus.REQUIRES_PAYMENT, PaymentStatus.PROCESSING] } }, data: { status: PaymentStatus.CANCELLED } });
+          break;
+        case "refund.created":
+        case "refund.updated": {
+          const refund = event.data.object;
+          if (refund.status === "succeeded") {
+            await finalizeRefundPayment(transaction, paymentId, refund.id);
+          } else if (refund.status === "failed" || refund.status === "canceled") {
+            await failRefundPayment(
+              transaction,
+              paymentId,
+              refund.failure_reason ?? `Stripe refund ${refund.status}`,
+              refund.status === "canceled",
+            );
+          }
+          break;
+        }
+        case "refund.failed":
+          await failRefundPayment(
+            transaction,
+            paymentId,
+            event.data.object.failure_reason ?? "Stripe refund failed",
+          );
           break;
         default:
           handled = false;

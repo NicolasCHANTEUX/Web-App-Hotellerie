@@ -41,6 +41,8 @@ export async function anonymizeExpiredBookings(now = new Date(), limit = 100) {
         },
         data: {
           specialRequests: null,
+          publicAccessTokenHash: null,
+          publicAccessTokenExpiresAt: null,
           anonymizedAt: now,
         },
       });

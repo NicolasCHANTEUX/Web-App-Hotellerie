@@ -42,13 +42,7 @@ npm run db:migrate:baseline-check
 
 La commande controle les 20 tables initiales, les contraintes critiques et RLS. Ce n'est qu'apres un resultat sans element manquant que la migration initiale peut etre marquee comme deja appliquee avec `npx prisma migrate resolve --applied 20260808193000_init`. Ne jamais utiliser `resolve` pour masquer une migration partiellement appliquee.
 
-Sans chaine PostgreSQL, les memes fichiers peuvent etre executes dans le SQL Editor Supabase, dans cet ordre :
-
-1. `supabase/migrations/20260808193000_init.sql`
-2. `supabase/migrations/20260824120000_business_foundation_v2.sql`
-3. les migrations suivantes, dans l'ordre chronologique de leur nom
-4. `supabase/seed.sql`
-5. `supabase/verify.sql` pour controler l'installation
+`prisma/migrations` est l'unique historique de migrations. Les anciens fichiers de `supabase/migrations` sont des instantanes historiques et ne doivent plus etre appliques en parallele. Le SQL Editor Supabase peut toujours servir aux requetes de diagnostic, mais toute evolution de schema doit etre creee et versionnee avec Prisma Migrate.
 
 La migration active RLS sur toutes les tables sans creer de politique publique. Les appels REST publics sont donc refuses par defaut jusqu'a l'ajout volontaire de politiques.
 
@@ -156,9 +150,12 @@ Le mode manuel fonctionne sans service externe. Stripe n'est propose au client q
 ```dotenv
 STRIPE_SECRET_KEY="sk_..."
 STRIPE_WEBHOOK_SECRET="whsec_..."
+BOOKING_ACCESS_TOKEN_SECRET="une-valeur-aleatoire-longue-et-dediee"
 ```
 
-Le webhook Stripe doit pointer vers `POST /payments/stripe/webhook`. La signature porte sur le corps brut et chaque evenement est traite de facon idempotente. Les metadonnees Stripe ne contiennent que les identifiants techniques de la reservation et du paiement. Ne jamais placer ces cles dans une variable `VITE_*`.
+Le webhook Stripe doit pointer vers `POST /payments/stripe/webhook` et ecouter les evenements Checkout, Payment Intent et Refund (`refund.created`, `refund.updated`, `refund.failed`). La signature porte sur le corps brut et chaque evenement est traite de facon idempotente. Les metadonnees Stripe ne contiennent que les identifiants techniques de la reservation et du paiement. Ne jamais placer ces cles dans une variable `VITE_*`.
+
+`BOOKING_ACCESS_TOKEN_SECRET` signe les jetons opaques permettant au client de reprendre sa reservation apres une actualisation ou un retour Stripe. Cette valeur est obligatoire en production et sa rotation invalide les anciens jetons publics.
 
 Après Checkout, Stripe renvoie le navigateur avec son identifiant de session. La page de confirmation interroge `GET /payments/stripe/status` pendant quelques secondes et affiche uniquement l'état persistant produit par le webhook. L'identifiant Checkout et la référence fournisseur du paiement sont conservés séparément afin que cette vérification reste possible après confirmation.
 

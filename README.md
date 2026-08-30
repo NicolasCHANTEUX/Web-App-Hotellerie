@@ -18,11 +18,14 @@ Sans clés Stripe, l'application reste volontairement en mode manuel et ne montr
 ## Installation
 
 ```powershell
-npm install
-npm --prefix server install
+npm ci
+npm --prefix server ci
+npm --prefix server run db:generate
 ```
 
 La connexion Supabase est configuree dans `server/.env`, fichier ignore par Git. Le certificat public Supabase est conserve dans `server/certs`.
+
+Ces commandes sont egalement a relancer apres avoir recupere le projet sur une autre machine. Les dossiers `node_modules` et le client Prisma genere sont propres a l'environnement local et ne doivent pas etre recopies entre deux installations.
 
 ## Lancer toute l'application
 
@@ -31,6 +34,8 @@ npm run dev:full
 ```
 
 Cette commande remplace automatiquement une ancienne instance du projet, attend que l'API soit prete, puis lance Vite. Elle utilise toujours les ports fixes ci-dessous afin d'eviter une instance frontend inutilisable sur `5174`.
+
+Avec Node 20 ou 22, le frontend utilise le serveur Vite avec rechargement a chaud. Sous Node 24, une politique Windows peut bloquer le pre-bundling natif d'Esbuild dans certains dossiers OneDrive : le script bascule alors automatiquement sur un build surveille servi en preview. Dans ce mode, les changements sont reconstruits automatiquement mais il faut rafraichir le navigateur.
 
 - Frontend : `http://127.0.0.1:5173`
 - API : `http://127.0.0.1:3001`

@@ -1,7 +1,7 @@
 import { CalendarPlus, CheckCircle2, CreditCard, Download } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
-import { createStripeCheckout, getPaymentConfig, getStripeCheckoutStatus } from "../api/hotel";
+import { createStripeCheckout, getPaymentConfig, getPublicBooking, getStripeCheckoutStatus } from "../api/hotel";
 
 type ConfirmationState = {
   reference?: string;
@@ -14,7 +14,7 @@ type ConfirmationState = {
   options?: string[];
   total?: number;
   currency?: string;
-  email?: string;
+  accessToken?: string;
   holdExpiresAt?: string;
 };
 
@@ -61,7 +61,9 @@ export function Confirmation() {
   const [booking, setBooking] = useState<ConfirmationState>(() => navigationState.reference ? navigationState : readStoredConfirmation());
   const paymentReturn = new URLSearchParams(location.search).get("payment");
   const checkoutSessionId = new URLSearchParams(location.search).get("session_id");
-  const [paymentSynchronizing, setPaymentSynchronizing] = useState(paymentReturn === "success" && Boolean(checkoutSessionId));
+  const [paymentSynchronizing, setPaymentSynchronizing] = useState(
+    paymentReturn === "success" && Boolean(checkoutSessionId) && Boolean(booking.accessToken),
+  );
   const [paymentNotice, setPaymentNotice] = useState<string | null>(
     paymentReturn === "cancelled" ? "Le paiement a été interrompu. Votre demande reste en attente tant que l'option est active." : null,
   );
@@ -78,8 +80,28 @@ export function Confirmation() {
   }, []);
 
   useEffect(() => {
-    if (paymentReturn !== "success" || !checkoutSessionId) return;
+    if (!booking.accessToken || paymentReturn === "success") return;
+    const accessToken = booking.accessToken;
+    const controller = new AbortController();
+    getPublicBooking(accessToken, controller.signal)
+      .then((freshBooking) => {
+        const updated = { ...freshBooking, accessToken } satisfies ConfirmationState;
+        setBooking(updated);
+        sessionStorage.setItem("rivage:latest-confirmation", JSON.stringify(updated));
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [booking.accessToken, paymentReturn]);
+
+  useEffect(() => {
+    if (!paymentReturn) return;
+    window.history.replaceState(window.history.state, "", location.pathname);
+  }, [location.pathname, paymentReturn]);
+
+  useEffect(() => {
+    if (paymentReturn !== "success" || !checkoutSessionId || !booking.accessToken) return;
     const sessionId = checkoutSessionId;
+    const accessToken = booking.accessToken;
     const controller = new AbortController();
     let timer: number | undefined;
     let attempts = 0;
@@ -87,10 +109,10 @@ export function Confirmation() {
     async function synchronize() {
       attempts += 1;
       try {
-        const result = await getStripeCheckoutStatus(sessionId, controller.signal);
+        const result = await getStripeCheckoutStatus(sessionId, accessToken, controller.signal);
         setBooking((current) => {
           const updated = { ...current, ...result.booking } satisfies ConfirmationState;
-          sessionStorage.setItem("rivage:latest-confirmation", JSON.stringify({ ...updated, email: undefined }));
+          sessionStorage.setItem("rivage:latest-confirmation", JSON.stringify(updated));
           return updated;
         });
 
@@ -129,19 +151,19 @@ export function Confirmation() {
       controller.abort();
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [checkoutSessionId, paymentReturn]);
+  }, [booking.accessToken, checkoutSessionId, paymentReturn]);
 
   if (!booking.reference && !paymentSynchronizing) return <Navigate to="/reservation" replace />;
 
   async function startOnlinePayment() {
-    if (!booking.reference || !booking.email || paymentStarting) return;
+    if (!booking.reference || !booking.accessToken || paymentStarting) return;
     setPaymentStarting(true);
     setPaymentError(null);
     const storageKey = `rivage:payment-key:${booking.reference}`;
     const key = sessionStorage.getItem(storageKey) ?? `checkout:${crypto.randomUUID()}`;
     sessionStorage.setItem(storageKey, key);
     try {
-      const session = await createStripeCheckout(booking.reference, booking.email, key);
+      const session = await createStripeCheckout(booking.accessToken, key);
       window.location.assign(session.checkoutUrl);
     } catch (error) {
       setPaymentError(error instanceof Error ? error.message : "Le paiement en ligne n'a pas pu être préparé.");
@@ -242,7 +264,7 @@ export function Confirmation() {
       documentPdf.setTextColor(113, 104, 94);
       documentPdf.text("26 avenue des Pins, 06400 Cannes - contact@hotel-rivage.fr", margin + 8, cursorY + 28);
       documentPdf.setFontSize(8);
-      documentPdf.text("Document généré depuis le site de l'Hôtel Rivage.", margin, 282);
+      documentPdf.text("Récapitulatif informatif : ce document ne constitue ni une facture ni une preuve de paiement.", margin, 282);
 
       documentPdf.save(`hotel-rivage-${booking.reference.replace(/[^a-z0-9-]/gi, "-")}.pdf`);
     } catch {
@@ -259,8 +281,8 @@ export function Confirmation() {
         <p className="eyebrow">{isConfirmed ? "Réservation confirmée" : "Demande enregistrée"}</p>
         <h1>{isConfirmed ? "Votre séjour est confirmé." : "Votre réservation nous est bien parvenue."}</h1>
         <p className="confirmation-lead">{isConfirmed
-          ? <>La réservation associée à <strong>{booking.email || "votre adresse email"}</strong> est confirmée par l'hôtel.</>
-          : <>La demande associée à <strong>{booking.email || "votre adresse email"}</strong> est enregistrée en attente de confirmation manuelle par l'hôtel. L'option sur la chambre est maintenue pendant 24 h.</>}</p>
+          ? <>La réservation a été confirmée par l'hôtel. Un récapitulatif a été envoyé à l'adresse renseignée lors de la réservation.</>
+          : <>La demande est enregistrée en attente de confirmation manuelle par l'hôtel. L'option sur la chambre est maintenue pendant 24 h.</>}</p>
         <div className="confirmation-reference"><span>Numéro de réservation</span><strong>{booking.reference ?? "À retrouver dans votre confirmation"}</strong></div>
         <dl className="confirmation-details">
           <div><dt>Hébergement</dt><dd>{booking.room ?? "Hôtel Rivage"}</dd></div>
@@ -274,8 +296,8 @@ export function Confirmation() {
         {paymentNotice && !paymentSynchronizing && <p className="confirmation-payment-notice" role="status">{paymentNotice}</p>}
         {(pdfError || paymentError) && <p className="confirmation-download-error" role="alert">{pdfError ?? paymentError}</p>}
         <div className="confirmation-actions">
-          {!isConfirmed && !isInactive && paymentReturn !== "success" && stripeAvailable && booking.email && <button className="btn-primary" type="button" disabled={paymentStarting} onClick={startOnlinePayment}><CreditCard />{paymentStarting ? "Redirection…" : "Payer en ligne"}</button>}
-          <button className="btn-secondary" type="button" disabled={downloadingPdf} onClick={downloadConfirmationPdf}><Download />{downloadingPdf ? "Préparation…" : "Télécharger le PDF"}</button>
+          {!isConfirmed && !isInactive && paymentReturn !== "success" && stripeAvailable && booking.accessToken && <button className="btn-primary" type="button" disabled={paymentStarting} onClick={startOnlinePayment}><CreditCard />{paymentStarting ? "Redirection…" : "Payer en ligne"}</button>}
+          <button className="btn-secondary" type="button" disabled={downloadingPdf} onClick={downloadConfirmationPdf}><Download />{downloadingPdf ? "Préparation…" : "Télécharger le récapitulatif"}</button>
           <button className="btn-secondary" type="button" disabled={!booking.arrival || !booking.departure} onClick={downloadCalendarEvent}><CalendarPlus />Ajouter au calendrier</button>
           <Link className="btn-primary" to="/">Retour à l'accueil</Link>
         </div>

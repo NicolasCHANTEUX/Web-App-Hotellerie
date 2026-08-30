@@ -17,7 +17,9 @@ function parseDate(value: string | undefined) {
 }
 
 export async function availabilityRoutes(app: FastifyInstance) {
-  app.get<{ Querystring: AvailabilityQuery }>("/availability", async (request, reply) => {
+  app.get<{ Querystring: AvailabilityQuery }>("/availability", {
+    config: { rateLimit: { max: 120, timeWindow: "15 minutes" } },
+  }, async (request, reply) => {
     const arrival = parseDate(request.query.arrival);
     const departure = parseDate(request.query.departure);
     const adults = Number(request.query.adults ?? 2);

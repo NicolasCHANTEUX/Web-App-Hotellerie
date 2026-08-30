@@ -19,6 +19,7 @@ export async function buildApp() {
       redact: {
         paths: [
           "req.headers.authorization",
+          "req.headers.x-booking-access-token",
           "req.headers.cookie",
           "res.headers['set-cookie']",
           "req.body.password",
@@ -31,9 +32,7 @@ export async function buildApp() {
     trustProxy: env.trustProxy,
   });
 
-  await app.register(helmet, {
-    contentSecurityPolicy: false,
-  });
+  await app.register(helmet);
 
   await app.register(cors, {
     origin(origin, callback) {

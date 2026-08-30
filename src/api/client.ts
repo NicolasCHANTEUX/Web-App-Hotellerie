@@ -39,8 +39,8 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   return (body as ApiEnvelope<T>).data;
 }
 
-export function apiGet<T>(path: string, signal?: AbortSignal) {
-  return apiRequest<T>(path, { signal });
+export function apiGet<T>(path: string, signal?: AbortSignal, headers?: Record<string, string>) {
+  return apiRequest<T>(path, { signal, headers });
 }
 
 export function apiPost<T>(path: string, body: unknown, signal?: AbortSignal, headers?: Record<string, string>) {

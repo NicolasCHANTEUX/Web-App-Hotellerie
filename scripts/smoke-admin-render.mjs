@@ -237,6 +237,14 @@ function roomPageForRequest(url, { stalePeriod = false } = {}) {
   const responseFrom = stalePeriod ? "2026-08-24" : requestedFrom;
   const responseTo = stalePeriod ? "2026-08-27" : requestedTo;
   const conflict = roomPage.items[1].nextOccupancy;
+  const requestedNights = Math.round(
+    (new Date(`${requestedTo}T12:00:00`).getTime() - new Date(`${requestedFrom}T12:00:00`).getTime()) / 86_400_000,
+  );
+  const planningConflict = requestedNights === 14 ? {
+    ...roomPage.items[0].nextOccupancy,
+    checkIn: addIsoDays(requestedFrom, 2),
+    checkOut: addIsoDays(requestedFrom, 5),
+  } : null;
   return {
     ...roomPage,
     items: roomPage.items.map((room, index) => ({
@@ -244,8 +252,8 @@ function roomPageForRequest(url, { stalePeriod = false } = {}) {
       periodAvailability: {
         from: responseFrom,
         to: responseTo,
-        available: index === 0,
-        conflicts: index === 0 ? [] : [conflict],
+        available: planningConflict ? index !== 0 : index === 0,
+        conflicts: planningConflict ? (index === 0 ? [planningConflict] : []) : (index === 0 ? [] : [conflict]),
       },
     })),
     summary: {
@@ -253,6 +261,12 @@ function roomPageForRequest(url, { stalePeriod = false } = {}) {
       period: { from: responseFrom, to: responseTo, available: 1, unavailable: 1 },
     },
   };
+}
+
+function addIsoDays(value, amount) {
+  const date = new Date(`${value}T12:00:00`);
+  date.setDate(date.getDate() + amount);
+  return date.toISOString().slice(0, 10);
 }
 
 function roomPageForRole(page, role) {

@@ -237,13 +237,10 @@ export function Booking() {
         options: booking.options,
         total: booking.total,
         currency: booking.currency,
-        email: booking.email,
+        accessToken: booking.accessToken,
         holdExpiresAt: booking.holdExpiresAt,
       };
-      sessionStorage.setItem("rivage:latest-confirmation", JSON.stringify({
-        ...confirmationState,
-        email: undefined,
-      }));
+      sessionStorage.setItem("rivage:latest-confirmation", JSON.stringify(confirmationState));
       navigate("/confirmation", {
         state: confirmationState,
       });

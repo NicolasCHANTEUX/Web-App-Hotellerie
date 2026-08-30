@@ -7,9 +7,23 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       NODE_ENV: test
-      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable
       SUPABASE_URL: https://example.supabase.co
       SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder
       NOTIFICATION_DELIVERY: disabled
@@ -26,5 +40,9 @@ jobs:
       - run: npm ci
         working-directory: server
       - run: npm run db:generate
+        working-directory: server
+      - run: npm run db:migrate:deploy
+        working-directory: server
+      - run: npm run db:migrate:baseline-check
         working-directory: server
       - run: npm run verify
