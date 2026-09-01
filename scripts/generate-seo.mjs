@@ -1,14 +1,17 @@
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
-const origin = (process.env.VITE_PUBLIC_SITE_URL || "http://localhost:5173").replace(/\/$/, "");
+const configuredOrigin = process.env.VITE_PUBLIC_SITE_URL?.trim();
+const strict = process.argv.includes("--strict");
+const origin = (configuredOrigin || "http://localhost:5173").replace(/\/$/, "");
+
+if (strict && (!configuredOrigin || !origin.startsWith("https://") || /^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?$/i.test(origin))) {
+  throw new Error("VITE_PUBLIC_SITE_URL doit contenir l'origine HTTPS publique pour un build de production.");
+}
+
 const routes = [
   "/",
   "/hebergements",
-  "/hebergements/chambre-classique",
-  "/hebergements/chambre-elegance",
-  "/hebergements/chambre-deluxe",
-  "/hebergements/suite-rivage",
   "/contact",
   "/mentions-legales",
 ];
@@ -16,8 +19,6 @@ const routes = [
 const robots = `User-agent: *
 Allow: /
 Disallow: /admin/
-Disallow: /reservation
-Disallow: /confirmation
 
 Sitemap: ${origin}/sitemap.xml
 `;

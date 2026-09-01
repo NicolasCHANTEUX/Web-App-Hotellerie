@@ -2,7 +2,7 @@
 
 ## Architecture recommandée
 
-- Construire le frontend Vite comme site statique avec `npm run build`.
+- Construire le frontend Vite comme site statique avec `npm run build:production`. Cette commande refuse une URL canonique absente ou locale.
 - Déployer l'API Fastify séparément depuis `server/Dockerfile`.
 - Définir `VITE_API_URL` avec l'URL HTTPS publique de l'API, ou router `/api` vers l'API sur le même domaine.
 - Définir `VITE_PUBLIC_SITE_URL` avec l'origine HTTPS canonique du site ; le build l'utilise pour `robots.txt`, `sitemap.xml`, les URL canoniques et les métadonnées sociales.
@@ -28,7 +28,7 @@ Node.js 22 est la version de référence en CI et dans l'image Docker. Le backen
    ```
 
 4. Vérifier `/health/live`, puis `/health`.
-5. Construire le frontend avec `VITE_API_URL=https://api.exemple.fr` et `VITE_PUBLIC_SITE_URL=https://www.exemple.fr`, puis publier `dist/`.
+5. Construire le frontend avec `VITE_API_URL=https://api.exemple.fr`, `VITE_PUBLIC_SITE_URL=https://www.exemple.fr` et `npm run build:production`, puis publier `dist/`.
 6. Tester une recherche, une demande de réservation, la connexion admin, un paiement de test, un PDF et un téléversement d'image.
 
 La migration et le démarrage de l'API sont séparés volontairement : plusieurs instances ne doivent pas tenter de migrer la base simultanément.
@@ -48,6 +48,16 @@ Stripe et Resend restent facultatifs. S'ils sont activés, configurer le webhook
 ## Exploitation
 
 Le CDN ou serveur statique qui publie `dist/` doit envoyer la politique CSP du projet en en-tête HTTP, ainsi que `Strict-Transport-Security`, `Referrer-Policy`, `Permissions-Policy` et `X-Content-Type-Options`. La balise CSP de `index.html` reste une protection de repli et ne remplace pas ces en-têtes de production.
+
+Le frontend utilise l'historique HTML5. Toute route qui ne correspond pas à un fichier statique doit donc être réécrite vers `index.html` :
+
+```nginx
+location / {
+  try_files $uri $uri/ /index.html;
+}
+```
+
+Le fichier `public/_redirects`, copié dans `dist/`, fournit la règle équivalente pour Netlify et Cloudflare Pages. Sur Vercel, configurer une rewrite de `/(.*)` vers `/index.html`. Après déploiement, tester impérativement un accès direct et un rafraîchissement sur `/contact`, `/hebergements/...` et `/admin/connexion`.
 
 En production avec plusieurs instances API, définir `BACKGROUND_WORKER_MODE=standalone` partout puis lancer exactement un processus dédié :
 

@@ -18,6 +18,8 @@ dist/
 server/dist/
 playwright-report/
 test-results/
+public/robots.txt
+public/sitemap.xml
 
 # Local development runtime
 server/.api-dev-state.json

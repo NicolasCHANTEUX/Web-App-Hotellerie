@@ -24,6 +24,26 @@ for (const [name, value] of Object.entries(browserGlobals)) {
   Object.defineProperty(globalThis, name, { configurable: true, value, writable: true });
 }
 
+globalThis.fetch = async (input) => {
+  if (String(input).endsWith("/api/property")) {
+    return new Response(JSON.stringify({ data: {
+      slug: "hotel-rivage",
+      name: "Hôtel Rivage",
+      email: "contact@hotel-rivage.fr",
+      phone: "+33 4 93 00 12 34",
+      addressLine1: "26 avenue des Pins",
+      addressLine2: null,
+      postalCode: "06400",
+      city: "Cannes",
+      countryCode: "FR",
+      checkInTime: "15:00",
+      checkOutTime: "11:00",
+      roomCount: 17,
+    } }), { status: 200, headers: { "content-type": "application/json" } });
+  }
+  return new Response(JSON.stringify({ data: [] }), { status: 200, headers: { "content-type": "application/json" } });
+};
+
 const assetsDirectory = resolve("dist", "assets");
 const bundle = (await readdir(assetsDirectory)).find((file) => /^index-.*\.js$/.test(file));
 if (!bundle) throw new Error("Frontend bundle not found.");
@@ -49,7 +69,7 @@ const [robots, sitemap] = await Promise.all([
 if (!robots.includes("Disallow: /admin/") || !robots.includes("Sitemap:")) {
   throw new Error("robots.txt is incomplete.");
 }
-if (!sitemap.includes("/hebergements/chambre-classique") || sitemap.includes("/admin")) {
+if (!sitemap.includes("/hebergements</loc>") || sitemap.includes("/hebergements/chambre-") || sitemap.includes("/admin")) {
   throw new Error("sitemap.xml contains invalid routes.");
 }
 

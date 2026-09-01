@@ -3,7 +3,7 @@ import { getProperty } from "../api/hotel";
 import { useRemoteData } from "../hooks/useRemoteData";
 import { PublicProperty } from "../types/hotel";
 
-const fallbackProperty: PublicProperty = {
+const demoProperty: PublicProperty = {
   slug: "hotel-rivage",
   name: "Hôtel Rivage",
   email: "contact@hotel-rivage.fr",
@@ -15,18 +15,39 @@ const fallbackProperty: PublicProperty = {
   countryCode: "FR",
   checkInTime: "15:00",
   checkOutTime: "11:00",
-  roomCount: 18,
+  roomCount: 17,
 };
 
-const PropertyContext = createContext<PublicProperty>(fallbackProperty);
+const PropertyContext = createContext<PublicProperty | null>(null);
 
 export function PropertyProvider({ children }: { children: ReactNode }) {
-  const { data } = useRemoteData((signal) => getProperty(signal), []);
-  const property = useMemo(() => data ?? fallbackProperty, [data]);
+  const { data, error, loading, retry } = useRemoteData((signal) => getProperty(signal), []);
+  const allowDemoFallback = import.meta.env.DEV || import.meta.env.MODE === "test";
+  const property = useMemo(() => data ?? (allowDemoFallback ? demoProperty : null), [allowDemoFallback, data]);
+
+  if (!property) {
+    return (
+      <div className="property-bootstrap" role={loading ? "status" : "alert"}>
+        <div className="property-bootstrap-mark" aria-hidden="true">H</div>
+        <h1>{loading ? "Chargement de l’établissement" : "Établissement momentanément indisponible"}</h1>
+        <p>{loading
+          ? "Nous préparons les informations de votre séjour."
+          : "Les informations de l’établissement n’ont pas pu être chargées. Veuillez réessayer dans un instant."}</p>
+        {!loading && error && <button type="button" onClick={retry}>Réessayer</button>}
+      </div>
+    );
+  }
+
   return <PropertyContext.Provider value={property}>{children}</PropertyContext.Provider>;
 }
 
 export function useProperty() {
+  const property = useContext(PropertyContext);
+  if (!property) throw new Error("useProperty must be used inside PropertyProvider.");
+  return property;
+}
+
+export function useOptionalProperty() {
   return useContext(PropertyContext);
 }
 

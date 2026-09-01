@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
-import { propertyAddress, useProperty } from "../context/PropertyContext";
+import { propertyAddress, useOptionalProperty } from "../context/PropertyContext";
+import { PublicProperty } from "../types/hotel";
 
 type Metadata = {
   title: string;
@@ -8,55 +9,58 @@ type Metadata = {
   robots?: string;
 };
 
-function metadataFor(pathname: string): Metadata {
+function metadataFor(pathname: string, property: PublicProperty | null): Metadata {
+  const propertyName = property?.name ?? "Établissement";
+  const citySuffix = property?.city ? ` ${property.city}` : "";
+  const cityPhrase = property?.city ? ` à ${property.city}` : "";
   if (pathname.startsWith("/admin")) {
     return {
-      title: "Administration | Hôtel Rivage",
-      description: "Espace de gestion privé de l'Hôtel Rivage.",
+      title: `Administration | ${propertyName}`,
+      description: `Espace de gestion privé de ${propertyName}.`,
       robots: "noindex, nofollow",
     };
   }
   if (pathname === "/hebergements") {
     return {
-      title: "Nos hébergements | Hôtel Rivage Cannes",
-      description: "Découvrez les chambres et suites de l'Hôtel Rivage à Cannes, leurs équipements et leurs tarifs.",
+      title: `Nos hébergements | ${propertyName}${citySuffix}`,
+      description: `Découvrez les chambres et suites de ${propertyName}${cityPhrase}, leurs équipements et leurs tarifs.`,
     };
   }
   if (pathname.startsWith("/hebergements/")) {
     return {
-      title: "Détail de l'hébergement | Hôtel Rivage Cannes",
-      description: "Photos, équipements, capacité et tarif d'un hébergement de l'Hôtel Rivage à Cannes.",
+      title: `Détail de l'hébergement | ${propertyName}${citySuffix}`,
+      description: `Photos, équipements, capacité et tarif d'un hébergement de ${propertyName}${cityPhrase}.`,
     };
   }
   if (pathname === "/reservation") {
     return {
-      title: "Réserver votre séjour | Hôtel Rivage Cannes",
-      description: "Choisissez vos dates, votre hébergement et vos options pour préparer votre séjour à Cannes.",
+      title: `Réserver votre séjour | ${propertyName}${citySuffix}`,
+      description: `Choisissez vos dates, votre hébergement et vos options pour préparer votre séjour${cityPhrase}.`,
       robots: "noindex, nofollow",
     };
   }
   if (pathname === "/confirmation") {
     return {
-      title: "Suivi de réservation | Hôtel Rivage",
+      title: `Suivi de réservation | ${propertyName}`,
       description: "Consultez l'état et le récapitulatif de votre demande de réservation.",
       robots: "noindex, nofollow",
     };
   }
   if (pathname === "/contact") {
     return {
-      title: "Nous contacter | Hôtel Rivage Cannes",
-      description: "Contactez l'équipe de l'Hôtel Rivage pour préparer votre arrivée ou poser une question sur votre séjour.",
+      title: `Nous contacter | ${propertyName}${citySuffix}`,
+      description: `Contactez l'équipe de ${propertyName} pour préparer votre arrivée ou poser une question sur votre séjour.`,
     };
   }
   if (pathname === "/mentions-legales") {
     return {
-      title: "Mentions légales et confidentialité | Hôtel Rivage",
-      description: "Consultez les mentions légales et les informations relatives à la confidentialité du site Hôtel Rivage.",
+      title: `Mentions légales et confidentialité | ${propertyName}`,
+      description: `Consultez les mentions légales et les informations relatives à la confidentialité du site ${propertyName}.`,
     };
   }
   return {
-    title: "Hôtel Rivage | Séjour à Cannes",
-    description: "Hôtel Rivage à Cannes : chambres lumineuses, piscine et séjour au calme à quelques pas de la mer et du centre historique.",
+    title: `${propertyName} | Séjour${cityPhrase}`,
+    description: `${propertyName}${cityPhrase} : découvrez les hébergements, services et disponibilités de l'établissement.`,
   };
 }
 
@@ -72,10 +76,10 @@ function setMeta(selector: string, attribute: "name" | "property", key: string, 
 
 export function RouteMetadata() {
   const { pathname } = useLocation();
-  const property = useProperty();
+  const property = useOptionalProperty();
 
   useEffect(() => {
-    const metadata = metadataFor(pathname);
+    const metadata = metadataFor(pathname, property);
     const configuredOrigin = import.meta.env.VITE_PUBLIC_SITE_URL?.replace(/\/$/, "");
     const origin = configuredOrigin || window.location.origin;
     const socialImage = `${origin}/images/hotel/hero-1280.webp`;
@@ -97,6 +101,10 @@ export function RouteMetadata() {
     canonical.href = `${origin}${pathname}`;
 
     let structuredData = document.head.querySelector<HTMLScriptElement>("#hotel-structured-data");
+    if (!property) {
+      structuredData?.remove();
+      return;
+    }
     if (!structuredData) {
       structuredData = document.createElement("script");
       structuredData.id = "hotel-structured-data";

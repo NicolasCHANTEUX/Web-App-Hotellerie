@@ -479,6 +479,14 @@ async function renderAdmin(pathname, {
     await new Promise((resolveDelay) => setTimeout(resolveDelay, 25));
   }
 
+  if (withToken && window.location.pathname.startsWith("/admin/reservations")) {
+    const bookingsDeadline = Date.now() + 2_000;
+    while (!window.document.querySelector(".admin-reference") && Date.now() < bookingsDeadline) {
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 25));
+    }
+    assert.ok(window.document.querySelector(".admin-reference"), "The booking list should finish loading.");
+  }
+
   if (period) {
     const [arrivalInput, departureInput] = window.document.querySelectorAll('.admin-room-date-controls input[type="date"]');
     assert.ok(arrivalInput && departureInput, "Room period inputs should render.");

@@ -8,7 +8,7 @@ L'audit ne signale aucune vulnérabilité connue.
 
 ## Backend
 
-Npm remonte cinq occurrences de sévérité haute, issues de deux avis transitifs du paquet CLI `prisma` 7.9.1 :
+Npm remonte plusieurs occurrences de sévérité haute, issues de deux avis transitifs du paquet CLI `prisma` 7.9.1 :
 
 - `deepmerge-ts` 7.1.5 via `@prisma/config` : épuisement de pile avec un graphe récursif non fiable ;
 - `mysql2` 3.15.3 via `prisma` : repli possible vers `mysql_clear_password`.

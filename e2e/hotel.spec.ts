@@ -35,7 +35,7 @@ test("renders the public home with canonical Hotel metadata", async ({ page }) =
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "http://127.0.0.1:4173/");
 });
 
-test("submits a contact request and confirms persistence", async ({ page }) => {
+test("submits a contact request and confirms the success response", async ({ page }) => {
   await mockProperty(page);
   let submittedBody: unknown = null;
   await page.route("**/api/contact-requests", async (route) => {
@@ -58,6 +58,19 @@ test("submits a contact request and confirms persistence", async ({ page }) => {
     subject: "BOOKING_QUESTION",
     privacyAccepted: true,
   });
+});
+
+test("shows a neutral error instead of the demo property when loading fails", async ({ page }) => {
+  await page.route("**/api/property", (route) => route.fulfill({
+    status: 503,
+    json: { error: { message: "Service unavailable" } },
+  }));
+
+  await page.goto("/");
+
+  await expect(page.getByRole("alert")).toContainText("Établissement momentanément indisponible");
+  await expect(page.locator("body")).not.toContainText("Hôtel Rivage");
+  await expect(page.getByRole("button", { name: "Réessayer" })).toBeVisible();
 });
 
 test("loads authenticated admin bookings after the asynchronous request", async ({ page }) => {
