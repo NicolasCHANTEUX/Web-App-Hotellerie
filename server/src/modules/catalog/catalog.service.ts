@@ -1,4 +1,5 @@
 import { prisma } from "../../lib/prisma.js";
+import { env } from "../../config/env.js";
 
 const roomTypeInclude = {
   amenities: {
@@ -75,7 +76,7 @@ export function serializeRoomType(
 
 export function findRoomTypes() {
   return prisma.roomType.findMany({
-    where: { isPublished: true, archivedAt: null },
+    where: { property: { slug: env.publicPropertySlug }, isPublished: true, archivedAt: null },
     orderBy: { displayOrder: "asc" },
     include: roomTypeInclude,
   });
@@ -86,9 +87,62 @@ export async function listRoomTypes() {
   return roomTypes.map((roomType) => serializeRoomType(roomType)).filter((item) => item !== null);
 }
 
+type PublicPropertyRecord = {
+  slug: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  addressLine1: string;
+  addressLine2: string | null;
+  postalCode: string;
+  city: string;
+  countryCode: string;
+  checkInTime: string;
+  checkOutTime: string;
+  _count: { rooms: number };
+};
+
+export function serializePublicProperty(property: PublicPropertyRecord) {
+  return {
+    slug: property.slug,
+    name: property.name,
+    email: property.email,
+    phone: property.phone,
+    addressLine1: property.addressLine1,
+    addressLine2: property.addressLine2,
+    postalCode: property.postalCode,
+    city: property.city,
+    countryCode: property.countryCode,
+    checkInTime: property.checkInTime,
+    checkOutTime: property.checkOutTime,
+    roomCount: property._count.rooms,
+  };
+}
+
+export async function getPublicProperty() {
+  const property = await prisma.property.findUnique({
+    where: { slug: env.publicPropertySlug },
+    select: {
+      slug: true,
+      name: true,
+      email: true,
+      phone: true,
+      addressLine1: true,
+      addressLine2: true,
+      postalCode: true,
+      city: true,
+      countryCode: true,
+      checkInTime: true,
+      checkOutTime: true,
+      _count: { select: { rooms: { where: { status: "ACTIVE" } } } },
+    },
+  });
+  return property ? serializePublicProperty(property) : null;
+}
+
 export async function findRoomTypeBySlug(slug: string) {
   const roomType = await prisma.roomType.findFirst({
-    where: { slug, isPublished: true, archivedAt: null },
+    where: { property: { slug: env.publicPropertySlug }, slug, isPublished: true, archivedAt: null },
     include: roomTypeInclude,
   });
   return roomType ? serializeRoomType(roomType) : null;
@@ -96,7 +150,11 @@ export async function findRoomTypeBySlug(slug: string) {
 
 export async function listExtras(propertyId?: string) {
   const extras = await prisma.extra.findMany({
-    where: { ...(propertyId ? { propertyId } : {}), isActive: true, priceTaxMode: "INCLUSIVE" },
+    where: {
+      ...(propertyId ? { propertyId } : { property: { slug: env.publicPropertySlug } }),
+      isActive: true,
+      priceTaxMode: "INCLUSIVE",
+    },
     orderBy: { displayOrder: "asc" },
   });
 

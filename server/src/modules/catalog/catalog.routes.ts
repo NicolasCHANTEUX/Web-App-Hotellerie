@@ -1,5 +1,5 @@
 import { FastifyInstance } from "fastify";
-import { findRoomTypeBySlug, listExtras, listRoomTypes } from "./catalog.service.js";
+import { findRoomTypeBySlug, getPublicProperty, listExtras, listRoomTypes } from "./catalog.service.js";
 
 export async function catalogRoutes(app: FastifyInstance) {
   const cacheCatalog = (reply: { header: (name: string, value: string) => unknown }) =>
@@ -8,6 +8,15 @@ export async function catalogRoutes(app: FastifyInstance) {
   app.get("/room-types", async (_request, reply) => {
     cacheCatalog(reply);
     return { data: await listRoomTypes() };
+  });
+
+  app.get("/property", async (_request, reply) => {
+    cacheCatalog(reply);
+    const property = await getPublicProperty();
+    if (!property) {
+      return reply.code(404).send({ error: { code: "PROPERTY_NOT_FOUND", message: "Établissement introuvable." } });
+    }
+    return { data: property };
   });
 
   app.get<{ Params: { slug: string } }>("/room-types/:slug", async (request, reply) => {

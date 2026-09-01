@@ -2,15 +2,17 @@ import { Clock3, Mail, MapPin, Navigation, Phone } from "lucide-react";
 import { FormEvent, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ApiError, apiPost } from "../api/client";
-
-const contactDetails = [
-  { icon: MapPin, label: "Adresse", lines: ["26 avenue des Pins", "06400 Cannes, France"] },
-  { icon: Phone, label: "Téléphone", lines: ["+33 4 93 00 00 00"] },
-  { icon: Mail, label: "Email", lines: ["contact@hotel-rivage.fr"] },
-  { icon: Clock3, label: "Réception", lines: ["Tous les jours, 7h00 – 23h00"] },
-];
+import { propertyMapUrl, propertyPhoneHref, useProperty } from "../context/PropertyContext";
 
 export function Contact() {
+  const property = useProperty();
+  const mapUrl = propertyMapUrl(property);
+  const contactDetails = [
+    { icon: MapPin, label: "Adresse", lines: [property.addressLine1, property.addressLine2, `${property.postalCode} ${property.city}, France`].filter((line): line is string => Boolean(line)) },
+    ...(property.phone ? [{ icon: Phone, label: "Téléphone", lines: [property.phone] }] : []),
+    { icon: Mail, label: "Email", lines: [property.email] },
+    { icon: Clock3, label: "Réception", lines: ["Tous les jours, 7h00 – 23h00"] },
+  ];
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,15 +81,15 @@ export function Contact() {
               ))}
             </div>
             <div className="contact-actions">
-              <a className="btn-primary" href="tel:+33493000000"><Phone />Appeler</a>
-              <a className="btn-outline" href="mailto:contact@hotel-rivage.fr"><Mail />Envoyer un email</a>
-              <a className="btn-outline" href="https://maps.google.com/?q=26+avenue+des+Pins+06400+Cannes" target="_blank" rel="noreferrer"><Navigation />Itinéraire</a>
+              {property.phone && <a className="btn-primary" href={propertyPhoneHref(property.phone)}><Phone />Appeler</a>}
+              <a className="btn-outline" href={`mailto:${property.email}`}><Mail />Envoyer un email</a>
+              <a className="btn-outline" href={mapUrl} target="_blank" rel="noreferrer"><Navigation />Itinéraire</a>
             </div>
 
             <div className="contact-map">
               <div className="map-lines" aria-hidden="true"><span /><span /><span /><span /></div>
-              <div className="map-address"><MapPin /><p><strong>Hôtel Rivage</strong><span>26 avenue des Pins, 06400 Cannes</span></p></div>
-              <a href="https://maps.google.com/?q=26+avenue+des+Pins+06400+Cannes" target="_blank" rel="noreferrer">Ouvrir dans Google Maps →</a>
+              <div className="map-address"><MapPin /><p><strong>{property.name}</strong><span>{property.addressLine1}, {property.postalCode} {property.city}</span></p></div>
+              <a href={mapUrl} target="_blank" rel="noreferrer">Ouvrir dans Google Maps →</a>
             </div>
           </div>
 

@@ -1,8 +1,10 @@
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
+import { formatHotelTime, propertyAddress, useProperty } from "../context/PropertyContext";
 
 export function Legal() {
   const { hash } = useLocation();
+  const property = useProperty();
 
   useEffect(() => {
     if (!hash) return;
@@ -17,8 +19,8 @@ export function Legal() {
       <article id="mentions">
         <h2>Mentions légales</h2>
         <p>
-          Le site est édité par l'Hôtel Rivage, 26 avenue des Pins, 06400 Cannes.
-          Contact : contact@hotel-rivage.fr · +33 4 93 00 00 00.
+          Le site est édité par {property.name}, {propertyAddress(property)}.
+          Contact : {property.email}{property.phone ? ` · ${property.phone}` : ""}.
         </p>
         <p>
           Les informations d'immatriculation, la forme juridique, le capital social, le numéro
@@ -56,7 +58,7 @@ export function Legal() {
         </p>
         <p>
           Vous pouvez demander l'accès, la rectification, la limitation ou, lorsque la loi le permet,
-          l'effacement et la portabilité de vos données en écrivant à contact@hotel-rivage.fr. Vous
+          l'effacement et la portabilité de vos données en écrivant à {property.email}. Vous
           pouvez également saisir la CNIL. N'indiquez aucune donnée sensible dans la demande
           particulière.
         </p>
@@ -81,7 +83,7 @@ export function Legal() {
           choisi sont figées avec la réservation afin de pouvoir restituer la version acceptée.
         </p>
         <p>
-          L'heure d'arrivée est fixée à 15 h et l'heure de départ à 11 h, sauf accord particulier.
+          L'heure d'arrivée est fixée à {formatHotelTime(property.checkInTime)} et l'heure de départ à {formatHotelTime(property.checkOutTime)}, sauf accord particulier.
           Toute modification, annulation, arrivée tardive ou demande d'accessibilité doit être adressée
           à l'hôtel avec la référence de réservation.
         </p>

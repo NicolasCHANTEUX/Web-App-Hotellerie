@@ -8,12 +8,16 @@
     "dev:vite": "vite --config vite.config.mjs --configLoader native",
     "dev:full": "node scripts/prepare-dev.mjs && node scripts/dev-full.mjs",
     "dev:stop": "node scripts/prepare-dev.mjs",
-    "build": "tsc -b && vite build --config vite.config.mjs --configLoader native",
-    "build:analyze": "tsc -b && vite build --config vite.config.mjs --configLoader native --mode analyze",
+    "seo:generate": "node scripts/generate-seo.mjs",
+    "images:generate": "node scripts/generate-images.mjs",
+    "build": "npm run seo:generate && tsc -b && vite build --config vite.config.mjs --configLoader native",
+    "build:analyze": "npm run seo:generate && tsc -b && vite build --config vite.config.mjs --configLoader native --mode analyze",
     "build:all": "npm --prefix server run build && npm run build",
     "verify": "npm --prefix server run db:validate && npm --prefix server run typecheck && npm --prefix server test && npm run build && node scripts/smoke-render.mjs && node scripts/smoke-admin-render.mjs",
     "smoke:render": "npm run build && node scripts/smoke-render.mjs",
     "smoke:admin": "npm run build && node scripts/smoke-admin-render.mjs",
+    "test:e2e": "npm run build && npm run test:e2e:run",
+    "test:e2e:run": "node scripts/run-e2e.mjs",
     "preview": "vite preview --config vite.config.mjs --configLoader native"
   },
   "dependencies": {
@@ -26,11 +30,13 @@
     "tailwindcss": "^4.1.12"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
     "happy-dom": "^20.11.2",
     "rollup-plugin-visualizer": "^7.1.1",
+    "sharp": "^0.35.4",
     "typescript": "^5.7.2",
     "vite": "^6.0.5"
   }

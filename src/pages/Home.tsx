@@ -17,9 +17,11 @@ import { ResponsiveImage } from "../components/ResponsiveImage";
 import { SearchWidget } from "../components/SearchWidget";
 import { StayCta } from "../components/StayCta";
 import { useRemoteData } from "../hooks/useRemoteData";
+import { propertyAddress, propertyMapUrl, useProperty } from "../context/PropertyContext";
 
 const heroImage = "/images/hotel/hero-1280.webp";
 const heroSourceSet = "/images/hotel/hero-768.webp 768w, /images/hotel/hero-1280.webp 1280w, /images/hotel/hero-1920.webp 1920w";
+const heroAvifSourceSet = "/images/hotel/hero-768.avif 768w, /images/hotel/hero-1280.avif 1280w, /images/hotel/hero-1920.avif 1920w";
 
 const hotelImages = [
   "https://images.unsplash.com/photo-1595576508898-0ad5c879a061?auto=format&fit=crop&w=1200&q=88",
@@ -62,6 +64,7 @@ const faqs = [
 ];
 
 export function Home() {
+  const property = useProperty();
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const { data: roomTypes } = useRemoteData((signal) => getRoomTypes(signal), []);
   const catalogImages = roomTypes
@@ -73,7 +76,7 @@ export function Home() {
   return (
     <>
       <section className="rivage-hero">
-        <ResponsiveImage priority src={heroImage} srcSet={heroSourceSet} sizes="100vw" width={1920} height={1080} alt="Hôtel Rivage et sa piscine au crépuscule" />
+        <ResponsiveImage priority src={heroImage} srcSet={heroSourceSet} avifSrcSet={heroAvifSourceSet} sizes="100vw" width={1920} height={1080} alt="Hôtel Rivage et sa piscine au crépuscule" />
         <div className="rivage-hero-content">
           <p className="eyebrow light">Cannes, Côte d'Azur</p>
           <h1>Une parenthèse de<br />calme au cœur de la<br />Côte d'Azur</h1>
@@ -94,12 +97,12 @@ export function Home() {
             <h2>Un hôtel pensé pour votre bien-être</h2>
             <p>Niché entre mer et collines, l'Hôtel Rivage vous offre un havre de sérénité à deux pas du centre historique. Chaque chambre a été pensée pour votre confort, avec un soin particulier apporté aux matières et à la lumière.</p>
             <div className="intro-features">
-              <span><Waves /> 18 chambres</span><span><Car /> Parking privé</span>
+              <span><Waves /> {property.roomCount} chambre{property.roomCount > 1 ? "s" : ""}</span><span><Car /> Parking privé</span>
               <span><Snowflake /> Climatisation</span><span><Wifi /> Wi-Fi gratuit</span>
               <span><Coffee /> Petit-déjeuner maison</span><span><MapPin /> Centre-ville proche</span>
             </div>
           </div>
-          <div className="intro-visual"><ResponsiveImage src={heroImage} srcSet={heroSourceSet} sizes="(max-width: 900px) 100vw, 50vw" width={1280} height={900} alt="Piscine de l'Hôtel Rivage bordée de palmiers" /></div>
+          <div className="intro-visual"><ResponsiveImage src={heroImage} srcSet={heroSourceSet} avifSrcSet={heroAvifSourceSet} sizes="(max-width: 900px) 100vw, 50vw" width={1280} height={900} alt="Piscine de l'Hôtel Rivage bordée de palmiers" /></div>
         </div>
       </section>
 
@@ -134,7 +137,7 @@ export function Home() {
       <section className="home-band location-band">
         <div className="home-container location-grid">
           <div><p className="eyebrow">Localisation</p><h2>Tout à portée de pas</h2><div className="nearby-list">{nearby.map(([name, time]) => <div key={name}><MapPin /><p><strong>{name}</strong><span>{time}</span></p></div>)}</div></div>
-          <div className="location-visual"><ResponsiveImage src="/images/hotel/cannes-1280.webp" srcSet="/images/hotel/cannes-768.webp 768w, /images/hotel/cannes-1280.webp 1280w" sizes="(max-width: 900px) 100vw, 60vw" width={1280} height={760} alt="Littoral méditerranéen à proximité de Cannes" /><div><MapPin /><p><strong>Hôtel Rivage</strong><span>26 avenue des Pins, 06400 Cannes</span></p><a href="https://maps.google.com" target="_blank" rel="noreferrer">Voir l'itinéraire →</a></div></div>
+          <div className="location-visual"><ResponsiveImage src="/images/hotel/cannes-1280.webp" srcSet="/images/hotel/cannes-768.webp 768w, /images/hotel/cannes-1280.webp 1280w" sizes="(max-width: 900px) 100vw, 60vw" width={1280} height={760} alt="Littoral méditerranéen à proximité de Cannes" /><div><MapPin /><p><strong>{property.name}</strong><span>{propertyAddress(property)}</span></p><a href={propertyMapUrl(property)} target="_blank" rel="noreferrer">Voir l'itinéraire →</a></div></div>
         </div>
       </section>
 

@@ -1,6 +1,10 @@
 import { apiGet, apiPost } from "./client";
 import { cachedCatalogGet } from "./catalogCache";
-import { Accommodation, AvailabilityResult, BookingConfirmation, BookingOption, BookingQuote, BookingSelectionInput, CreateBookingInput } from "../types/hotel";
+import { Accommodation, AvailabilityResult, BookingConfirmation, BookingOption, BookingQuote, BookingSelectionInput, CreateBookingInput, PublicProperty } from "../types/hotel";
+
+export function getProperty(signal?: AbortSignal) {
+  return cachedCatalogGet<PublicProperty>("/property", signal);
+}
 
 export function getRoomTypes(signal?: AbortSignal) {
   return cachedCatalogGet<Accommodation[]>("/room-types", signal);

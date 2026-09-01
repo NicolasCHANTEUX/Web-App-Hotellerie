@@ -1,5 +1,5 @@
 import { Window } from "happy-dom";
-import { readdir } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -37,5 +37,21 @@ if (!root?.children.length || !text.includes("Rivage")) {
   throw new Error(`React rendered no usable content. Root text: ${text.slice(0, 160)}`);
 }
 
-console.log(JSON.stringify({ rendered: true, childElements: root.children.length, textLength: text.length }));
+const structuredData = window.document.querySelector("#hotel-structured-data")?.textContent;
+if (!structuredData || JSON.parse(structuredData)["@type"] !== "Hotel") {
+  throw new Error("Hotel structured data was not rendered.");
+}
+
+const [robots, sitemap] = await Promise.all([
+  readFile(resolve("dist", "robots.txt"), "utf8"),
+  readFile(resolve("dist", "sitemap.xml"), "utf8"),
+]);
+if (!robots.includes("Disallow: /admin/") || !robots.includes("Sitemap:")) {
+  throw new Error("robots.txt is incomplete.");
+}
+if (!sitemap.includes("/hebergements/chambre-classique") || sitemap.includes("/admin")) {
+  throw new Error("sitemap.xml contains invalid routes.");
+}
+
+console.log(JSON.stringify({ rendered: true, childElements: root.children.length, textLength: text.length, seo: true }));
 window.close();

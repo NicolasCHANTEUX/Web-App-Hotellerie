@@ -1,6 +1,7 @@
 import { Menu, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
+import { useProperty } from "../context/PropertyContext";
 
 const links = [
   { to: "/", label: "Accueil" },
@@ -9,6 +10,7 @@ const links = [
 ];
 
 export function Header() {
+  const property = useProperty();
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const { pathname } = useLocation();
@@ -26,7 +28,7 @@ export function Header() {
   return (
     <header className={`site-header ${overlay ? "site-header-overlay" : "site-header-solid"} ${pathname !== "/" ? "site-header-page" : ""}`}>
       <div className="header-inner">
-        <NavLink to="/" className="brand"><span />Hôtel Rivage</NavLink>
+        <NavLink to="/" className="brand"><span />{property.name}</NavLink>
         <nav className="desktop-nav">{links.map((link) => <NavLink key={link.to} to={link.to} className={({ isActive }) => isActive ? "active" : ""}>{link.label}</NavLink>)}</nav>
         <NavLink className="header-book" to="/reservation">Réserver</NavLink>
         <button className="menu-toggle" type="button" aria-label={open ? "Fermer le menu" : "Ouvrir le menu"} onClick={() => setOpen((value) => !value)}>{open ? <X /> : <Menu />}</button>

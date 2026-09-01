@@ -130,3 +130,18 @@ export type BookingConfirmation = {
   accessToken?: string;
   holdExpiresAt: string;
 };
+
+export type PublicProperty = {
+  slug: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  addressLine1: string;
+  addressLine2: string | null;
+  postalCode: string;
+  city: string;
+  countryCode: string;
+  checkInTime: string;
+  checkOutTime: string;
+  roomCount: number;
+};

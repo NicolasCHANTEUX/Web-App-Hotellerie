@@ -59,6 +59,7 @@ Routes disponibles :
 - `GET /room-types`
 - `GET /room-types/:slug`
 - `GET /extras`
+- `GET /property` (coordonnées publiques, horaires et nombre de chambres actives de `PUBLIC_PROPERTY_SLUG`)
 - `GET /availability?arrival=2026-08-08&departure=2026-08-09&adults=2&children=0`
 - `POST /quotes`
 - `POST /bookings`

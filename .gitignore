@@ -16,6 +16,8 @@ server/node_modules/
 # Build outputs
 dist/
 server/dist/
+playwright-report/
+test-results/
 
 # Local development runtime
 server/.api-dev-state.json

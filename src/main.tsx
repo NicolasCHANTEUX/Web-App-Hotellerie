@@ -8,8 +8,9 @@ if (window.location.pathname === "/") {
   const heroPreload = document.createElement("link");
   heroPreload.rel = "preload";
   heroPreload.as = "image";
-  heroPreload.href = "/images/hotel/hero-1280.webp";
-  heroPreload.setAttribute("imagesrcset", "/images/hotel/hero-768.webp 768w, /images/hotel/hero-1280.webp 1280w, /images/hotel/hero-1920.webp 1920w");
+  heroPreload.type = "image/avif";
+  heroPreload.href = "/images/hotel/hero-1280.avif";
+  heroPreload.setAttribute("imagesrcset", "/images/hotel/hero-768.avif 768w, /images/hotel/hero-1280.avif 1280w, /images/hotel/hero-1920.avif 1920w");
   heroPreload.setAttribute("imagesizes", "100vw");
   heroPreload.setAttribute("fetchpriority", "high");
   document.head.append(heroPreload);

@@ -20,6 +20,7 @@ function unsplashSourceSet(src: string, widths: number[]) {
 }
 
 export function ResponsiveImage({
+  avifSrcSet,
   priority = false,
   responsiveWidths = DEFAULT_WIDTHS,
   sizes = "100vw",
@@ -27,11 +28,12 @@ export function ResponsiveImage({
   srcSet,
   ...props
 }: ImgHTMLAttributes<HTMLImageElement> & {
+  avifSrcSet?: string;
   priority?: boolean;
   responsiveWidths?: number[];
 }) {
   const generatedSourceSet = srcSet ?? (typeof src === "string" ? unsplashSourceSet(src, responsiveWidths) : undefined);
-  return <img
+  const image = <img
     {...props}
     src={src}
     srcSet={generatedSourceSet}
@@ -40,4 +42,7 @@ export function ResponsiveImage({
     decoding={priority ? "sync" : props.decoding ?? "async"}
     fetchPriority={priority ? "high" : props.fetchPriority ?? "auto"}
   />;
+  return avifSrcSet
+    ? <picture><source type="image/avif" srcSet={avifSrcSet} sizes={sizes} />{image}</picture>
+    : image;
 }
