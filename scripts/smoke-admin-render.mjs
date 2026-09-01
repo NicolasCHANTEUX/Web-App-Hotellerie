@@ -5,8 +5,11 @@ import { pathToFileURL } from "node:url";
 import { Window } from "happy-dom";
 
 const assetsDirectory = resolve("dist", "assets");
-const bundle = (await readdir(assetsDirectory)).find((file) => /^index-.*\.js$/.test(file));
+const assets = await readdir(assetsDirectory);
+const bundle = assets.find((file) => /^index-.*\.js$/.test(file));
+const adminStylesheet = assets.find((file) => /^router-.*\.css$/.test(file));
 if (!bundle) throw new Error("Frontend bundle not found.");
+if (!adminStylesheet) throw new Error("Admin stylesheet not found.");
 const bundleUrl = pathToFileURL(resolve(assetsDirectory, bundle)).href;
 
 const adminProfile = {
@@ -310,7 +313,13 @@ async function renderAdmin(pathname, {
   postError = null,
   deleteError = null,
 } = {}) {
-  const window = new Window({ url: `http://localhost:5173${pathname}` });
+  const window = new Window({
+    url: `http://localhost:5173${pathname}`,
+    settings: {
+      disableCSSFileLoading: true,
+      handleDisabledFileLoadingAsSuccess: true,
+    },
+  });
   let unmountReact = () => {};
   window.__RIVAGE_CAPTURE_ROOT__ = (unmount) => { unmountReact = unmount; };
   const requests = [];
@@ -326,6 +335,7 @@ async function renderAdmin(pathname, {
   let bookingCreateRequests = 0;
   let bookingCreatePayload = null;
   let bookingIdempotencyKey = null;
+  window.document.head.innerHTML = `<link rel="stylesheet" href="/assets/${adminStylesheet}">`;
   window.document.body.innerHTML = '<div id="root"></div>';
   if (withToken) {
     window.sessionStorage.setItem("rivage.admin.accessToken", "smoke-test-token");
@@ -343,6 +353,8 @@ async function renderAdmin(pathname, {
     HTMLElement: window.HTMLElement,
     HTMLFormElement: window.HTMLFormElement,
     Node: window.Node,
+    Event: window.Event,
+    KeyboardEvent: window.KeyboardEvent,
     MutationObserver: window.MutationObserver,
     requestAnimationFrame: window.requestAnimationFrame.bind(window),
     cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
@@ -532,7 +544,7 @@ async function renderAdmin(pathname, {
     assert.ok(createButton, "The booking creation button should render for operational roles.");
     createButton.click();
     const createDeadline = Date.now() + 2_000;
-    while (bookingQuoteRequests === 0 && Date.now() < createDeadline) {
+    while (!window.document.querySelector(".admin-booking-quote-card .total") && Date.now() < createDeadline) {
       await new Promise((resolveDelay) => setTimeout(resolveDelay, 25));
     }
     const createDialog = window.document.querySelector('.admin-booking-create-dialog[role="dialog"]');
@@ -541,7 +553,7 @@ async function renderAdmin(pathname, {
     bookingCreateObservation.optionsLoaded = bookingOptionsRequests > 0
       && Boolean(createDialog.querySelector('.admin-booking-room-options input[value="room-type-elegance"]'));
     bookingCreateObservation.quoteLoaded = bookingQuoteRequests > 0
-      && createDialog.textContent.includes("Total à régler");
+      && Boolean(createDialog.querySelector(".admin-booking-quote-card .total"));
 
     const plainInputs = createDialog.querySelectorAll('.admin-room-form-grid input:not([type])');
     const emailInput = createDialog.querySelector('input[type="email"]');

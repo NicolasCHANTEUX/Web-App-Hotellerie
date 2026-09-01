@@ -18,7 +18,6 @@ if (window.location.pathname === "/") {
 const root = createRoot(document.getElementById("root")!);
 const smokeWindow = window as Window & { __RIVAGE_CAPTURE_ROOT__?: (unmount: () => void) => void };
 const isSmokeRender = Boolean(smokeWindow.__RIVAGE_CAPTURE_ROOT__);
-smokeWindow.__RIVAGE_CAPTURE_ROOT__?.(() => root.unmount());
 
 const routerPromise = window.location.pathname.startsWith("/admin")
   ? import("./admin/router").then((module) => module.createAdminRouter())
@@ -40,6 +39,10 @@ void routerPromise.then(async (activeRouter) => {
   root.render(isSmokeRender ? application : (
     <StrictMode>
       {application}
-    </StrictMode>,
+    </StrictMode>
   ));
+  smokeWindow.__RIVAGE_CAPTURE_ROOT__?.(() => {
+    activeRouter.dispose();
+    root.unmount();
+  });
 });
