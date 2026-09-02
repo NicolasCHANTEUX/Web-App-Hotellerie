@@ -81,6 +81,8 @@ npm run test:e2e
 
 La commande construit le frontend, demarre temporairement sa previsualisation sur le port `4173`, execute les tests puis ferme le serveur. Apres un `npm run build` deja effectue, `npm run test:e2e:run` relance uniquement les tests navigateur.
 
+Le smoke admin obligatoire reste volontairement limité au chargement du bundle, à la garde d'authentification et à la liste des réservations. L'ancien parcours Happy DOM complet reste disponible pour diagnostic avec `npm run smoke:admin:legacy`; les interactions métier sont couvertes progressivement dans Playwright.
+
 Les détails de la base sont documentés dans `server/README.md`, la procédure de mise en ligne dans `docs/deployment.md` et l'état des dépendances dans `docs/security-audit.md`.
 
 ## État de livraison

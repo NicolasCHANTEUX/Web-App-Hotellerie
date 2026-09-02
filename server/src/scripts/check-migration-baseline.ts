@@ -58,30 +58,31 @@ async function main() {
         requiredColumns.map(([table, column]) => Prisma.sql`(${table}, ${column})`),
       )})
   `;
-  const rlsTables = await prisma.$queryRaw<Array<{ table_name: string }>>`
-    SELECT c.relname AS table_name
+  const publicTables = await prisma.$queryRaw<Array<{ table_name: string; rls_enabled: boolean }>>`
+    SELECT c.relname AS table_name, c.relrowsecurity AS rls_enabled
     FROM pg_class c
     JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname = 'public'
       AND c.relkind = 'r'
-      AND c.relrowsecurity = true
-      AND c.relname IN (${Prisma.join([...requiredTables])})
+    ORDER BY c.relname
   `;
 
   const presentTables = new Set(tables.map((item) => item.table_name));
   const presentConstraints = new Set(constraints.map((item) => item.constraint_name));
   const presentColumns = new Set(columns.map((item) => `${item.table_name}.${item.column_name}`));
-  const presentRls = new Set(rlsTables.map((item) => item.table_name));
   const missingTables = requiredTables.filter((name) => !presentTables.has(name));
   const missingConstraints = requiredConstraints.filter((name) => !presentConstraints.has(name));
   const missingColumns = requiredColumns
     .map(([table, column]) => `${table}.${column}`)
     .filter((name) => !presentColumns.has(name));
-  const missingRls = requiredTables.filter((name) => !presentRls.has(name));
+  const missingRls = publicTables
+    .filter((table) => !table.rls_enabled)
+    .map((table) => table.table_name);
 
   console.log(JSON.stringify({
     requiredTables: requiredTables.length,
     presentTables: presentTables.size,
+    publicTables: publicTables.length,
     missingTables,
     missingConstraints,
     missingColumns,

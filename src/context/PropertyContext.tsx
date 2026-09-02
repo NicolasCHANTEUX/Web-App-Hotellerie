@@ -15,7 +15,7 @@ const demoProperty: PublicProperty = {
   countryCode: "FR",
   checkInTime: "15:00",
   checkOutTime: "11:00",
-  roomCount: 17,
+  roomCount: 18,
 };
 
 const PropertyContext = createContext<PublicProperty | null>(null);

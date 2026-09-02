@@ -1,5 +1,22 @@
 import { expect, Page, test } from "@playwright/test";
 
+const reactWarnings = new WeakMap<Page, string[]>();
+
+test.beforeEach(async ({ page }) => {
+  const warnings: string[] = [];
+  reactWarnings.set(page, warnings);
+  page.on("console", (message) => {
+    const text = message.text();
+    if (/createRoot\(\).*already been passed to createRoot|unique ["']key["'] prop/i.test(text)) {
+      warnings.push(text);
+    }
+  });
+});
+
+test.afterEach(async ({ page }) => {
+  expect(reactWarnings.get(page) ?? []).toEqual([]);
+});
+
 const property = {
   slug: "hotel-rivage",
   name: "Hôtel Rivage",
@@ -12,7 +29,7 @@ const property = {
   countryCode: "FR",
   checkInTime: "15:00",
   checkOutTime: "11:00",
-  roomCount: 17,
+  roomCount: 18,
 };
 
 async function mockProperty(page: Page) {
@@ -26,7 +43,7 @@ test("renders the public home with canonical Hotel metadata", async ({ page }) =
   await page.goto("/");
 
   await expect(page.getByRole("heading", { level: 1, name: /Une parenthèse de calme/ })).toBeVisible();
-  await expect(page.getByText("17 chambres", { exact: true })).toBeVisible();
+  await expect(page.getByText("18 chambres", { exact: true })).toBeVisible();
   const heroImage = page.locator(".rivage-hero picture img");
   await expect(heroImage).toBeVisible();
   await expect.poll(() => heroImage.evaluate((image) => (image as HTMLImageElement).currentSrc))
@@ -82,6 +99,34 @@ test("renders an accessible noindex page for an unknown route", async ({ page })
   await expect(page.getByRole("link", { name: "Retour à l’accueil" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Voir les hébergements" })).toBeVisible();
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", "noindex, nofollow");
+});
+
+test("treats a missing accommodation as a noindex 404", async ({ page }) => {
+  await mockProperty(page);
+  await page.route("**/api/room-types/chambre-inconnue", (route) => route.fulfill({
+    status: 404,
+    json: { error: { message: "Hébergement introuvable." } },
+  }));
+
+  await page.goto("/hebergements/chambre-inconnue");
+
+  await expect(page.getByRole("heading", { level: 1, name: "Page introuvable" })).toBeVisible();
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", "noindex, nofollow");
+  await expect(page.getByRole("button", { name: "Réessayer" })).toHaveCount(0);
+});
+
+test("keeps a retry state for an accommodation service failure", async ({ page }) => {
+  await mockProperty(page);
+  await page.route("**/api/room-types/chambre-indisponible", (route) => route.fulfill({
+    status: 503,
+    json: { error: { message: "Service momentanément indisponible." } },
+  }));
+
+  await page.goto("/hebergements/chambre-indisponible");
+
+  await expect(page.getByRole("alert")).toContainText("Service momentanément indisponible");
+  await expect(page.getByRole("button", { name: "Réessayer" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Page introuvable" })).toHaveCount(0);
 });
 
 test("loads authenticated admin bookings after the asynchronous request", async ({ page }) => {

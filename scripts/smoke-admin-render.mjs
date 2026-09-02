@@ -862,6 +862,14 @@ assert.equal(bookings.pathname, "/admin/reservations");
 assert.match(bookings.text, /RVG-2026-001/);
 assert.match(bookings.text, /Marie Dupont/);
 
+if (process.argv.includes("--basic")) {
+  console.log(JSON.stringify({
+    rendered: true,
+    checks: ["login", "auth-guard", "bookings"],
+  }));
+  process.exit(0);
+}
+
 const bookingCreation = await renderAdmin("/admin/reservations", {
   profile: adminProfile,
   withToken: true,

@@ -38,7 +38,7 @@ globalThis.fetch = async (input) => {
       countryCode: "FR",
       checkInTime: "15:00",
       checkOutTime: "11:00",
-      roomCount: 17,
+      roomCount: 18,
     } }), { status: 200, headers: { "content-type": "application/json" } });
   }
   return new Response(JSON.stringify({ data: [] }), { status: 200, headers: { "content-type": "application/json" } });

@@ -1,17 +1,34 @@
 import { Check, Maximize2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getRoomType } from "../api/hotel";
 import { Lightbox } from "../components/Lightbox";
+import { NotFound } from "./NotFound";
 import { ResponsiveImage } from "../components/ResponsiveImage";
+import { useProperty } from "../context/PropertyContext";
 import { useRemoteData } from "../hooks/useRemoteData";
 
 export function AccommodationDetail() {
   const { slug } = useParams();
-  const { data: accommodation, loading, error, retry } = useRemoteData((signal) => getRoomType(slug ?? "", signal), [slug]);
+  const property = useProperty();
+  const { data: accommodation, loading, error, errorStatus, retry } = useRemoteData((signal) => getRoomType(slug ?? "", signal), [slug]);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
+  useEffect(() => {
+    if (errorStatus !== 404) return;
+    const robots = document.head.querySelector<HTMLMetaElement>('meta[name="robots"]');
+    const previousRobots = robots?.content;
+    const previousTitle = document.title;
+    if (robots) robots.content = "noindex, nofollow";
+    document.title = `Page introuvable | ${property.name}`;
+    return () => {
+      if (robots && previousRobots) robots.content = previousRobots;
+      document.title = previousTitle;
+    };
+  }, [errorStatus, property.name]);
+
   if (loading) return <section className="page-api-state"><div className="api-state" role="status"><span className="loading-spinner" />Chargement de l'hébergement...</div></section>;
+  if (errorStatus === 404) return <NotFound />;
   if (error || !accommodation) return <section className="page-api-state"><div className="api-state api-state-error" role="alert"><p>{error ?? "Hébergement introuvable."}</p><div><button type="button" className="btn-secondary" onClick={retry}>Réessayer</button><Link className="btn-primary" to="/hebergements">Voir les hébergements</Link></div></div></section>;
 
   return (
@@ -31,13 +48,13 @@ export function AccommodationDetail() {
           <h2>{accommodation.rooms}</h2>
           <p className="mt-5 leading-8 text-brown-650">{accommodation.description}</p>
           <Link className="btn-primary mt-8" to={`/reservation?room=${accommodation.slug}`}>
-            Reserver cet hebergement
+            Réserver cet hébergement
           </Link>
         </div>
         <div className="details-grid">
           <p><strong>{accommodation.surface}</strong><span>Surface</span></p>
           <p><strong>{accommodation.capacity}</strong><span>Voyageurs</span></p>
-          <p><strong>Inclus</strong><span>Petit-dejeuner</span></p>
+          <p><strong>{accommodation.refundable ? "Flexible" : "Ferme"}</strong><span>Condition tarifaire</span></p>
         </div>
       </section>
 

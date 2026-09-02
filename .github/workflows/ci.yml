@@ -28,8 +28,8 @@ jobs:
       SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder
       NOTIFICATION_DELIVERY: disabled
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -45,9 +45,20 @@ jobs:
         working-directory: server
       - run: npm run db:migrate:baseline-check
         working-directory: server
+      - run: npm run verify:code
       - run: npm run build:production
         env:
           VITE_PUBLIC_SITE_URL: https://hotel.example
-      - run: npm run verify
+      - run: npm run smoke:run
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e:run
+      - run: npm run test:e2e

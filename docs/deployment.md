@@ -73,4 +73,4 @@ Ce processus traite l'outbox de notifications et purge chaque heure les images d
 - Sauvegarder PostgreSQL et définir une politique de restauration testée.
 - Surveiller les réponses 5xx, les échecs de notifications et les événements Stripe non traités.
 - Faire tourner les secrets immédiatement après une exposition ou un partage accidentel.
-- Lancer `npm run verify` avant chaque mise en production ; la CI exécute la même commande sous Node 22.
+- Lancer `npm run verify` et `npm run test:e2e` avant chaque mise en production. La CI exécute indépendamment les validations de code, le build strict et les smokes d'une part, puis Playwright d'autre part, afin qu'un échec reste visible dans chaque famille de tests.

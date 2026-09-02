@@ -40,7 +40,7 @@ Si une base creee avant l'adoption de Prisma Migrate contient deja le schema ini
 npm run db:migrate:baseline-check
 ```
 
-La commande controle les 20 tables initiales, les contraintes critiques et RLS. Ce n'est qu'apres un resultat sans element manquant que la migration initiale peut etre marquee comme deja appliquee avec `npx prisma migrate resolve --applied 20260808193000_init`. Ne jamais utiliser `resolve` pour masquer une migration partiellement appliquee.
+La commande contrôle les 20 tables initiales et les contraintes critiques, puis exige que toutes les tables ordinaires du schéma `public` aient RLS activé, y compris `_prisma_migrations` et toute table ajoutée ultérieurement. Ce n'est qu'après un résultat sans élément manquant que la migration initiale peut être marquée comme déjà appliquée avec `npx prisma migrate resolve --applied 20260808193000_init`. Ne jamais utiliser `resolve` pour masquer une migration partiellement appliquée.
 
 `prisma/migrations` est l'unique historique de migrations. Les anciens fichiers de `supabase/migrations` sont des instantanes historiques et ne doivent plus etre appliques en parallele. Le SQL Editor Supabase peut toujours servir aux requetes de diagnostic, mais toute evolution de schema doit etre creee et versionnee avec Prisma Migrate.
 
