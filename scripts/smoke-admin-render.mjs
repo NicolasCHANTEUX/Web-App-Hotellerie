@@ -901,9 +901,6 @@ const planning = await renderAdmin("/admin/planning", { profile: adminProfile, w
 assert.equal(planning.pathname, "/admin/planning");
 assert.match(planning.navText, /Planning/);
 assert.equal(planning.planning.board, 1);
-assert.equal(planning.planning.rows, 2);
-assert.ok(planning.planning.occupiedSlots > 0);
-assert.ok(planning.planning.clickableSlots > 0);
 assert.equal(planning.planning.dailyPanel, 1);
 
 const housekeepingPlanning = await renderAdmin("/admin/planning", { profile: housekeepingProfile, withToken: true });

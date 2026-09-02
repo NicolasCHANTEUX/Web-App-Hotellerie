@@ -13,6 +13,7 @@ export const router = createBrowserRouter([
       { path: "confirmation", lazy: async () => ({ Component: (await import("./pages/Confirmation")).Confirmation }) },
       { path: "contact", lazy: async () => ({ Component: (await import("./pages/Contact")).Contact }) },
       { path: "mentions-legales", lazy: async () => ({ Component: (await import("./pages/Legal")).Legal }) },
+      { path: "*", lazy: async () => ({ Component: (await import("./pages/NotFound")).NotFound }) },
     ],
   },
 ]);

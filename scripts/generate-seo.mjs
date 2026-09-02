@@ -3,11 +3,26 @@ import { resolve } from "node:path";
 
 const configuredOrigin = process.env.VITE_PUBLIC_SITE_URL?.trim();
 const strict = process.argv.includes("--strict");
-const origin = (configuredOrigin || "http://localhost:5173").replace(/\/$/, "");
+let siteUrl;
 
-if (strict && (!configuredOrigin || !origin.startsWith("https://") || /^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?$/i.test(origin))) {
-  throw new Error("VITE_PUBLIC_SITE_URL doit contenir l'origine HTTPS publique pour un build de production.");
+try {
+  siteUrl = new URL(configuredOrigin || "http://localhost:5173");
+} catch {
+  throw new Error("VITE_PUBLIC_SITE_URL doit être une URL absolue valide.");
 }
+
+const localHosts = new Set(["localhost", "127.0.0.1", "[::1]"]);
+const isPureOrigin = siteUrl.pathname === "/"
+  && !siteUrl.search
+  && !siteUrl.hash
+  && !siteUrl.username
+  && !siteUrl.password;
+
+if (strict && (!configuredOrigin || siteUrl.protocol !== "https:" || localHosts.has(siteUrl.hostname) || !isPureOrigin)) {
+  throw new Error("VITE_PUBLIC_SITE_URL doit contenir une origine HTTPS publique sans chemin, paramètres ni identifiants.");
+}
+
+const origin = siteUrl.origin;
 
 const routes = [
   "/",

@@ -58,9 +58,16 @@ function metadataFor(pathname: string, property: PublicProperty | null): Metadat
       description: `Consultez les mentions légales et les informations relatives à la confidentialité du site ${propertyName}.`,
     };
   }
+  if (pathname === "/") {
+    return {
+      title: `${propertyName} | Séjour${cityPhrase}`,
+      description: `${propertyName}${cityPhrase} : découvrez les hébergements, services et disponibilités de l'établissement.`,
+    };
+  }
   return {
-    title: `${propertyName} | Séjour${cityPhrase}`,
-    description: `${propertyName}${cityPhrase} : découvrez les hébergements, services et disponibilités de l'établissement.`,
+    title: `Page introuvable | ${propertyName}`,
+    description: "La page demandée n’existe plus ou a été déplacée.",
+    robots: "noindex, nofollow",
   };
 }
 

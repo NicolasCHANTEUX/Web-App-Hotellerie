@@ -1,1 +1,2 @@
+# When the API shares this origin, configure its /api/* proxy before the SPA fallback.
 /* /index.html 200

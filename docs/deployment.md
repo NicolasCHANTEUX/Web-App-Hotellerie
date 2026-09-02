@@ -59,6 +59,8 @@ location / {
 
 Le fichier `public/_redirects`, copié dans `dist/`, fournit la règle équivalente pour Netlify et Cloudflare Pages. Sur Vercel, configurer une rewrite de `/(.*)` vers `/index.html`. Après déploiement, tester impérativement un accès direct et un rafraîchissement sur `/contact`, `/hebergements/...` et `/admin/connexion`.
 
+Si l'API est exposée sous `/api` sur le même domaine, sa route ou son proxy doit être déclaré avant le catch-all SPA. Vérifier explicitement que `/api/property` renvoie du JSON et jamais `index.html`.
+
 En production avec plusieurs instances API, définir `BACKGROUND_WORKER_MODE=standalone` partout puis lancer exactement un processus dédié :
 
 ```sh
