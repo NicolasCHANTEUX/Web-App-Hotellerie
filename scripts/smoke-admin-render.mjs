@@ -12,6 +12,16 @@ if (!bundle) throw new Error("Frontend bundle not found.");
 if (!adminStylesheet) throw new Error("Admin stylesheet not found.");
 const bundleUrl = pathToFileURL(resolve(assetsDirectory, bundle)).href;
 
+async function waitForSelector(window, selector, message, timeout = 2_000) {
+  const deadline = Date.now() + timeout;
+
+  while (!window.document.querySelector(selector) && Date.now() < deadline) {
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 25));
+  }
+
+  assert.ok(window.document.querySelector(selector), message);
+}
+
 const adminProfile = {
   user: { id: "user-admin", displayName: "Marie Dupont", email: "marie@rivage.fr" },
   membership: {
@@ -480,11 +490,19 @@ async function renderAdmin(pathname, {
   }
 
   if (withToken && window.location.pathname.startsWith("/admin/reservations")) {
-    const bookingsDeadline = Date.now() + 2_000;
-    while (!window.document.querySelector(".admin-reference") && Date.now() < bookingsDeadline) {
-      await new Promise((resolveDelay) => setTimeout(resolveDelay, 25));
-    }
-    assert.ok(window.document.querySelector(".admin-reference"), "The booking list should finish loading.");
+    await waitForSelector(
+      window,
+      ".admin-reference",
+      "The booking list should finish loading.",
+    );
+  }
+
+  if (withToken && window.location.pathname.startsWith("/admin/chambres")) {
+    await waitForSelector(
+      window,
+      ".admin-room-card",
+      "The room list should finish loading.",
+    );
   }
 
   if (period) {
