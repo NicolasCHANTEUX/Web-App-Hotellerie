@@ -50,7 +50,7 @@ const accommodation = {
   surface: "24 m²",
   surfaceSqm: 24,
   rooms: "1 lit queen size",
-  hero: "/images/hotel/hero-1280.webp",
+  hero: "/images/hotel/cannes-1280.webp",
   gallery: ["/images/hotel/hero-1280.webp"],
   amenities: ["Wi-Fi"],
 };
@@ -72,7 +72,9 @@ test("renders the public home with canonical Hotel metadata", async ({ page }) =
   await expect.poll(() => heroImage.evaluate((image) => (image as HTMLImageElement).currentSrc))
     .toMatch(/hero-\d+\.avif$/);
   expect(await page.locator('script[type="application/ld+json"]').textContent()).toContain('"@type":"Hotel"');
-  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "http://127.0.0.1:4173/");
+  const canonicalUrl = await page.locator('link[rel="canonical"]').getAttribute("href");
+  expect(canonicalUrl).not.toBeNull();
+  expect(new URL(canonicalUrl!).pathname).toBe("/");
 });
 
 test("uses room content in accommodation metadata", async ({ page }) => {
@@ -83,6 +85,14 @@ test("uses room content in accommodation metadata", async ({ page }) => {
 
   await expect(page).toHaveTitle("Chambre Élégance | Hôtel Rivage Cannes");
   await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", accommodation.shortDescription);
+  await expect(page.locator('meta[property="og:image"]')).toHaveAttribute("content", /\/images\/hotel\/cannes-1280\.webp$/);
+  const structuredData = JSON.parse(await page.locator('script[type="application/ld+json"]').textContent() ?? "{}");
+  expect(structuredData["@graph"]).toEqual(expect.arrayContaining([
+    expect.objectContaining({ "@type": "Hotel", name: property.name }),
+    expect.objectContaining({ "@type": "HotelRoom", name: accommodation.name, description: accommodation.shortDescription }),
+  ]));
+  expect(structuredData["@graph"].find((item: { "@type": string }) => item["@type"] === "Hotel").description)
+    .not.toBe(accommodation.shortDescription);
 });
 
 test("returns from the admin login to the public site", async ({ page }) => {

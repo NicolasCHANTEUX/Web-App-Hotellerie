@@ -70,7 +70,7 @@ const [robots, sitemap] = await Promise.all([
 if (!robots.includes("Disallow: /admin/") || !robots.includes("Sitemap:")) {
   throw new Error("robots.txt is incomplete.");
 }
-if (!sitemap.includes("/hebergements</loc>") || sitemap.includes("/hebergements/chambre-") || sitemap.includes("/admin")) {
+if (!sitemap.includes("/hebergements</loc>") || sitemap.includes("/admin")) {
   throw new Error("sitemap.xml contains invalid routes.");
 }
 

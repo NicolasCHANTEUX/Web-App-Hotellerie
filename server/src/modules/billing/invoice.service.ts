@@ -480,7 +480,7 @@ export async function renderInvoicePdf(invoice: NonNullable<Awaited<ReturnType<t
   if (invoice.creditReason) {
     document.fillColor(muted).font("Helvetica").fontSize(8.5).text(`Motif de l'avoir : ${invoice.creditReason}`, 48, y + 104, { width: 499 });
   }
-  document.fillColor(muted).fontSize(8).text("Prix exprimés en euros. TVA incluse dans les montants TTC.", 48, 760, { width: 499, align: "center" });
+  document.fillColor(muted).fontSize(8).text(`Devise : ${invoice.currency}. Taxes incluses dans les montants TTC.`, 48, 760, { width: 499, align: "center" });
   document.end();
   return finished;
 }

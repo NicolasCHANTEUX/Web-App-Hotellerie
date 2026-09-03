@@ -13,6 +13,7 @@
     "dev:stop": "node scripts/prepare-dev.mjs",
     "seo:generate": "node scripts/generate-seo.mjs",
     "seo:generate:strict": "node scripts/generate-seo.mjs --strict",
+    "seo:verify": "node scripts/verify-seo.mjs",
     "images:generate": "node scripts/generate-images.mjs",
     "build": "npm run seo:generate && tsc -b && vite build --config vite.config.mjs --configLoader native",
     "build:production": "npm run seo:generate:strict && tsc -b && vite build --config vite.config.mjs --configLoader native",

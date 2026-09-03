@@ -95,6 +95,14 @@ function accommodationSlugFor(pathname: string) {
   }
 }
 
+function absoluteUrl(value: string, origin: string) {
+  try {
+    return new URL(value, `${origin}/`).href;
+  } catch {
+    return `${origin}/images/hotel/hero-1280.webp`;
+  }
+}
+
 export function RouteMetadata() {
   const { pathname } = useLocation();
   const property = useOptionalProperty();
@@ -116,7 +124,13 @@ export function RouteMetadata() {
     const metadata = metadataFor(pathname, property, matchingAccommodation);
     const configuredOrigin = import.meta.env.VITE_PUBLIC_SITE_URL?.replace(/\/$/, "");
     const origin = configuredOrigin || window.location.origin;
-    const socialImage = `${origin}/images/hotel/hero-1280.webp`;
+    const hotelSocialImage = absoluteUrl(
+      import.meta.env.VITE_PUBLIC_SOCIAL_IMAGE?.trim() || "/images/hotel/hero-1280.webp",
+      origin,
+    );
+    const socialImage = matchingAccommodation?.hero
+      ? absoluteUrl(matchingAccommodation.hero, origin)
+      : hotelSocialImage;
     document.title = metadata.title;
     setMeta('meta[name="description"]', "name", "description", metadata.description);
     setMeta('meta[name="robots"]', "name", "robots", metadata.robots ?? "index, follow");
@@ -145,12 +159,13 @@ export function RouteMetadata() {
       structuredData.type = "application/ld+json";
       document.head.append(structuredData);
     }
-    structuredData.textContent = JSON.stringify({
-      "@context": "https://schema.org",
+    const hotelId = `${origin}/#hotel`;
+    const hotel = {
       "@type": "Hotel",
+      "@id": hotelId,
       name: property.name,
       url: origin,
-      image: socialImage,
+      image: hotelSocialImage,
       email: property.email,
       telephone: property.phone ?? undefined,
       address: {
@@ -162,9 +177,30 @@ export function RouteMetadata() {
       },
       checkinTime: property.checkInTime,
       checkoutTime: property.checkOutTime,
-      description: metadata.description,
+      description: metadataFor("/", property, null).description,
       hasMap: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${property.name}, ${propertyAddress(property)}`)}`,
-    });
+    };
+    structuredData.textContent = JSON.stringify(matchingAccommodation
+      ? {
+          "@context": "https://schema.org",
+          "@graph": [
+            hotel,
+            {
+              "@type": "HotelRoom",
+              "@id": `${origin}${pathname}#room`,
+              name: matchingAccommodation.name,
+              description: matchingAccommodation.shortDescription,
+              image: socialImage,
+              url: `${origin}${pathname}`,
+              occupancy: {
+                "@type": "QuantitativeValue",
+                maxValue: matchingAccommodation.capacity,
+              },
+              containedInPlace: { "@id": hotelId },
+            },
+          ],
+        }
+      : { "@context": "https://schema.org", ...hotel });
   }, [accommodation, detailSlug, pathname, property]);
 
   return null;

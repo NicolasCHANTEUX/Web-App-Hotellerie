@@ -27,6 +27,12 @@ jobs:
       SUPABASE_URL: https://example.supabase.co
       SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder
       NOTIFICATION_DELIVERY: disabled
+      VITE_PUBLIC_SITE_URL: https://hotel.example
+      VITE_PUBLIC_PROPERTY_NAME: Hotel CI
+      VITE_PUBLIC_PROPERTY_CITY: Nantes
+      VITE_PUBLIC_META_DESCRIPTION: Description SEO de test.
+      VITE_PUBLIC_SOCIAL_IMAGE: https://cdn.example/hotel-ci.webp
+      VITE_PUBLIC_ROOM_SLUGS: chambre-test,suite-test
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -47,8 +53,7 @@ jobs:
         working-directory: server
       - run: npm run verify:code
       - run: npm run build:production
-        env:
-          VITE_PUBLIC_SITE_URL: https://hotel.example
+      - run: npm run seo:verify
       - run: npm run smoke:run
 
   e2e:

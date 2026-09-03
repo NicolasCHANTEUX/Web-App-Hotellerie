@@ -6,7 +6,8 @@
 - Déployer l'API Fastify séparément depuis `server/Dockerfile`.
 - Définir `VITE_API_URL` avec l'URL HTTPS publique de l'API, ou router `/api` vers l'API sur le même domaine.
 - Définir `VITE_PUBLIC_SITE_URL` avec l'origine HTTPS canonique du site ; le build l'utilise pour `robots.txt`, `sitemap.xml`, les URL canoniques et les métadonnées sociales.
-- Rendre l'API catalogue accessible pendant le build pour ajouter automatiquement les hébergements publiés au sitemap. À défaut, définir `VITE_PUBLIC_ROOM_SLUGS` avec leurs slugs séparés par des virgules.
+- Rendre l'API publique accessible pendant le build pour alimenter le HTML initial et ajouter automatiquement les hébergements publiés au sitemap. Les données de l'API sont prioritaires. Si elle est inaccessible, définir `VITE_PUBLIC_PROPERTY_NAME`, `VITE_PUBLIC_PROPERTY_CITY` et `VITE_PUBLIC_ROOM_SLUGS` comme fallbacks de build.
+- Définir au besoin `VITE_PUBLIC_META_DESCRIPTION` et `VITE_PUBLIC_SOCIAL_IMAGE` pour personnaliser la description et l'image sociale statiques. L'image peut être une URL absolue ou un chemin public du frontend.
 - Conserver PostgreSQL, Auth et le bucket public `hotel-public` dans le même projet Supabase.
 
 Node.js 22 est la version de référence pour le développement local, la CI et l'image Docker. Le transport WebSocket explicite du SDK Supabase reste utilisé par le backend.
@@ -29,7 +30,7 @@ Node.js 22 est la version de référence pour le développement local, la CI et 
    ```
 
 4. Vérifier `/health/live`, puis `/health`.
-5. Construire le frontend avec `VITE_API_URL=https://api.exemple.fr`, `VITE_PUBLIC_SITE_URL=https://www.exemple.fr` et `npm run build:production`, puis publier `dist/`.
+5. Construire le frontend avec `VITE_API_URL=https://api.exemple.fr`, `VITE_PUBLIC_SITE_URL=https://www.exemple.fr` et `npm run build:production`, puis exécuter `npm run seo:verify` et publier `dist/`.
 6. Tester une recherche, une demande de réservation, la connexion admin, un paiement de test, un PDF et un téléversement d'image.
 
 La migration et le démarrage de l'API sont séparés volontairement : plusieurs instances ne doivent pas tenter de migrer la base simultanément.
