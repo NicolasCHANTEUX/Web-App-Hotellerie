@@ -59,7 +59,7 @@ const bookingPage = {
     guest: { firstName: "Sophie", lastName: "Martin", email: "sophie@example.com" },
     rooms: [{ id: "booking-room-1", roomTypeName: "Chambre Élégance", roomNumber: "201" }],
     paymentStatus: "SUCCEEDED",
-    hold: null,
+    hold: { status: "CONVERTED", expiresAt: "2026-08-11T10:00:00Z", isActive: false },
   }],
   page: 1,
   pageSize: 10,
@@ -83,7 +83,12 @@ const accountingBookingDetail = {
   extrasSubtotal: 20,
   touristTaxTotal: 4,
   taxTotal: 40,
-  specialRequests: null,
+  rateConditions: {
+    name: "Tarif flexible",
+    refundable: true,
+    termsTitle: "Conditions de réservation",
+  },
+  specialRequests: "Arrivée prévue vers 22h30.",
   confirmedAt: "2026-08-10T10:05:00Z",
   cancelledAt: null,
   updatedAt: "2026-08-10T10:05:00Z",
@@ -835,6 +840,10 @@ async function renderAdmin(pathname, {
     deleteButtons: window.document.querySelectorAll(".admin-room-delete-trigger").length,
     bookingDetail: {
       opened: Boolean(window.document.querySelector(".admin-drawer")),
+      referenceCopyActions: window.document.querySelectorAll(".admin-drawer-reference button").length,
+      sourceFields: window.document.querySelectorAll(".admin-detail-grid .wide").length,
+      specialRequestSections: window.document.querySelectorAll(".admin-special-request-section").length,
+      rateConditionBlocks: window.document.querySelectorAll(".admin-rate-conditions").length,
       contactLinks: window.document.querySelectorAll(".admin-detail-client a").length,
       confirmationActions: window.document.querySelectorAll(".admin-confirm-booking").length,
       roomAssignmentActions: window.document.querySelectorAll(".admin-booking-room-assignment").length,
@@ -887,6 +896,21 @@ if (process.argv.includes("--basic")) {
   }));
   process.exit(0);
 }
+
+const adminBookingDetailView = await renderAdmin("/admin/reservations", {
+  profile: adminProfile,
+  withToken: true,
+  bookingDetailAction: true,
+});
+assert.equal(adminBookingDetailView.bookingDetail.opened, true);
+assert.equal(adminBookingDetailView.bookingDetail.referenceCopyActions, 1);
+assert.equal(adminBookingDetailView.bookingDetail.sourceFields, 1);
+assert.equal(adminBookingDetailView.bookingDetail.specialRequestSections, 1);
+assert.equal(adminBookingDetailView.bookingDetail.rateConditionBlocks, 1);
+assert.match(adminBookingDetailView.text, /Site internet/);
+assert.match(adminBookingDetailView.text, /Arrivée prévue vers 22h30/);
+assert.match(adminBookingDetailView.text, /Tarif flexible/);
+assert.doesNotMatch(adminBookingDetailView.text, /Option terminée/);
 
 const bookingCreation = await renderAdmin("/admin/reservations", {
   profile: adminProfile,

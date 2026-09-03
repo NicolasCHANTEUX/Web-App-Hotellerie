@@ -452,6 +452,13 @@
 .admin-drawer-head > div { min-width: 0; flex: 1; }
 .admin-drawer-head p { margin: 0 0 4px; color: #9a8f84; font-size: 8px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
 .admin-drawer-head h2 { margin: 0; overflow-wrap: anywhere; font-family: var(--font-serif); font-size: 25px; font-weight: 600; line-height: 1.15; }
+.admin-drawer-reference { display: flex; min-width: 0; align-items: center; gap: 6px; margin-top: 6px; }
+.admin-drawer-reference > span { max-width: 250px; overflow: hidden; color: #776d64; font-size: 10px; font-weight: 550; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+.admin-drawer-reference button { display: grid; width: 25px; height: 25px; flex: 0 0 auto; place-items: center; border: 1px solid #e0d9d1; border-radius: 5px; background: #faf8f5; color: #76624d; cursor: pointer; }
+.admin-drawer-reference button:hover { border-color: #cdb99f; background: #f5eee5; }
+.admin-drawer-reference button:focus-visible { outline: 3px solid rgb(146 112 71 / 24%); outline-offset: 1px; }
+.admin-drawer-reference button svg { width: 12px; }
+.admin-drawer-reference small { color: #557257; font-size: 8px; font-weight: 650; }
 .admin-drawer-head > button { display: grid; width: 36px; height: 36px; flex: 0 0 auto; place-items: center; border: 1px solid #dfd8d0; border-radius: 50%; background: white; color: #746b62; cursor: pointer; }
 .admin-drawer-head > button svg { width: 17px; }
 .admin-drawer-body { min-width: 0; overflow-y: auto; padding: 23px 25px 45px; }
@@ -508,12 +515,16 @@
 .admin-detail-grid div { display: grid; gap: 4px; }
 .admin-detail-grid dt { color: #9a9086; font-size: 8px; text-transform: uppercase; }
 .admin-detail-grid dd { margin: 0; color: #49423b; font-size: 11px; font-weight: 600; }
+.admin-detail-grid .wide { grid-column: 1 / -1; border-top: 1px solid #eee9e3; padding-top: 13px; }
 .admin-detail-lines { display: grid; gap: 12px; }
 .admin-detail-lines > p { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin: 0; }
 .admin-detail-lines > p + p { border-top: 1px solid #eee9e3; padding-top: 12px; }
 .admin-detail-lines span { display: grid; gap: 4px; }
 .admin-detail-lines strong { font-size: 10px; font-weight: 600; }
 .admin-detail-lines small { color: #958a80; font-size: 9px; }
+.admin-rate-conditions { display: grid; gap: 4px; margin-top: 15px; border-top: 1px solid #eee9e3; padding-top: 13px; }
+.admin-rate-conditions strong { color: #554b42; font-size: 10px; font-weight: 650; }
+.admin-rate-conditions small { color: #8b8177; font-size: 9px; line-height: 1.5; }
 .admin-booking-room-assignment { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 9px; margin-top: 15px; border-top: 1px solid #eee9e3; padding-top: 14px; }
 .admin-booking-room-assignment label { display: grid; gap: 6px; color: #746a61; font-size: 9px; font-weight: 650; }
 .admin-booking-room-assignment select { min-height: 38px; border: 1px solid #dcd4cb; border-radius: 6px; background: #fdfcfa; padding: 0 9px; color: #4b443d; font-size: 10px; }
@@ -566,6 +577,7 @@
 .admin-billing-form button.primary { border-color: var(--gold-dark); background: var(--gold-dark); color: white; }
 .admin-billing-form button.danger { border-color: #bd6c63; background: #a8564d; color: white; }
 .admin-billing-form button:disabled, .admin-invoice-list > button:disabled { cursor: wait; opacity: .6; }
+.admin-special-request-section { border-color: #e1cfb7; background: #fffaf3; }
 .admin-special-request { margin: 0; border-left: 2px solid #c8a176; padding-left: 13px; color: #70675e; font-size: 10px; font-style: italic; line-height: 1.7; }
 .admin-detail-created { margin: 19px 5px 0; color: #a0978e; font-size: 8px; line-height: 1.6; text-align: center; }
 
@@ -722,6 +734,8 @@ button.admin-planning-slot { font: inherit; }
 .admin-pagination button { color: #665e56; font-size: 12px; }
 .admin-drawer-head p,
 .admin-detail-section > h3 { color: #6e655c; font-size: 11px; }
+.admin-drawer-reference > span { font-size: 12px; }
+.admin-drawer-reference small { font-size: 10px; }
 .admin-hold-notice strong,
 .admin-hold-notice small,
 .admin-confirm-booking,
@@ -734,6 +748,8 @@ button.admin-planning-slot { font: inherit; }
 .admin-detail-lines strong { font-size: 13px; }
 .admin-detail-lines small,
 .admin-pricing-lines { color: #685f57; font-size: 12px; }
+.admin-rate-conditions strong { font-size: 12px; }
+.admin-rate-conditions small { color: #685f57; font-size: 11px; }
 .admin-special-request { color: #625a52; font-size: 13px; }
 .admin-detail-created { color: #746b61; font-size: 11px; }
 .admin-mobile-card-head > span small { color: #6f665d; font-size: 12px; }

@@ -141,6 +141,11 @@ export type AdminBookingDetail = AdminBooking & {
   extrasSubtotal: number;
   touristTaxTotal: number;
   taxTotal: number;
+  rateConditions: {
+    name: string;
+    refundable: boolean | null;
+    termsTitle: string | null;
+  };
   specialRequests: string | null;
   confirmedAt: string | null;
   cancelledAt: string | null;

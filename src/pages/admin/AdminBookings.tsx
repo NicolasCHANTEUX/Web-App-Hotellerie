@@ -5,19 +5,21 @@ import {
   BedDouble,
   CalendarCheck,
   CalendarDays,
+  Check,
   ChevronRight,
   CircleCheck,
+  Copy,
   CreditCard,
   FileDown,
   Filter,
   Mail,
+  MessageSquareText,
   Phone,
   Pencil,
   Plus,
   Search,
   RotateCcw,
   UserRound,
-  Users,
   X,
 } from "lucide-react";
 import { Suspense, lazy, useEffect, useId, useRef, useState } from "react";
@@ -95,6 +97,18 @@ function guestName(booking: Pick<AdminBooking, "guest">) {
 function roomsLabel(booking: Pick<AdminBooking, "rooms">) {
   if (!booking.rooms.length) return "Non attribuée";
   return booking.rooms.map((room) => room.roomNumber ? `${room.roomTypeName} · ${room.roomNumber}` : room.roomTypeName).join(", ");
+}
+
+const bookingSourceLabels: Record<string, string> = {
+  WEBSITE: "Site internet",
+  PHONE: "Téléphone",
+  EMAIL: "E-mail",
+  WALK_IN: "Réception",
+  ADMIN: "Administration",
+};
+
+function bookingSourceLabel(source: string) {
+  return bookingSourceLabels[source] ?? source;
 }
 
 function dateInTimeZone(timeZone?: string) {
@@ -298,6 +312,7 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
   const [refundAmount, setRefundAmount] = useState("");
   const [refundReason, setRefundReason] = useState("");
   const [billingBusy, setBillingBusy] = useState(false);
+  const [referenceCopied, setReferenceCopied] = useState(false);
   const refundAttemptRef = useRef<{ signature: string; key: string } | null>(null);
   const confirmationOpenRef = useRef(false);
   const editOpenRef = useRef(false);
@@ -354,6 +369,7 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
     const controller = new AbortController();
     setLoading(true);
     setError(null);
+    setReferenceCopied(false);
     getAdminBooking(id, accessToken, controller.signal)
       .then((data) => { setBooking(data); setLoading(false); })
       .catch((nextError: unknown) => {
@@ -424,6 +440,16 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
       setActionError(nextError instanceof Error ? nextError.message : "L’affectation de chambre a échoué.");
     } finally {
       setRoomAssigning(false);
+    }
+  }
+
+  async function copyBookingReference() {
+    if (!booking?.reference) return;
+    try {
+      await navigator.clipboard.writeText(booking.reference);
+      setReferenceCopied(true);
+    } catch {
+      setReferenceCopied(false);
     }
   }
 
@@ -581,7 +607,11 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
       <button type="button" className="admin-drawer-backdrop" aria-label="Fermer le détail" disabled={confirmationOpen || editOpen} aria-hidden={confirmationOpen || editOpen || undefined} onClick={onClose} />
       <aside ref={drawerRef} className="admin-drawer" role="dialog" aria-modal="true" aria-labelledby="booking-detail-title">
         <header className="admin-drawer-head" inert={confirmationOpen || editOpen || undefined} aria-hidden={confirmationOpen || editOpen || undefined}>
-          <div><p>Détail de la réservation</p><h2 id="booking-detail-title">{booking?.reference ?? "Chargement…"}</h2></div>
+          <div className="admin-drawer-title">
+            <p>Détail de la réservation</p>
+            <h2 id="booking-detail-title">Réservation</h2>
+            {booking && <div className="admin-drawer-reference"><span title={booking.reference}>{booking.reference}</span><button type="button" title="Copier la référence" aria-label={`Copier la référence ${booking.reference}`} onClick={copyBookingReference}>{referenceCopied ? <Check /> : <Copy />}</button>{referenceCopied && <small role="status">Référence copiée</small>}</div>}
+          </div>
           <button ref={closeButtonRef} type="button" onClick={onClose} aria-label="Fermer"><X /></button>
         </header>
 
@@ -591,7 +621,7 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
           {!loading && booking && (
             <>
               <div className="admin-detail-statuses"><StatusBadge status={booking.status} kind="booking" />{booking.paymentStatus ? <StatusBadge status={booking.paymentStatus} kind="payment" /> : <span className="admin-status admin-status-neutral"><i />Paiement non initié</span>}</div>
-              {booking.hold && <div className={`admin-hold-notice ${booking.hold.isActive ? "is-active" : ""}`}><CalendarCheck /><span><strong>{booking.hold.isActive ? "Chambre optionnée" : "Option terminée"}</strong><small>{booking.hold.isActive ? `À confirmer avant le ${formatDateTime(booking.hold.expiresAt, propertyTimeZone)}` : `Échéance : ${formatDateTime(booking.hold.expiresAt, propertyTimeZone)}`} · heure locale de l’hôtel</small></span></div>}
+              {booking.status === "PENDING_PAYMENT" && booking.hold?.isActive && <div className="admin-hold-notice is-active"><CalendarCheck /><span><strong>Option valable</strong><small>À confirmer avant le {formatDateTime(booking.hold.expiresAt, propertyTimeZone)} · heure locale de l’hôtel</small></span></div>}
               {canOperateBooking && booking.status === "PENDING_PAYMENT" && booking.hold?.isActive && <button ref={confirmationTriggerRef} type="button" className="admin-confirm-booking" disabled={confirming} aria-haspopup="dialog" onClick={openConfirmation}><CircleCheck />Confirmer manuellement la réservation</button>}
               {canOperateBooking && (booking.status === "PENDING_PAYMENT" || booking.status === "CONFIRMED") && <button type="button" className="admin-booking-edit-button" aria-haspopup="dialog" onClick={openEditDialog}><Pencil />Modifier le séjour</button>}
 
@@ -610,14 +640,18 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
                   <div><dt>Départ</dt><dd>{formatDate(booking.checkOut, { weekday: "short" })}</dd></div>
                   <div><dt>Durée</dt><dd>{stayNights(booking.checkIn, booking.checkOut)} nuit(s)</dd></div>
                   <div><dt>Voyageurs</dt><dd>{booking.adults} adulte(s){booking.children ? ` · ${booking.children} enfant(s)` : ""}</dd></div>
+                  <div className="wide"><dt>Source</dt><dd>{bookingSourceLabel(booking.source)}</dd></div>
                 </dl>
               </section>
+
+              {canOperateBooking && booking.specialRequests && <section className="admin-detail-section admin-special-request-section"><h3><MessageSquareText />À noter</h3><p className="admin-special-request">{booking.specialRequests}</p></section>}
 
               <section className="admin-detail-section">
                 <h3><BedDouble />Hébergement</h3>
                 <div className="admin-detail-lines">
                   {booking.rooms.map((room) => <p key={room.id}><span><strong>{room.roomTypeName}</strong><small>{room.roomNumber ? `Chambre ${room.roomNumber}` : "Chambre à attribuer"}</small></span>{room.lineTotal !== undefined && <strong>{formatMoney(room.lineTotal, booking.currency)}</strong>}</p>)}
                 </div>
+                <div className="admin-rate-conditions"><strong>{booking.rateConditions.name}</strong><small>{booking.rateConditions.refundable === false ? "Tarif non remboursable" : booking.rateConditions.refundable === true ? "Remboursable selon les conditions acceptées" : "Conditions acceptées lors de la réservation"}{booking.rateConditions.termsTitle ? ` · ${booking.rateConditions.termsTitle}` : ""}</small></div>
                 {canOperateBooking && (booking.status === "CONFIRMED" || booking.status === "CHECKED_IN") && <div className="admin-booking-room-assignment">
                   <label><span>Chambre physique</span><select value={assignedRoomId} disabled={roomsLoading || roomAssigning} onChange={(event) => setAssignedRoomId(event.target.value)}>{availableRooms.map((room) => <option value={room.id} key={room.id}>Chambre {room.number}{room.floor !== null ? ` · étage ${room.floor}` : ""}{room.selected ? " · actuelle" : ""}</option>)}</select></label>
                   <button type="button" disabled={roomsLoading || roomAssigning || !assignedRoomId || assignedRoomId === booking.rooms[0]?.roomId} onClick={applyRoomAssignment}>{roomAssigning ? "Affectation…" : roomsLoading ? "Chargement…" : "Affecter"}</button>
@@ -674,8 +708,6 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
                 </div>}
                 {actionError && <p className="admin-booking-confirm-error" role="alert">{actionError}</p>}
               </section>
-
-              {canOperateBooking && booking.specialRequests && <section className="admin-detail-section"><h3><Users />Demande particulière</h3><p className="admin-special-request">{booking.specialRequests}</p></section>}
 
               {canOperateBooking && (booking.status === "PENDING_PAYMENT" || booking.status === "CONFIRMED" || booking.status === "CHECKED_IN") && <section className="admin-detail-section admin-booking-lifecycle">
                 <h3><Ban />Actions sur le séjour</h3>

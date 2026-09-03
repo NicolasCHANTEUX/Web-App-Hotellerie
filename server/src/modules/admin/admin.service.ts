@@ -140,6 +140,32 @@ function isoTimestamp(value: Date | null) {
   return value?.toISOString() ?? null;
 }
 
+function jsonRecord(value: unknown) {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function bookingRateConditions(
+  pricingSnapshot: unknown,
+  termsSnapshot: unknown,
+  fallbackName: string | null,
+) {
+  const pricing = jsonRecord(pricingSnapshot);
+  const ratePlan = jsonRecord(pricing?.ratePlan);
+  const terms = jsonRecord(termsSnapshot);
+  const cancellationPolicy = jsonRecord(terms?.cancellationPolicy);
+  const name = typeof ratePlan?.name === "string" && ratePlan.name.trim()
+    ? ratePlan.name.trim()
+    : fallbackName || "Tarif du séjour";
+  const termsTitle = typeof terms?.title === "string" && terms.title.trim()
+    ? terms.title.trim()
+    : null;
+  const refundable = [cancellationPolicy?.refundable, terms?.refundable, ratePlan?.refundable]
+    .find((value): value is boolean => typeof value === "boolean") ?? null;
+  return { name, refundable, termsTitle };
+}
+
 const editableRoomSelect = {
   id: true,
   number: true,
@@ -407,6 +433,11 @@ export async function getAdminBooking(propertyId: string, bookingId: string, inc
     touristTaxTotal: Number(booking.touristTaxTotal),
     taxTotal: Number(booking.taxTotal),
     total: Number(booking.total),
+    rateConditions: bookingRateConditions(
+      booking.pricingSnapshot,
+      booking.termsSnapshot,
+      booking.rooms[0]?.ratePlan.name ?? null,
+    ),
     specialRequests: includeContactDetails ? booking.specialRequests : null,
     confirmedAt: isoTimestamp(booking.confirmedAt),
     cancelledAt: isoTimestamp(booking.cancelledAt),

@@ -196,6 +196,10 @@ test("loads authenticated admin bookings after the asynchronous request", async 
   await page.addInitScript(() => {
     sessionStorage.setItem("hotel.admin.accessToken", "e2e-token");
     sessionStorage.setItem("hotel.admin.expiresAt", String(Date.now() + 600_000));
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: async (value: string) => sessionStorage.setItem("e2e.copied-reference", value) },
+    });
   });
   await page.route("**/api/admin/me", (route) => route.fulfill({ json: { data: {
     user: { id: "user-admin", displayName: "Marie Dupont", email: "marie@rivage.fr" },
@@ -229,6 +233,38 @@ test("loads authenticated admin bookings after the asynchronous request", async 
     totalPages: 1,
     summary: { total: 1, byStatus: { CONFIRMED: 1 }, arrivalsToday: 0, departuresToday: 0 },
   } } }));
+  await page.route("**/api/admin/bookings/booking-1/invoices", (route) => route.fulfill({ json: { data: [] } }));
+  await page.route("**/api/admin/bookings/booking-1/available-rooms", (route) => route.fulfill({ json: { data: [] } }));
+  await page.route("**/api/admin/bookings/booking-1", (route) => route.fulfill({ json: { data: {
+    id: "booking-1",
+    reference: "RVG-2026-001",
+    status: "CONFIRMED",
+    source: "WEBSITE",
+    checkIn: "2026-09-12",
+    checkOut: "2026-09-14",
+    adults: 2,
+    children: 0,
+    total: 270,
+    currency: "EUR",
+    createdAt: "2026-09-02T10:00:00Z",
+    updatedAt: "2026-09-02T10:05:00Z",
+    priceTaxMode: "INCLUSIVE",
+    accommodationSubtotal: 270,
+    extrasSubtotal: 0,
+    touristTaxTotal: 0,
+    taxTotal: 24.55,
+    specialRequests: "Arrivée prévue vers 22h30.",
+    confirmedAt: "2026-09-02T10:05:00Z",
+    cancelledAt: null,
+    guest: { firstName: "Sophie", lastName: "Martin", email: "sophie@example.com", phone: "+33612345678" },
+    guests: [{ firstName: "Sophie", lastName: "Martin", email: "sophie@example.com", phone: "+33612345678", isPrimary: true }],
+    rooms: [{ id: "booking-room-1", roomTypeId: "room-type-1", roomId: "room-201", roomTypeName: "Chambre Élégance", roomNumber: "201", nightlyPrice: 135, taxRate: 10, lineTotal: 270 }],
+    extras: [],
+    payments: [],
+    paymentStatus: "SUCCEEDED",
+    hold: { status: "CONVERTED", expiresAt: "2026-09-03T10:00:00Z", isActive: false },
+    rateConditions: { name: "Tarif flexible", refundable: true, termsTitle: "Conditions de réservation" },
+  } } }));
 
   await page.goto("/admin/reservations");
 
@@ -236,6 +272,16 @@ test("loads authenticated admin bookings after the asynchronous request", async 
   await expect(page.getByRole("heading", { level: 1, name: "Réservations" })).toBeVisible();
   await expect(page.getByRole("button", { name: "RVG-2026-001", exact: true })).toBeVisible();
   await expect(page.getByRole("table").getByText("Sophie Martin", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "RVG-2026-001", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 2, name: "Réservation", exact: true })).toBeVisible();
+  await expect(page.getByText("Site internet", { exact: true })).toBeVisible();
+  await expect(page.getByText("Arrivée prévue vers 22h30.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Tarif flexible", { exact: true })).toBeVisible();
+  await expect(page.getByText("Option terminée", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Options" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Copier la référence RVG-2026-001" }).click();
+  await expect(page.getByRole("status")).toHaveText("Référence copiée");
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem("e2e.copied-reference"))).toBe("RVG-2026-001");
 });
 
 test("renders planning rooms and occupancy in a real browser", async ({ page }) => {
