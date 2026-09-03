@@ -40,13 +40,15 @@ Ces commandes sont egalement a relancer apres avoir recupere le projet sur une a
 
 ## Lancer toute l'application
 
+Node.js 22 est la version de référence du projet, comme en CI et dans l'image Docker. Le fichier `.nvmrc` et les champs `engines` des deux packages rendent cette version explicite.
+
 ```powershell
 npm run dev:full
 ```
 
 Cette commande remplace automatiquement une ancienne instance du projet, attend que l'API soit prete, puis lance Vite. Elle utilise toujours les ports fixes ci-dessous afin d'eviter une instance frontend inutilisable sur `5174`.
 
-Avec Node 20 ou 22, le frontend utilise le serveur Vite avec rechargement a chaud. Sous Node 24, une politique Windows peut bloquer le pre-bundling natif d'Esbuild dans certains dossiers OneDrive : le script bascule alors automatiquement sur un build surveille servi en preview. Dans ce mode, les changements sont reconstruits automatiquement mais il faut rafraichir le navigateur.
+Avec Node 22, le frontend utilise le serveur Vite avec rechargement a chaud. Sous Node 24, une politique Windows peut bloquer le pre-bundling natif d'Esbuild dans certains dossiers OneDrive : le script bascule alors automatiquement sur un unique build surveille, puis demarre le preview lorsque ce premier build est termine. Dans ce mode, les changements sont reconstruits automatiquement mais il faut rafraichir le navigateur.
 
 - Frontend : `http://127.0.0.1:5173`
 - API : `http://127.0.0.1:3001`

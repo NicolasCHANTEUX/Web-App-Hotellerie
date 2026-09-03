@@ -86,7 +86,7 @@ export function AdminLogin() {
             </button>
           </form>
 
-          <Link to="/" className="admin-back-link"><ArrowLeft />Retour au site de l’hôtel</Link>
+          <Link to="/" reloadDocument className="admin-back-link"><ArrowLeft />Retour au site de l’hôtel</Link>
         </div>
       </section>
     </main>

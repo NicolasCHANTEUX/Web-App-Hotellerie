@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "tsx watch --clear-screen=false --exclude .api-dev-state.json --exclude dist/** --exclude src/generated/prisma/** src/index.ts",
     "build": "tsc",
@@ -42,7 +45,7 @@
     "ws": "^8.21.3"
   },
   "devDependencies": {
-    "@types/node": "^24.0.0",
+    "@types/node": "^22.20.1",
     "@types/pdfkit": "^0.17.6",
     "@types/pg": "^8.21.0",
     "@types/ws": "^8.18.1",

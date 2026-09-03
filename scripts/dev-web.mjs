@@ -18,30 +18,26 @@ if (nodeMajor < 24) {
   vite.once("exit", (code, signal) => process.exit(signal ? 1 : (code ?? 1)));
 } else {
   console.log(`Node ${process.versions.node} détecté : démarrage du frontend en mode de compatibilité.`);
-  const initialBuild = spawnSync(process.execPath, [npmCli, "run", "build"], {
-    env: process.env,
-    stdio: "inherit",
-    windowsHide: true,
-  });
-  if (initialBuild.status !== 0) process.exit(initialBuild.status ?? 1);
-
   const children = new Set();
   let stopping = false;
 
-  function prefix(stream, label) {
+  function prefix(stream, label, onLine) {
     const lines = createInterface({ input: stream });
-    lines.on("line", (line) => process.stdout.write(`[${label}] ${line}\n`));
+    lines.on("line", (line) => {
+      process.stdout.write(`[${label}] ${line}\n`);
+      onLine?.(line);
+    });
   }
 
-  function start(label, args) {
+  function start(label, args, { onLine } = {}) {
     const child = spawn(process.execPath, [npmCli, ...args], {
       env: process.env,
       stdio: ["inherit", "pipe", "pipe"],
       windowsHide: true,
     });
     children.add(child);
-    prefix(child.stdout, label);
-    prefix(child.stderr, label);
+    prefix(child.stdout, label, onLine);
+    prefix(child.stderr, label, onLine);
     child.once("error", (error) => stop(1, `${label} n'a pas pu démarrer : ${error.message}`));
     child.once("exit", (code, signal) => {
       children.delete(child);
@@ -73,6 +69,12 @@ if (nodeMajor < 24) {
   process.once("SIGINT", () => stop(0));
   process.once("SIGTERM", () => stop(0));
 
-  start("BUILD", ["run", "build", "--", "--watch"]);
-  start("WEB", ["run", "preview", "--", "--host", "127.0.0.1", "--port", "5173", "--strictPort"]);
+  let previewStarted = false;
+  const startPreviewAfterFirstBuild = (line) => {
+    if (previewStarted || !/built in/i.test(line)) return;
+    previewStarted = true;
+    start("WEB", ["run", "preview", "--", "--host", "127.0.0.1", "--port", "5173", "--strictPort"]);
+  };
+
+  start("BUILD", ["run", "build", "--", "--watch"], { onLine: startPreviewAfterFirstBuild });
 }

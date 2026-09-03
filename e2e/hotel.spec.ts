@@ -52,6 +52,17 @@ test("renders the public home with canonical Hotel metadata", async ({ page }) =
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "http://127.0.0.1:4173/");
 });
 
+test("returns from the admin login to the public site", async ({ page }) => {
+  await mockProperty(page);
+  await page.route("**/api/room-types", (route) => route.fulfill({ json: { data: [] } }));
+
+  await page.goto("/admin/connexion");
+  await page.getByRole("link", { name: "Retour au site de l’hôtel" }).click();
+
+  await expect(page).toHaveURL("/");
+  await expect(page.getByRole("heading", { level: 1, name: /Une parenthèse de calme/ })).toBeVisible();
+});
+
 test("submits a contact request and confirms the success response", async ({ page }) => {
   await mockProperty(page);
   let submittedBody: unknown = null;

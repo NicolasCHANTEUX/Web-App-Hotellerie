@@ -8,7 +8,7 @@
 - Définir `VITE_PUBLIC_SITE_URL` avec l'origine HTTPS canonique du site ; le build l'utilise pour `robots.txt`, `sitemap.xml`, les URL canoniques et les métadonnées sociales.
 - Conserver PostgreSQL, Auth et le bucket public `hotel-public` dans le même projet Supabase.
 
-Node.js 22 est la version de référence en CI et dans l'image Docker. Le backend local reste compatible avec Node 20, avec un transport WebSocket explicite pour le SDK Supabase.
+Node.js 22 est la version de référence pour le développement local, la CI et l'image Docker. Le transport WebSocket explicite du SDK Supabase reste utilisé par le backend.
 
 ## Ordre d'une mise en ligne
 

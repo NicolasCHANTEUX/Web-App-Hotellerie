@@ -2,6 +2,8 @@
 
 Socle backend du projet Hotel Rivage : Node.js, TypeScript, Prisma et PostgreSQL heberge par Supabase.
 
+Le runtime de reference est Node.js 22, aligne avec le frontend, la CI et l'image Docker.
+
 ## Configuration Supabase
 
 ```powershell
