@@ -4,6 +4,7 @@ import { renderNotification } from "./notification.service.js";
 
 test("échappe le contenu client dans le courriel HTML", () => {
   const rendered = renderNotification("BOOKING_CONFIRMED", {
+    propertyName: "Hôtel des Dunes",
     firstName: "<Nicolas>",
     reference: "RVG-TEST-001",
     roomName: "Suite & Spa",
@@ -12,6 +13,9 @@ test("échappe le contenu client dans le courriel HTML", () => {
   assert.match(rendered.html, /&lt;Nicolas&gt;/);
   assert.doesNotMatch(rendered.html, /<Nicolas>/);
   assert.match(rendered.text, /Suite & Spa/);
+  assert.match(rendered.text, /Hôtel des Dunes/);
+  assert.match(rendered.html, /Hôtel des Dunes/);
+  assert.doesNotMatch(rendered.html, /Hôtel Rivage/);
 });
 
 test("prépare un message de contact destiné à l'hôtel sans interpréter son HTML", () => {

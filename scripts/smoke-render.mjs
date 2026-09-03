@@ -36,6 +36,7 @@ globalThis.fetch = async (input) => {
       postalCode: "06400",
       city: "Cannes",
       countryCode: "FR",
+      timezone: "Europe/Paris",
       checkInTime: "15:00",
       checkOutTime: "11:00",
       roomCount: 18,

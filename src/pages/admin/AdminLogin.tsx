@@ -2,12 +2,15 @@ import { ArrowLeft, ArrowRight, Eye, EyeOff, Hotel, LockKeyhole, Mail } from "lu
 import { FormEvent, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { AdminApiError } from "../../api/admin";
+import { getProperty } from "../../api/hotel";
 import { useAdminAuth } from "../../admin/auth";
+import { useRemoteData } from "../../hooks/useRemoteData";
 
 type LoginLocationState = { from?: string };
 
 export function AdminLogin() {
   const { status, login } = useAdminAuth();
+  const { data: property } = useRemoteData((signal) => getProperty(signal), []);
   const location = useLocation();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
@@ -15,6 +18,8 @@ export function AdminLogin() {
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const propertyName = property?.name ?? "Espace hôtelier";
+  const emailDomain = property?.email.split("@")[1];
 
   if (status === "authenticated") return <Navigate to="/admin" replace />;
 
@@ -50,21 +55,21 @@ export function AdminLogin() {
 
   return (
     <main className="admin-login-page">
-      <section className="admin-login-story" aria-label="Hôtel Rivage">
+      <section className="admin-login-story" aria-label={propertyName}>
         <div className="admin-login-story-inner">
-          <p className="admin-login-brand"><span><Hotel /></span>Hôtel Rivage</p>
+          <p className="admin-login-brand"><span><Hotel /></span>{propertyName}</p>
           <div>
             <p className="admin-login-kicker">Espace professionnel</p>
             <h1>Votre hôtel,<br />en un regard.</h1>
             <p>Suivez les séjours, anticipez les arrivées et gardez la disponibilité de chaque chambre à portée de main.</p>
           </div>
-          <small>Administration sécurisée · Cannes</small>
+          <small>Administration sécurisée{property?.city ? ` · ${property.city}` : ""}</small>
         </div>
       </section>
 
       <section className="admin-login-panel">
         <div className="admin-login-card">
-          <div className="admin-login-mobile-brand"><span><Hotel /></span>Hôtel Rivage</div>
+          <div className="admin-login-mobile-brand"><span><Hotel /></span>{propertyName}</div>
           <p className="admin-login-kicker">Bienvenue</p>
           <h2>Connexion à l’administration</h2>
           <p className="admin-login-intro">Identifiez-vous pour accéder aux réservations et à l’occupation des chambres.</p>
@@ -72,7 +77,7 @@ export function AdminLogin() {
           <form onSubmit={submit} className="admin-login-form">
             <label>
               <span>Adresse e-mail</span>
-              <span className="admin-input-wrap"><Mail /><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" placeholder="nom@hotel-rivage.fr" required autoFocus /></span>
+              <span className="admin-input-wrap"><Mail /><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" placeholder={`nom@${emailDomain ?? "votre-hotel.fr"}`} required autoFocus /></span>
             </label>
             <label>
               <span>Mot de passe</span>

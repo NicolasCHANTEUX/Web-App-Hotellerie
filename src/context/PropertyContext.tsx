@@ -13,6 +13,7 @@ const demoProperty: PublicProperty = {
   postalCode: "06400",
   city: "Cannes",
   countryCode: "FR",
+  timezone: "Europe/Paris",
   checkInTime: "15:00",
   checkOutTime: "11:00",
   roomCount: 18,
@@ -59,6 +60,14 @@ export function propertyAddress(property: PublicProperty) {
 
 export function propertyMapUrl(property: PublicProperty) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${property.name}, ${propertyAddress(property)}`)}`;
+}
+
+export function propertyCountryName(property: PublicProperty) {
+  try {
+    return new Intl.DisplayNames(["fr"], { type: "region" }).of(property.countryCode) ?? property.countryCode;
+  } catch {
+    return property.countryCode;
+  }
 }
 
 export function propertyPhoneHref(phone: string) {

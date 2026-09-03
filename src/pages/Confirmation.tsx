@@ -2,6 +2,7 @@ import { CalendarPlus, CheckCircle2, CreditCard, Download } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
 import { createStripeCheckout, getPaymentConfig, getPublicBooking, getStripeCheckoutStatus } from "../api/hotel";
+import { propertyAddress, useProperty } from "../context/PropertyContext";
 
 type ConfirmationState = {
   reference?: string;
@@ -33,14 +34,23 @@ function dateLabel(value?: string) {
   return new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long", year: "numeric" }).format(new Date(`${value}T12:00:00`));
 }
 
-function dateTimeLabel(value?: string) {
+function dateTimeLabel(value?: string, timezone?: string) {
   if (!value) return "Non précisée";
   return new Intl.DateTimeFormat("fr-FR", {
     day: "numeric",
     month: "long",
     hour: "2-digit",
     minute: "2-digit",
+    ...(timezone ? { timeZone: timezone } : {}),
   }).format(new Date(value));
+}
+
+function calendarText(value: string) {
+  return value.replaceAll("\\", "\\\\").replaceAll(";", "\\;").replaceAll(",", "\\,").replaceAll("\n", "\\n");
+}
+
+function safeFilePart(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9-]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
 }
 
 function amountLabel(total?: number, currency?: string) {
@@ -51,6 +61,8 @@ function amountLabel(total?: number, currency?: string) {
 }
 
 export function Confirmation() {
+  const property = useProperty();
+  const address = propertyAddress(property);
   const location = useLocation();
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
@@ -177,20 +189,21 @@ export function Confirmation() {
     const content = [
       "BEGIN:VCALENDAR",
       "VERSION:2.0",
-      "PRODID:-//Hotel Rivage//Reservation//FR",
+      `PRODID:-//${calendarText(property.name)}//Reservation//FR`,
       "BEGIN:VEVENT",
-      `UID:${booking.reference}@hotel-rivage.fr`,
+      `UID:${calendarText(booking.reference)}@${property.email.split("@")[1] ?? `${property.slug}.local`}`,
       `DTSTART;VALUE=DATE:${compactDate(booking.arrival)}`,
       `DTEND;VALUE=DATE:${compactDate(booking.departure)}`,
-      `SUMMARY:Séjour à l'Hôtel Rivage`,
-      `DESCRIPTION:Demande de réservation ${booking.reference}`,
+      `SUMMARY:${calendarText(`Séjour à ${property.name}`)}`,
+      `DESCRIPTION:${calendarText(`Demande de réservation ${booking.reference}`)}`,
+      `LOCATION:${calendarText(address)}`,
       "END:VEVENT",
       "END:VCALENDAR",
     ].join("\r\n");
     const url = URL.createObjectURL(new Blob([content], { type: "text/calendar;charset=utf-8" }));
     const link = document.createElement("a");
     link.href = url;
-    link.download = `hotel-rivage-${booking.reference}.ics`;
+    link.download = `${safeFilePart(property.slug)}-${safeFilePart(booking.reference)}.ics`;
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -208,12 +221,12 @@ export function Confirmation() {
       const statusLabel = isConfirmed ? "Réservation confirmée" : "Demande en attente de confirmation";
       const optionsLabel = booking.options?.length ? booking.options.join(", ") : "Aucune option";
       const rows = [
-        ["Hébergement", booking.room ?? "Hôtel Rivage"],
+        ["Hébergement", booking.room ?? property.name],
         ["Dates", `${dateLabel(booking.arrival)} - ${dateLabel(booking.departure)}`],
         ["Voyageurs", `${booking.adults ?? 2} adulte(s)${booking.children ? ` - ${booking.children} enfant(s)` : ""}`],
         ["Options", optionsLabel],
         ["Montant du séjour", amountLabel(booking.total, booking.currency)],
-        ...(!isConfirmed ? [["Maintien de la chambre", `Jusqu'au ${dateTimeLabel(booking.holdExpiresAt)}`]] : []),
+        ...(!isConfirmed ? [["Maintien de la chambre", `Jusqu'au ${dateTimeLabel(booking.holdExpiresAt, property.timezone)}`]] : []),
       ];
 
       documentPdf.setFillColor(43, 39, 34);
@@ -221,7 +234,7 @@ export function Confirmation() {
       documentPdf.setTextColor(255, 255, 255);
       documentPdf.setFont("helvetica", "bold");
       documentPdf.setFontSize(21);
-      documentPdf.text("Hôtel Rivage", margin, 23);
+      documentPdf.text(property.name, margin, 23);
       documentPdf.setFont("helvetica", "normal");
       documentPdf.setFontSize(10);
       documentPdf.text("Confirmation de séjour", margin, 32);
@@ -262,11 +275,11 @@ export function Confirmation() {
       documentPdf.setFont("helvetica", "normal");
       documentPdf.setFontSize(9);
       documentPdf.setTextColor(113, 104, 94);
-      documentPdf.text("26 avenue des Pins, 06400 Cannes - contact@hotel-rivage.fr", margin + 8, cursorY + 28);
+      documentPdf.text(`${address} - ${property.email}`, margin + 8, cursorY + 28, { maxWidth: contentWidth - 16 });
       documentPdf.setFontSize(8);
       documentPdf.text("Récapitulatif informatif : ce document ne constitue ni une facture ni une preuve de paiement.", margin, 282);
 
-      documentPdf.save(`hotel-rivage-${booking.reference.replace(/[^a-z0-9-]/gi, "-")}.pdf`);
+      documentPdf.save(`${safeFilePart(property.slug)}-${safeFilePart(booking.reference)}.pdf`);
     } catch {
       setPdfError("Le PDF n’a pas pu être généré. Réessayez dans quelques instants.");
     } finally {
@@ -285,12 +298,12 @@ export function Confirmation() {
           : <>La demande est enregistrée en attente de confirmation manuelle par l'hôtel. L'option sur la chambre est maintenue pendant 24 h.</>}</p>
         <div className="confirmation-reference"><span>Numéro de réservation</span><strong>{booking.reference ?? "À retrouver dans votre confirmation"}</strong></div>
         <dl className="confirmation-details">
-          <div><dt>Hébergement</dt><dd>{booking.room ?? "Hôtel Rivage"}</dd></div>
+          <div><dt>Hébergement</dt><dd>{booking.room ?? property.name}</dd></div>
           <div><dt>Dates</dt><dd>{dateLabel(booking.arrival)} → {dateLabel(booking.departure)}</dd></div>
           <div><dt>Voyageurs</dt><dd>{booking.adults ?? 2} adulte(s){booking.children ? ` · ${booking.children} enfant(s)` : ""}</dd></div>
           <div><dt>Options</dt><dd>{booking.options?.length ? booking.options.join(", ") : "Aucune option"}</dd></div>
           <div><dt>Montant du séjour</dt><dd>{amountLabel(booking.total, booking.currency)}</dd></div>
-          {!isConfirmed && <div><dt>Maintien de la chambre</dt><dd>Jusqu'au {dateTimeLabel(booking.holdExpiresAt)}</dd></div>}
+          {!isConfirmed && <div><dt>Maintien de la chambre</dt><dd>Jusqu'au {dateTimeLabel(booking.holdExpiresAt, property.timezone)}</dd></div>}
         </dl>
         {paymentSynchronizing && <p className="confirmation-payment-notice" role="status">Vérification du paiement auprès de l'hôtel…</p>}
         {paymentNotice && !paymentSynchronizing && <p className="confirmation-payment-notice" role="status">{paymentNotice}</p>}

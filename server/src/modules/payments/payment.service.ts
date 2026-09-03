@@ -25,6 +25,7 @@ export function stripeEnabled() {
 }
 
 const publicBookingInclude = {
+  property: { select: { name: true } },
   guests: { where: { isPrimary: true }, take: 1, select: { firstName: true, lastName: true, email: true } },
   rooms: { orderBy: { createdAt: "asc" }, take: 1, select: { roomTypeNameSnapshot: true } },
   extras: { orderBy: { createdAt: "asc" }, select: { nameSnapshot: true } },
@@ -48,7 +49,7 @@ function publicBookingState(booking: Awaited<ReturnType<typeof bookingForPublicA
   return {
     reference: booking.reference,
     status: booking.status,
-    room: booking.rooms[0]?.roomTypeNameSnapshot ?? "Hôtel Rivage",
+    room: booking.rooms[0]?.roomTypeNameSnapshot ?? booking.property.name,
     arrival: booking.checkIn.toISOString().slice(0, 10),
     departure: booking.checkOut.toISOString().slice(0, 10),
     adults: booking.adults,
@@ -117,7 +118,7 @@ export async function createStripeCheckout(accessToken: string, requestKey: stri
         price_data: {
           currency: booking.currency.toLowerCase(),
           unit_amount: booking.total.mul(100).toDecimalPlaces(0).toNumber(),
-          product_data: { name: `Séjour Hôtel Rivage - ${booking.rooms[0]?.roomTypeNameSnapshot ?? booking.reference}`, description: `Réservation ${booking.reference}` },
+          product_data: { name: `Séjour ${booking.property.name} - ${booking.rooms[0]?.roomTypeNameSnapshot ?? booking.reference}`, description: `Réservation ${booking.reference}` },
         },
       }],
     }, { idempotencyKey });

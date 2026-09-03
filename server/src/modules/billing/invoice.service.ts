@@ -404,7 +404,7 @@ function formatDate(value: Date | null) {
 export async function renderInvoicePdf(invoice: NonNullable<Awaited<ReturnType<typeof getInvoiceForProperty>>>) {
   const issuer = snapshot(invoice.issuerSnapshot);
   const customer = snapshot(invoice.customerSnapshot);
-  const document = new PDFDocument({ size: "A4", margin: 48, info: { Title: invoice.number, Author: stringValue(issuer.legalName) ?? stringValue(issuer.name) ?? "Hôtel Rivage" } });
+  const document = new PDFDocument({ size: "A4", margin: 48, info: { Title: invoice.number, Author: stringValue(issuer.legalName) ?? stringValue(issuer.name) ?? "Établissement" } });
   const chunks: Buffer[] = [];
   document.on("data", (chunk: Buffer) => chunks.push(chunk));
   const finished = new Promise<Buffer>((resolve, reject) => {
@@ -417,11 +417,11 @@ export async function renderInvoicePdf(invoice: NonNullable<Awaited<ReturnType<t
   const muted = "#776f66";
   const line = "#ded4c8";
   const title = invoice.documentType === InvoiceDocumentType.INVOICE ? "FACTURE" : "AVOIR";
-  const issuerName = stringValue(issuer.legalName) ?? stringValue(issuer.name) ?? "Hôtel Rivage";
+  const issuerName = stringValue(issuer.legalName) ?? stringValue(issuer.name) ?? "Établissement";
   const issuerAddress = [stringValue(issuer.addressLine1), stringValue(issuer.addressLine2), [stringValue(issuer.postalCode), stringValue(issuer.city)].filter(Boolean).join(" ")].filter(Boolean);
   const customerName = [stringValue(customer.firstName), stringValue(customer.lastName)].filter(Boolean).join(" ") || "Client";
 
-  document.fillColor(gold).font("Helvetica-Bold").fontSize(11).text("HÔTEL RIVAGE", 48, 48, { characterSpacing: 1.4 });
+  document.fillColor(gold).font("Helvetica-Bold").fontSize(11).text(issuerName.toUpperCase(), 48, 48, { characterSpacing: 1.4 });
   document.fillColor(dark).font("Times-Roman").fontSize(32).text(title, 48, 75);
   document.fillColor(dark).font("Helvetica-Bold").fontSize(13).text(invoice.number, 350, 55, { align: "right", width: 197 });
   document.fillColor(muted).font("Helvetica").fontSize(9).text(`Émise le ${formatDate(invoice.issuedAt)}`, 350, 76, { align: "right", width: 197 });

@@ -37,6 +37,7 @@ function initials(value: string) {
 
 export function AdminLayout() {
   const { profile, logout } = useAdminAuth();
+  const propertyName = profile?.membership.property.name ?? "Établissement";
   const { pathname } = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -72,7 +73,7 @@ export function AdminLayout() {
       <aside id="admin-navigation" className={`admin-sidebar ${mobileOpen ? "is-open" : ""}`}>
         <div className="admin-brand">
           <span className="admin-brand-mark"><Hotel /></span>
-          <span><strong>Hôtel Rivage</strong><small>Administration</small></span>
+          <span><strong>{propertyName}</strong><small>Administration</small></span>
           <button ref={closeButtonRef} type="button" className="admin-sidebar-close" aria-label="Fermer le menu" onClick={() => { setMobileOpen(false); menuButtonRef.current?.focus(); }}><X /></button>
         </div>
 
@@ -88,7 +89,7 @@ export function AdminLayout() {
         </nav>
 
         <div className="admin-sidebar-account">
-          <span className="admin-avatar">{initials(profile?.user.displayName ?? "Hôtel Rivage")}</span>
+          <span className="admin-avatar">{initials(profile?.user.displayName ?? propertyName)}</span>
           <span><strong>{profile?.user.displayName}</strong><small>{profile ? roleLabels[profile.membership.role] : ""}</small></span>
           <button type="button" onClick={logout} title="Se déconnecter" aria-label="Se déconnecter"><LogOut /></button>
         </div>
@@ -98,7 +99,7 @@ export function AdminLayout() {
         <header className="admin-topbar">
           <button ref={menuButtonRef} type="button" className="admin-menu-toggle" aria-label="Ouvrir le menu" aria-controls="admin-navigation" aria-expanded={mobileOpen} onClick={() => setMobileOpen(true)}><Menu /></button>
           <div>
-            <span className="admin-topbar-property">{profile?.membership.property.name ?? "Hôtel Rivage"}</span>
+            <span className="admin-topbar-property">{propertyName}</span>
             <span className="admin-topbar-separator" />
             <span className="admin-topbar-role">{profile ? roleLabels[profile.membership.role] : ""}</span>
           </div>

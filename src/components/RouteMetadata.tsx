@@ -1,7 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
+import { getRoomType } from "../api/hotel";
 import { propertyAddress, useOptionalProperty } from "../context/PropertyContext";
-import { PublicProperty } from "../types/hotel";
+import { Accommodation, PublicProperty } from "../types/hotel";
 
 type Metadata = {
   title: string;
@@ -9,7 +10,7 @@ type Metadata = {
   robots?: string;
 };
 
-function metadataFor(pathname: string, property: PublicProperty | null): Metadata {
+function metadataFor(pathname: string, property: PublicProperty | null, accommodation: Accommodation | null): Metadata {
   const propertyName = property?.name ?? "Établissement";
   const citySuffix = property?.city ? ` ${property.city}` : "";
   const cityPhrase = property?.city ? ` à ${property.city}` : "";
@@ -28,8 +29,11 @@ function metadataFor(pathname: string, property: PublicProperty | null): Metadat
   }
   if (pathname.startsWith("/hebergements/")) {
     return {
-      title: `Détail de l'hébergement | ${propertyName}${citySuffix}`,
-      description: `Photos, équipements, capacité et tarif d'un hébergement de ${propertyName}${cityPhrase}.`,
+      title: accommodation
+        ? `${accommodation.name} | ${propertyName}${citySuffix}`
+        : `Détail de l'hébergement | ${propertyName}${citySuffix}`,
+      description: accommodation?.shortDescription
+        ?? `Photos, équipements, capacité et tarif d'un hébergement de ${propertyName}${cityPhrase}.`,
     };
   }
   if (pathname === "/reservation") {
@@ -81,12 +85,35 @@ function setMeta(selector: string, attribute: "name" | "property", key: string, 
   element.content = content;
 }
 
+function accommodationSlugFor(pathname: string) {
+  const match = pathname.match(/^\/hebergements\/([^/]+)$/);
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return null;
+  }
+}
+
 export function RouteMetadata() {
   const { pathname } = useLocation();
   const property = useOptionalProperty();
+  const detailSlug = accommodationSlugFor(pathname);
+  const [accommodation, setAccommodation] = useState<Accommodation | null>(null);
 
   useEffect(() => {
-    const metadata = metadataFor(pathname, property);
+    setAccommodation(null);
+    if (!detailSlug) return undefined;
+    const controller = new AbortController();
+    getRoomType(detailSlug, controller.signal)
+      .then(setAccommodation)
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [detailSlug]);
+
+  useEffect(() => {
+    const matchingAccommodation = accommodation?.slug === detailSlug ? accommodation : null;
+    const metadata = metadataFor(pathname, property, matchingAccommodation);
     const configuredOrigin = import.meta.env.VITE_PUBLIC_SITE_URL?.replace(/\/$/, "");
     const origin = configuredOrigin || window.location.origin;
     const socialImage = `${origin}/images/hotel/hero-1280.webp`;
@@ -138,7 +165,7 @@ export function RouteMetadata() {
       description: metadata.description,
       hasMap: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${property.name}, ${propertyAddress(property)}`)}`,
     });
-  }, [pathname, property]);
+  }, [accommodation, detailSlug, pathname, property]);
 
   return null;
 }

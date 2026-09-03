@@ -14,7 +14,7 @@ const logger = {
 } as FastifyBaseLogger;
 
 const worker = startBackgroundWorker(logger, false);
-console.info("Hotel Rivage background worker started.");
+console.info("Notification background worker started.");
 
 async function shutdown() {
   worker.stop();

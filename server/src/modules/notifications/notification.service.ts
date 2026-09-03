@@ -7,6 +7,8 @@ const MAX_ATTEMPTS = 5;
 const DELIVERY_TIMEOUT_MS = 8_000;
 
 export type NotificationPayload = {
+  propertyName?: string;
+  timezone?: string;
   firstName?: string;
   reference: string;
   roomName?: string;
@@ -24,7 +26,7 @@ export type NotificationPayload = {
   contactMessage?: string;
 };
 
-type NotificationTransaction = Pick<Prisma.TransactionClient, "notification">;
+type NotificationTransaction = Pick<Prisma.TransactionClient, "notification" | "property">;
 
 function escapeHtml(value: string) {
   return value
@@ -41,7 +43,7 @@ function money(value: number | undefined, currency = "EUR") {
     : null;
 }
 
-function date(value: string | undefined) {
+function date(value: string | undefined, timezone = "UTC") {
   if (!value) return null;
   const parsed = new Date(value.length === 10 ? `${value}T12:00:00Z` : value);
   if (Number.isNaN(parsed.getTime())) return value;
@@ -49,7 +51,7 @@ function date(value: string | undefined) {
     day: "numeric",
     month: "long",
     year: "numeric",
-    ...(value.length > 10 ? { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" } : {}),
+    ...(value.length > 10 ? { hour: "2-digit", minute: "2-digit", timeZone: timezone } : {}),
   }).format(parsed);
 }
 
@@ -66,6 +68,10 @@ export function notificationSubject(template: NotificationTemplate, payload: Not
 }
 
 export function renderNotification(template: NotificationTemplate, payload: NotificationPayload) {
+  const propertyName = payload.propertyName?.trim() || "Votre établissement";
+  const teamSignature = payload.propertyName?.trim()
+    ? `L'équipe de ${propertyName}`
+    : "L'équipe de votre établissement";
   if (template === "CONTACT_REQUEST_RECEIVED") {
     const headline = "Nouveau message depuis le site";
     const paragraphs = [
@@ -76,13 +82,13 @@ export function renderNotification(template: NotificationTemplate, payload: Noti
       payload.contactMessage ?? "Message vide",
     ].filter((value): value is string => Boolean(value));
     const text = paragraphs.join("\n\n");
-    const html = `<!doctype html><html lang="fr"><body style="margin:0;background:#f4f0ea;color:#28231e;font-family:Arial,sans-serif"><div style="max-width:620px;margin:0 auto;padding:32px 20px"><div style="background:#fff;border:1px solid #ded4c8;border-radius:14px;padding:32px"><p style="margin:0 0 24px;color:#9a7345;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase">Hôtel Rivage</p><h1 style="margin:0 0 24px;font-family:Georgia,serif;font-size:30px;font-weight:500">${headline}</h1>${paragraphs.map((paragraph) => `<p style="margin:0 0 16px;line-height:1.65;white-space:pre-wrap">${escapeHtml(paragraph)}</p>`).join("")}</div></div></body></html>`;
+    const html = `<!doctype html><html lang="fr"><body style="margin:0;background:#f4f0ea;color:#28231e;font-family:Arial,sans-serif"><div style="max-width:620px;margin:0 auto;padding:32px 20px"><div style="background:#fff;border:1px solid #ded4c8;border-radius:14px;padding:32px"><p style="margin:0 0 24px;color:#9a7345;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase">${escapeHtml(propertyName)}</p><h1 style="margin:0 0 24px;font-family:Georgia,serif;font-size:30px;font-weight:500">${headline}</h1>${paragraphs.map((paragraph) => `<p style="margin:0 0 16px;line-height:1.65;white-space:pre-wrap">${escapeHtml(paragraph)}</p>`).join("")}</div></div></body></html>`;
     return { subject: notificationSubject(template, payload), text, html };
   }
 
   const greeting = payload.firstName ? `Bonjour ${payload.firstName},` : "Bonjour,";
   const stay = payload.arrival && payload.departure
-    ? `Séjour du ${date(payload.arrival)} au ${date(payload.departure)}${payload.roomName ? ` - ${payload.roomName}` : ""}.`
+    ? `Séjour du ${date(payload.arrival, payload.timezone)} au ${date(payload.departure, payload.timezone)}${payload.roomName ? ` - ${payload.roomName}` : ""}.`
     : payload.roomName ? `Hébergement : ${payload.roomName}.` : null;
   const total = money(payload.total, payload.currency);
   let headline: string;
@@ -91,7 +97,7 @@ export function renderNotification(template: NotificationTemplate, payload: Noti
   switch (template) {
     case "BOOKING_OPTIONED":
       headline = "Votre chambre est optionnée";
-      message = `Votre demande ${payload.reference} a bien été enregistrée.${payload.holdExpiresAt ? ` Elle est réservée provisoirement jusqu'au ${date(payload.holdExpiresAt)}.` : ""}`;
+      message = `Votre demande ${payload.reference} a bien été enregistrée.${payload.holdExpiresAt ? ` Elle est réservée provisoirement jusqu'au ${date(payload.holdExpiresAt, payload.timezone)}.` : ""}`;
       break;
     case "BOOKING_CONFIRMED":
       headline = "Votre séjour est confirmé";
@@ -118,10 +124,10 @@ export function renderNotification(template: NotificationTemplate, payload: Noti
   const updatedTotal = template === "BOOKING_UPDATED" && total
     ? `Nouveau total du séjour : ${total}.`
     : null;
-  const paragraphs = [greeting, message, stay, updatedTotal, "L'équipe de l'Hôtel Rivage"]
+  const paragraphs = [greeting, message, stay, updatedTotal, teamSignature]
     .filter((value): value is string => Boolean(value));
   const text = paragraphs.join("\n\n");
-  const html = `<!doctype html><html lang="fr"><body style="margin:0;background:#f4f0ea;color:#28231e;font-family:Arial,sans-serif"><div style="max-width:620px;margin:0 auto;padding:32px 20px"><div style="background:#fff;border:1px solid #ded4c8;border-radius:14px;padding:32px"><p style="margin:0 0 24px;color:#9a7345;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase">Hôtel Rivage</p><h1 style="margin:0 0 24px;font-family:Georgia,serif;font-size:30px;font-weight:500">${escapeHtml(headline)}</h1>${paragraphs.map((paragraph) => `<p style="margin:0 0 16px;line-height:1.65">${escapeHtml(paragraph)}</p>`).join("")}<p style="margin:28px 0 0;color:#776f66;font-size:12px">Message automatique - merci de ne pas transmettre votre référence de réservation.</p></div></div></body></html>`;
+  const html = `<!doctype html><html lang="fr"><body style="margin:0;background:#f4f0ea;color:#28231e;font-family:Arial,sans-serif"><div style="max-width:620px;margin:0 auto;padding:32px 20px"><div style="background:#fff;border:1px solid #ded4c8;border-radius:14px;padding:32px"><p style="margin:0 0 24px;color:#9a7345;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase">${escapeHtml(propertyName)}</p><h1 style="margin:0 0 24px;font-family:Georgia,serif;font-size:30px;font-weight:500">${escapeHtml(headline)}</h1>${paragraphs.map((paragraph) => `<p style="margin:0 0 16px;line-height:1.65">${escapeHtml(paragraph)}</p>`).join("")}<p style="margin:28px 0 0;color:#776f66;font-size:12px">Message automatique - merci de ne pas transmettre votre référence de réservation.</p></div></div></body></html>`;
   return { subject: notificationSubject(template, payload), text, html };
 }
 
@@ -136,7 +142,15 @@ export async function enqueueNotification(
     payload: NotificationPayload;
   },
 ) {
-  const rendered = renderNotification(input.template, input.payload);
+  const property = await transaction.property.findUnique({
+    where: { id: input.propertyId },
+    select: { name: true, timezone: true },
+  });
+  const payload: NotificationPayload = {
+    ...input.payload,
+    ...(property ? { propertyName: property.name, timezone: property.timezone } : {}),
+  };
+  const rendered = renderNotification(input.template, payload);
   return transaction.notification.upsert({
     where: { idempotencyKey: input.idempotencyKey },
     update: {},
@@ -146,7 +160,7 @@ export async function enqueueNotification(
       recipient: input.recipient.trim().toLowerCase(),
       template: input.template,
       subject: rendered.subject,
-      payload: input.payload as Prisma.InputJsonValue,
+      payload: payload as Prisma.InputJsonValue,
       idempotencyKey: input.idempotencyKey,
     },
   });
@@ -196,6 +210,7 @@ export async function dispatchPendingNotifications(logger?: FastifyBaseLogger) {
     },
     orderBy: { createdAt: "asc" },
     take: 20,
+    include: { property: { select: { name: true, timezone: true } } },
   });
 
   let sent = 0;
@@ -207,8 +222,12 @@ export async function dispatchPendingNotifications(logger?: FastifyBaseLogger) {
     });
     if (claimed.count !== 1) continue;
     try {
-      const rendered = renderNotification(candidate.template, candidate.payload as NotificationPayload);
-      const payload = candidate.payload as NotificationPayload;
+      const payload = {
+        ...(candidate.payload as NotificationPayload),
+        propertyName: candidate.property.name,
+        timezone: candidate.property.timezone,
+      };
+      const rendered = renderNotification(candidate.template, payload);
       const providerReference = env.notificationDelivery === "resend"
         ? await sendWithResend(candidate.recipient, candidate.subject, rendered.html, rendered.text, payload.contactEmail)
         : `log-${candidate.id}`;

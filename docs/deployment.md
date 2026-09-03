@@ -6,6 +6,7 @@
 - Déployer l'API Fastify séparément depuis `server/Dockerfile`.
 - Définir `VITE_API_URL` avec l'URL HTTPS publique de l'API, ou router `/api` vers l'API sur le même domaine.
 - Définir `VITE_PUBLIC_SITE_URL` avec l'origine HTTPS canonique du site ; le build l'utilise pour `robots.txt`, `sitemap.xml`, les URL canoniques et les métadonnées sociales.
+- Rendre l'API catalogue accessible pendant le build pour ajouter automatiquement les hébergements publiés au sitemap. À défaut, définir `VITE_PUBLIC_ROOM_SLUGS` avec leurs slugs séparés par des virgules.
 - Conserver PostgreSQL, Auth et le bucket public `hotel-public` dans le même projet Supabase.
 
 Node.js 22 est la version de référence pour le développement local, la CI et l'image Docker. Le transport WebSocket explicite du SDK Supabase reste utilisé par le backend.

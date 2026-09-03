@@ -1,5 +1,6 @@
 import { createBrowserRouter } from "react-router-dom";
 import { AdminLayout } from "./AdminLayout";
+import { AdminRouteError } from "../components/RouteError";
 import {
   AdminIndexRedirect,
   AdminRoot,
@@ -13,6 +14,7 @@ export function createAdminRouter() {
   {
     path: "/admin",
     element: <AdminRoot />,
+    errorElement: <AdminRouteError />,
     children: [
       { path: "connexion", lazy: async () => ({ Component: (await import("../pages/admin/AdminLogin")).AdminLogin }) },
       {

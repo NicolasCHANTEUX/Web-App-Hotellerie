@@ -24,13 +24,6 @@ function imageGallery(value: unknown, coverImageUrl: string) {
   return images.length ? images : [coverImageUrl];
 }
 
-function categoryFor(slug: string) {
-  if (slug === "suite-rivage") return "Suite signature";
-  if (slug === "chambre-deluxe") return "Chambre deluxe";
-  if (slug === "chambre-elegance") return "Chambre supérieure";
-  return "Chambre double";
-}
-
 export function serializeRoomType(
   roomType: CatalogRoomType,
   promotionPeriod?: { arrival: Date; departure: Date },
@@ -49,7 +42,7 @@ export function serializeRoomType(
     id: roomType.id,
     slug: roomType.slug,
     name: roomType.name,
-    category: roomType.shortName?.trim() || categoryFor(roomType.slug),
+    category: roomType.shortName?.trim() || "Hébergement",
     shortDescription: roomType.description,
     description: roomType.description,
     price: Number(promotion?.promotionalPricePerNight ?? rate.basePricePerNight),
@@ -97,6 +90,7 @@ type PublicPropertyRecord = {
   postalCode: string;
   city: string;
   countryCode: string;
+  timezone: string;
   checkInTime: string;
   checkOutTime: string;
   _count: { rooms: number };
@@ -113,6 +107,7 @@ export function serializePublicProperty(property: PublicPropertyRecord) {
     postalCode: property.postalCode,
     city: property.city,
     countryCode: property.countryCode,
+    timezone: property.timezone,
     checkInTime: property.checkInTime,
     checkOutTime: property.checkOutTime,
     roomCount: property._count.rooms,
@@ -132,6 +127,7 @@ export async function getPublicProperty() {
       postalCode: true,
       city: true,
       countryCode: true,
+      timezone: true,
       checkInTime: true,
       checkOutTime: true,
       _count: { select: { rooms: { where: { status: "ACTIVE" } } } },

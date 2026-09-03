@@ -24,11 +24,45 @@ if (strict && (!configuredOrigin || siteUrl.protocol !== "https:" || localHosts.
 
 const origin = siteUrl.origin;
 
+function configuredRoomSlugs() {
+  return (process.env.VITE_PUBLIC_ROOM_SLUGS ?? "")
+    .split(",")
+    .map((slug) => slug.trim())
+    .filter((slug) => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug));
+}
+
+async function publishedRoomSlugs() {
+  const configured = configuredRoomSlugs();
+  if (configured.length) return configured;
+
+  const apiBase = process.env.VITE_API_URL?.trim();
+  if (!apiBase || apiBase.startsWith("/")) return [];
+  const response = await fetch(`${apiBase.replace(/\/$/, "")}/room-types`, {
+    headers: { accept: "application/json" },
+    signal: AbortSignal.timeout(5_000),
+  });
+  if (!response.ok) throw new Error(`L'API catalogue a répondu HTTP ${response.status}.`);
+  const body = await response.json();
+  if (!body || !Array.isArray(body.data)) throw new Error("La réponse de l'API catalogue est invalide.");
+  return body.data
+    .map((roomType) => roomType?.slug)
+    .filter((slug) => typeof slug === "string" && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug));
+}
+
+let roomSlugs = [];
+try {
+  roomSlugs = await publishedRoomSlugs();
+} catch (error) {
+  if (strict) throw error;
+  console.warn(`Les hébergements n'ont pas été ajoutés au sitemap : ${error instanceof Error ? error.message : error}`);
+}
+
 const routes = [
   "/",
   "/hebergements",
   "/contact",
   "/mentions-legales",
+  ...roomSlugs.map((slug) => `/hebergements/${encodeURIComponent(slug)}`),
 ];
 
 const robots = `User-agent: *

@@ -27,9 +27,32 @@ const property = {
   postalCode: "06400",
   city: "Cannes",
   countryCode: "FR",
+  timezone: "Europe/Paris",
   checkInTime: "15:00",
   checkOutTime: "11:00",
   roomCount: 18,
+};
+
+const accommodation = {
+  id: "room-type-elegance",
+  slug: "chambre-elegance",
+  name: "Chambre Élégance",
+  category: "Chambre supérieure",
+  shortDescription: "Une chambre lumineuse ouverte sur les jardins.",
+  description: "Une chambre lumineuse ouverte sur les jardins, pensée pour un séjour paisible.",
+  price: 135,
+  taxRate: 10,
+  currency: "EUR",
+  refundable: true,
+  capacity: 2,
+  maxAdults: 2,
+  maxChildren: 1,
+  surface: "24 m²",
+  surfaceSqm: 24,
+  rooms: "1 lit queen size",
+  hero: "/images/hotel/hero-1280.webp",
+  gallery: ["/images/hotel/hero-1280.webp"],
+  amenities: ["Wi-Fi"],
 };
 
 async function mockProperty(page: Page) {
@@ -52,6 +75,16 @@ test("renders the public home with canonical Hotel metadata", async ({ page }) =
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "http://127.0.0.1:4173/");
 });
 
+test("uses room content in accommodation metadata", async ({ page }) => {
+  await mockProperty(page);
+  await page.route("**/api/room-types/chambre-elegance", (route) => route.fulfill({ json: { data: accommodation } }));
+
+  await page.goto("/hebergements/chambre-elegance");
+
+  await expect(page).toHaveTitle("Chambre Élégance | Hôtel Rivage Cannes");
+  await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", accommodation.shortDescription);
+});
+
 test("returns from the admin login to the public site", async ({ page }) => {
   await mockProperty(page);
   await page.route("**/api/room-types", (route) => route.fulfill({ json: { data: [] } }));
@@ -61,6 +94,15 @@ test("returns from the admin login to the public site", async ({ page }) => {
 
   await expect(page).toHaveURL("/");
   await expect(page.getByRole("heading", { level: 1, name: /Une parenthèse de calme/ })).toBeVisible();
+});
+
+test("renders a controlled error page for an unknown admin route", async ({ page }) => {
+  await page.goto("/admin/route-inconnue");
+
+  await expect(page.getByRole("heading", { level: 1, name: "Page d’administration introuvable" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Retour à l’administration" })).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("Hey developer");
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", "noindex, nofollow");
 });
 
 test("submits a contact request and confirms the success response", async ({ page }) => {

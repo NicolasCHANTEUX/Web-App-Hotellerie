@@ -3,6 +3,16 @@
 .admin-auth-loading p { margin: 0; font-size: 14px; }
 .admin-spinner { display: inline-block; width: 22px; height: 22px; flex: 0 0 auto; border: 2px solid rgb(169 130 86 / 24%); border-top-color: var(--gold); border-radius: 50%; animation: loading-spin 720ms linear infinite; }
 .admin-spinner.light { width: 18px; height: 18px; border-color: rgb(255 255 255 / 30%); border-top-color: white; }
+.admin-route-error { display: grid; min-height: 100vh; place-items: center; padding: 40px 24px; background: #f5f2ed; color: #2b2723; text-align: center; }
+.admin-route-error > div { width: min(560px, 100%); border: 1px solid #ded6cd; border-radius: 10px; background: white; padding: 52px 44px; box-shadow: 0 18px 48px rgb(49 40 31 / 8%); }
+.admin-route-error-icon { display: grid; width: 52px; height: 52px; place-items: center; margin: 0 auto 24px; border-radius: 50%; background: #f2e9dd; color: var(--gold-dark); }
+.admin-route-error-icon svg { width: 23px; }
+.admin-route-error h1 { margin: 8px 0 16px; font-family: var(--font-serif); font-size: 34px; font-weight: 500; line-height: 1.15; }
+.admin-route-error h1 + p { margin: 0 auto; color: #746b61; font-size: 14px; line-height: 1.7; }
+.admin-route-error > div > div { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 28px; }
+.admin-route-error button, .admin-route-error a { display: inline-flex; min-height: 42px; align-items: center; justify-content: center; gap: 8px; border: 1px solid #d9d0c6; border-radius: 6px; background: white; padding: 0 15px; color: #625950; font-size: 12px; font-weight: 650; text-decoration: none; cursor: pointer; }
+.admin-route-error button { border-color: var(--gold-dark); background: var(--gold-dark); color: white; }
+.admin-route-error button svg { width: 15px; }
 
 .admin-login-page { display: grid; min-height: 100vh; grid-template-columns: minmax(390px, .85fr) minmax(520px, 1.15fr); background: var(--paper); }
 .admin-login-story { position: relative; overflow: hidden; background: #25211d; color: white; }

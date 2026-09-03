@@ -17,7 +17,7 @@ import { ResponsiveImage } from "../components/ResponsiveImage";
 import { SearchWidget } from "../components/SearchWidget";
 import { StayCta } from "../components/StayCta";
 import { useRemoteData } from "../hooks/useRemoteData";
-import { propertyAddress, propertyMapUrl, useProperty } from "../context/PropertyContext";
+import { formatHotelTime, propertyAddress, propertyMapUrl, useProperty } from "../context/PropertyContext";
 
 const heroImage = "/images/hotel/hero-1280.webp";
 const heroSourceSet = "/images/hotel/hero-768.webp 768w, /images/hotel/hero-1280.webp 1280w, /images/hotel/hero-1920.webp 1920w";
@@ -40,28 +40,34 @@ const services = [
   { icon: Flower2, title: "Jardin", text: "Espaces végétalisés et calmes" },
 ];
 
-const guestHighlights = [
+function guestHighlights(city: string) {
+  return [
   { text: "Des chambres pensées pour le repos, avec une literie premium et des matières naturelles.", title: "Le confort avant tout", label: "Dans chaque chambre" },
   { text: "Une équipe disponible pour anticiper les arrivées et personnaliser les attentions du séjour.", title: "Un accueil attentionné", label: "Avant et pendant le séjour" },
-  { text: "La mer, le centre historique et les adresses de Cannes restent accessibles en quelques minutes.", title: "Cannes à portée de pas", label: "Une situation centrale" },
-];
+  { text: `La mer, le centre historique et les adresses de ${city} restent accessibles en quelques minutes.`, title: `${city} à portée de pas`, label: "Une situation centrale" },
+  ];
+}
 
-const nearby = [
+function nearbyPlaces(city: string) {
+  return [
   ["La Croisette", "4 min à pied"],
   ["Centre historique", "8 min à pied"],
   ["Marché Forville", "10 min à pied"],
-  ["Gare de Cannes", "7 min à pied"],
+  [`Gare de ${city}`, "7 min à pied"],
   ["Vieux-Port", "6 min à pied"],
-];
+  ];
+}
 
-const faqs = [
-  ["Quels sont les horaires d'arrivée et de départ ?", "L'arrivée est possible à partir de 15h et le départ jusqu'à 11h."],
+function frequentlyAskedQuestions(checkInTime: string, checkOutTime: string) {
+  return [
+  ["Quels sont les horaires d'arrivée et de départ ?", `L'arrivée est possible à partir de ${formatHotelTime(checkInTime)} et le départ jusqu'à ${formatHotelTime(checkOutTime)}.`],
   ["Le petit-déjeuner est-il inclus ?", "Il est inclus avec certaines offres et peut être ajouté à toute réservation."],
   ["Disposez-vous d'un parking ?", "Oui, notre parking privé est accessible sur réservation et selon disponibilité."],
   ["Les animaux de compagnie sont-ils acceptés ?", "Les petits animaux sont acceptés sur demande avant votre arrivée."],
   ["Puis-je annuler ou modifier ma réservation ?", "Les conditions dépendent du tarif sélectionné et sont précisées pendant la réservation."],
   ["L'établissement est-il accessible aux personnes à mobilité réduite ?", "Oui, des chambres et les espaces communs sont adaptés."],
-];
+  ];
+}
 
 export function Home() {
   const property = useProperty();
@@ -72,13 +78,16 @@ export function Home() {
     : [];
   const stayImages = catalogImages.length ? catalogImages : hotelImages;
   const roomTypeCount = roomTypes?.length;
+  const highlights = guestHighlights(property.city);
+  const nearby = nearbyPlaces(property.city);
+  const faqs = frequentlyAskedQuestions(property.checkInTime, property.checkOutTime);
 
   return (
     <>
       <section className="rivage-hero">
-        <ResponsiveImage priority src={heroImage} srcSet={heroSourceSet} avifSrcSet={heroAvifSourceSet} sizes="100vw" width={1920} height={1080} alt="Hôtel Rivage et sa piscine au crépuscule" />
+        <ResponsiveImage priority src={heroImage} srcSet={heroSourceSet} avifSrcSet={heroAvifSourceSet} sizes="100vw" width={1920} height={1080} alt={`${property.name} et sa piscine au crépuscule`} />
         <div className="rivage-hero-content">
-          <p className="eyebrow light">Cannes, Côte d'Azur</p>
+          <p className="eyebrow light">{property.city}</p>
           <h1>Une parenthèse de<br />calme au cœur de la<br />Côte d'Azur</h1>
           <p className="hero-description">Des chambres récentes et une atmosphère intimiste, à quelques pas de la mer et des adresses incontournables.</p>
           <div className="hero-actions">
@@ -95,14 +104,14 @@ export function Home() {
           <div className="intro-copy">
             <p className="eyebrow">L'établissement</p>
             <h2>Un hôtel pensé pour votre bien-être</h2>
-            <p>Niché entre mer et collines, l'Hôtel Rivage vous offre un havre de sérénité à deux pas du centre historique. Chaque chambre a été pensée pour votre confort, avec un soin particulier apporté aux matières et à la lumière.</p>
+            <p>Niché entre mer et collines, {property.name} vous offre un havre de sérénité à deux pas du centre historique. Chaque chambre a été pensée pour votre confort, avec un soin particulier apporté aux matières et à la lumière.</p>
             <div className="intro-features">
               <span><Waves /> {property.roomCount} chambre{property.roomCount > 1 ? "s" : ""}</span><span><Car /> Parking privé</span>
               <span><Snowflake /> Climatisation</span><span><Wifi /> Wi-Fi gratuit</span>
               <span><Coffee /> Petit-déjeuner maison</span><span><MapPin /> Centre-ville proche</span>
             </div>
           </div>
-          <div className="intro-visual"><ResponsiveImage src={heroImage} srcSet={heroSourceSet} avifSrcSet={heroAvifSourceSet} sizes="(max-width: 900px) 100vw, 50vw" width={1280} height={900} alt="Piscine de l'Hôtel Rivage bordée de palmiers" /></div>
+          <div className="intro-visual"><ResponsiveImage src={heroImage} srcSet={heroSourceSet} avifSrcSet={heroAvifSourceSet} sizes="(max-width: 900px) 100vw, 50vw" width={1280} height={900} alt={`Piscine de ${property.name} bordée de palmiers`} /></div>
         </div>
       </section>
 
@@ -115,7 +124,7 @@ export function Home() {
             <Link className="text-link" to="/hebergements">Découvrir nos hébergements <span>→</span></Link>
           </div>
           <div className="stays-gallery">
-            {stayImages.map((image, index) => <button type="button" key={image} onClick={() => setLightboxIndex(index)} aria-label={`Agrandir la photo ${index + 1}`}><ResponsiveImage src={image} sizes="(max-width: 900px) 50vw, 28vw" width={800} height={640} alt={`Aperçu des hébergements de l'Hôtel Rivage ${index + 1}`} /></button>)}
+            {stayImages.map((image, index) => <button type="button" key={image} onClick={() => setLightboxIndex(index)} aria-label={`Agrandir la photo ${index + 1}`}><ResponsiveImage src={image} sizes="(max-width: 900px) 50vw, 28vw" width={800} height={640} alt={`Aperçu des hébergements de ${property.name} ${index + 1}`} /></button>)}
           </div>
         </div>
       </section>
@@ -129,15 +138,15 @@ export function Home() {
 
       <section className="home-band testimonials-band">
         <div className="home-container">
-          <div className="center-heading"><p className="eyebrow">L'expérience Rivage</p><h2>Les attentions qui font la différence</h2></div>
-          <div className="testimonials-grid">{guestHighlights.map((item) => <article className="testimonial" key={item.title}><p>{item.text}</p><footer><strong>{item.title}</strong><span>{item.label}</span></footer></article>)}</div>
+          <div className="center-heading"><p className="eyebrow">L'expérience {property.name}</p><h2>Les attentions qui font la différence</h2></div>
+          <div className="testimonials-grid">{highlights.map((item) => <article className="testimonial" key={item.title}><p>{item.text}</p><footer><strong>{item.title}</strong><span>{item.label}</span></footer></article>)}</div>
         </div>
       </section>
 
       <section className="home-band location-band">
         <div className="home-container location-grid">
           <div><p className="eyebrow">Localisation</p><h2>Tout à portée de pas</h2><div className="nearby-list">{nearby.map(([name, time]) => <div key={name}><MapPin /><p><strong>{name}</strong><span>{time}</span></p></div>)}</div></div>
-          <div className="location-visual"><ResponsiveImage src="/images/hotel/cannes-1280.webp" srcSet="/images/hotel/cannes-768.webp 768w, /images/hotel/cannes-1280.webp 1280w" sizes="(max-width: 900px) 100vw, 60vw" width={1280} height={760} alt="Littoral méditerranéen à proximité de Cannes" /><div><MapPin /><p><strong>{property.name}</strong><span>{propertyAddress(property)}</span></p><a href={propertyMapUrl(property)} target="_blank" rel="noreferrer">Voir l'itinéraire →</a></div></div>
+          <div className="location-visual"><ResponsiveImage src="/images/hotel/cannes-1280.webp" srcSet="/images/hotel/cannes-768.webp 768w, /images/hotel/cannes-1280.webp 1280w" sizes="(max-width: 900px) 100vw, 60vw" width={1280} height={760} alt={`Vue des environs de ${property.city}`} /><div><MapPin /><p><strong>{property.name}</strong><span>{propertyAddress(property)}</span></p><a href={propertyMapUrl(property)} target="_blank" rel="noreferrer">Voir l'itinéraire →</a></div></div>
         </div>
       </section>
 
@@ -150,7 +159,7 @@ export function Home() {
 
       <StayCta />
 
-      <Lightbox images={stayImages} index={lightboxIndex} alt="Hôtel Rivage" onClose={() => setLightboxIndex(null)} onChange={setLightboxIndex} />
+      <Lightbox images={stayImages} index={lightboxIndex} alt={property.name} onClose={() => setLightboxIndex(null)} onChange={setLightboxIndex} />
     </>
   );
 }

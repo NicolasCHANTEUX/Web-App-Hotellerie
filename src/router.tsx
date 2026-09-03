@@ -1,10 +1,12 @@
 import { createBrowserRouter } from "react-router-dom";
 import { App } from "./App";
+import { PublicRouteError } from "./components/RouteError";
 
 export const router = createBrowserRouter([
   {
     path: "/",
     element: <App />,
+    errorElement: <PublicRouteError />,
     children: [
       { index: true, lazy: async () => ({ Component: (await import("./pages/Home")).Home }) },
       { path: "hebergements", lazy: async () => ({ Component: (await import("./pages/Accommodations")).Accommodations }) },

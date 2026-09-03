@@ -4,6 +4,7 @@ import { AccommodationCard } from "../components/AccommodationCard";
 import { Lightbox } from "../components/Lightbox";
 import { ResponsiveImage } from "../components/ResponsiveImage";
 import { SearchWidget } from "../components/SearchWidget";
+import { useProperty } from "../context/PropertyContext";
 import { useRemoteData } from "../hooks/useRemoteData";
 
 const hotelGallery = [
@@ -16,6 +17,7 @@ const hotelGallery = [
 ];
 
 export function Accommodations() {
+  const property = useProperty();
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const { data: accommodations, loading, error, retry } = useRemoteData((signal) => getRoomTypes(signal), []);
   const count = accommodations?.length ?? 0;
@@ -29,9 +31,9 @@ export function Accommodations() {
     <>
       <section className="accommodations-hero">
         <div className="page-container">
-          <p className="eyebrow light">Séjourner au Rivage</p>
+          <p className="eyebrow light">Votre séjour à {property.name}</p>
           <h1>Nos hébergements</h1>
-          <p>Des chambres élégantes et lumineuses, pensées comme des refuges au cœur de Cannes.</p>
+          <p>Des chambres élégantes et lumineuses, pensées comme des refuges au cœur de {property.city}.</p>
         </div>
       </section>
 
@@ -47,7 +49,7 @@ export function Accommodations() {
           <div className="catalog-intro">
             <p className="eyebrow">La collection</p>
             <h2>Choisissez votre chambre</h2>
-            <p>Chacun de nos hébergements a été conçu avec soin pour allier confort, élégance et caractère. Découvrez celui qui accompagnera le mieux votre séjour sur la Côte d'Azur.</p>
+            <p>Chacun de nos hébergements a été conçu avec soin pour allier confort, élégance et caractère. Découvrez celui qui accompagnera le mieux votre séjour à {property.city}.</p>
           </div>
           {!loading && !error && <p className="results-count">{countLabel}</p>}
           {loading && <div className="api-state" role="status"><span className="loading-spinner" />Chargement des hébergements...</div>}
@@ -63,12 +65,12 @@ export function Accommodations() {
         <div className="page-container">
           <div className="center-heading"><p className="eyebrow">Photos</p><h2>Galerie de l'hôtel</h2></div>
           <div className="accommodations-gallery">
-            {displayedGallery.map((image, index) => <button type="button" key={image} onClick={() => setLightboxIndex(index)} aria-label={`Agrandir la photo ${index + 1}`}><ResponsiveImage src={image} sizes="(max-width: 640px) 50vw, 33vw" width={720} height={520} alt={`Hébergement de l'Hôtel Rivage ${index + 1}`} /></button>)}
+            {displayedGallery.map((image, index) => <button type="button" key={image} onClick={() => setLightboxIndex(index)} aria-label={`Agrandir la photo ${index + 1}`}><ResponsiveImage src={image} sizes="(max-width: 640px) 50vw, 33vw" width={720} height={520} alt={`Hébergement de ${property.name} ${index + 1}`} /></button>)}
           </div>
         </div>
       </section>
 
-      <Lightbox images={displayedGallery} index={lightboxIndex} alt="Hôtel Rivage" onClose={() => setLightboxIndex(null)} onChange={setLightboxIndex} />
+      <Lightbox images={displayedGallery} index={lightboxIndex} alt={property.name} onClose={() => setLightboxIndex(null)} onChange={setLightboxIndex} />
     </>
   );
 }

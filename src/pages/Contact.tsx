@@ -2,13 +2,13 @@ import { Clock3, Mail, MapPin, Navigation, Phone } from "lucide-react";
 import { FormEvent, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ApiError, apiPost } from "../api/client";
-import { propertyMapUrl, propertyPhoneHref, useProperty } from "../context/PropertyContext";
+import { propertyCountryName, propertyMapUrl, propertyPhoneHref, useProperty } from "../context/PropertyContext";
 
 export function Contact() {
   const property = useProperty();
   const mapUrl = propertyMapUrl(property);
   const contactDetails = [
-    { icon: MapPin, label: "Adresse", lines: [property.addressLine1, property.addressLine2, `${property.postalCode} ${property.city}, France`].filter((line): line is string => Boolean(line)) },
+    { icon: MapPin, label: "Adresse", lines: [property.addressLine1, property.addressLine2, `${property.postalCode} ${property.city}, ${propertyCountryName(property)}`].filter((line): line is string => Boolean(line)) },
     ...(property.phone ? [{ icon: Phone, label: "Téléphone", lines: [property.phone] }] : []),
     { icon: Mail, label: "Email", lines: [property.email] },
     { icon: Clock3, label: "Réception", lines: ["Tous les jours, 7h00 – 23h00"] },
@@ -70,7 +70,7 @@ export function Contact() {
       <section className="contact-main">
         <div className="page-container contact-grid">
           <div className="contact-details">
-            <p className="eyebrow">Hôtel Rivage</p>
+            <p className="eyebrow">{property.name}</p>
             <h2>Nos coordonnées</h2>
             <div className="contact-list">
               {contactDetails.map(({ icon: Icon, label, lines }) => (

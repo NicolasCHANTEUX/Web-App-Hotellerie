@@ -141,6 +141,7 @@ export type PublicProperty = {
   postalCode: string;
   city: string;
   countryCode: string;
+  timezone: string;
   checkInTime: string;
   checkOutTime: string;
   roomCount: number;
