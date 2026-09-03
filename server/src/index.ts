@@ -1,4 +1,4 @@
-import { buildApp } from "./app.js";
+import { API_SERVICE_NAME, buildApp } from "./app.js";
 import { env } from "./config/env.js";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -23,7 +23,7 @@ try {
   await app.listen({ host: env.host, port: env.port });
   if (statePath) {
     writeFileSync(statePath, JSON.stringify({
-      service: "hotel-rivage-api",
+      service: API_SERVICE_NAME,
       pid: process.pid,
       parentPid: process.ppid,
       ...(Number.isInteger(stackPid) && stackPid > 0 ? { stackPid } : {}),

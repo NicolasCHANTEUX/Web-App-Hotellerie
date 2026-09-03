@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Prisma, type BookingSource } from "../../generated/prisma/client.js";
+import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
 import { BookingError } from "./booking.errors.js";
 import { expireStaleBookingHolds } from "./booking.holds.js";
@@ -77,7 +78,7 @@ export async function createBooking(
   idempotencyKey: string,
   options?: BookingCreationOptions,
 ): Promise<BookingConfirmation> {
-  const reference = bookingReferenceFromIdempotencyKey(idempotencyKey);
+  const reference = bookingReferenceFromIdempotencyKey(idempotencyKey, env.bookingReferencePrefix);
   const bookingId = randomUUID();
   const requestHash = bookingRequestHash(input, options ? {
     propertyId: options.propertyId,

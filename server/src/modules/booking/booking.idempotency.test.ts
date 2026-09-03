@@ -49,10 +49,11 @@ test("valide et normalise une clé d'idempotence UUID", () => {
 
 test("dérive une référence stable et insensible à la casse", () => {
   assert.equal(
-    bookingReferenceFromIdempotencyKey(KEY),
-    bookingReferenceFromIdempotencyKey(KEY.toLowerCase()),
+    bookingReferenceFromIdempotencyKey(KEY, "BKG"),
+    bookingReferenceFromIdempotencyKey(KEY.toLowerCase(), "BKG"),
   );
-  assert.equal(bookingReferenceFromIdempotencyKey(KEY), "RVG-123E4567E89B42D3A456426614174000");
+  assert.equal(bookingReferenceFromIdempotencyKey(KEY, "BKG"), "BKG-123E4567E89B42D3A456426614174000");
+  assert.equal(bookingReferenceFromIdempotencyKey(KEY, "RIV"), "RIV-123E4567E89B42D3A456426614174000");
 });
 
 test("le hash est stable quand seul l'ordre des options change", () => {

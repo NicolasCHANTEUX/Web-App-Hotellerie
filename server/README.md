@@ -157,12 +157,13 @@ Le mode manuel fonctionne sans service externe. Stripe n'est propose au client q
 ```dotenv
 STRIPE_SECRET_KEY="sk_..."
 STRIPE_WEBHOOK_SECRET="whsec_..."
+BOOKING_REFERENCE_PREFIX="BKG"
 BOOKING_ACCESS_TOKEN_SECRET="une-valeur-aleatoire-longue-et-dediee"
 ```
 
 Le webhook Stripe doit pointer vers `POST /payments/stripe/webhook` et ecouter les evenements Checkout, Payment Intent et Refund (`refund.created`, `refund.updated`, `refund.failed`). La signature porte sur le corps brut et chaque evenement est traite de facon idempotente. Les metadonnees Stripe ne contiennent que les identifiants techniques de la reservation et du paiement. Ne jamais placer ces cles dans une variable `VITE_*`.
 
-`BOOKING_ACCESS_TOKEN_SECRET` signe les jetons opaques permettant au client de reprendre sa reservation apres une actualisation ou un retour Stripe. Cette valeur est obligatoire en production et sa rotation invalide les anciens jetons publics.
+`BOOKING_REFERENCE_PREFIX` personnalise les références visibles par le client. Il doit contenir 2 à 8 lettres majuscules ou chiffres et est obligatoire en production. `BOOKING_ACCESS_TOKEN_SECRET` signe les jetons opaques permettant au client de reprendre sa reservation apres une actualisation ou un retour Stripe. Cette valeur est obligatoire en production et sa rotation invalide les anciens jetons publics.
 
 Après Checkout, Stripe renvoie le navigateur avec son identifiant de session. La page de confirmation interroge `GET /payments/stripe/status` pendant quelques secondes et affiche uniquement l'état persistant produit par le webhook. L'identifiant Checkout et la référence fournisseur du paiement sont conservés séparément afin que cette vérification reste possible après confirmation.
 

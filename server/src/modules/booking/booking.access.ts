@@ -2,14 +2,14 @@ import { createHash, createHmac } from "node:crypto";
 import { env } from "../../config/env.js";
 import { BookingError } from "./booking.errors.js";
 
-const TOKEN_PATTERN = /^rvg_[A-Za-z0-9_-]{43}$/;
+const TOKEN_PATTERN = /^(?:bkg|rvg)_[A-Za-z0-9_-]{43}$/;
 const ACCESS_AFTER_DEPARTURE_DAYS = 30;
 
 export function bookingAccessToken(bookingId: string) {
   const digest = createHmac("sha256", env.bookingAccessTokenSecret)
     .update(`booking:${bookingId}`)
     .digest("base64url");
-  return `rvg_${digest}`;
+  return `bkg_${digest}`;
 }
 
 export function bookingAccessTokenHash(token: string) {

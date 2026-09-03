@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 const projectRoot = process.cwd();
 const statePath = resolve(projectRoot, "server", ".api-dev-state.json");
 const npmCli = process.env.npm_execpath;
+const apiServiceName = "hotel-app-api";
 
 if (!npmCli) {
   console.error("Le chemin de npm est introuvable. Lancez ce script avec « npm run dev:full ».");
@@ -94,7 +95,7 @@ async function waitForApi(apiProcess) {
         signal: AbortSignal.timeout(700),
       });
       const health = await response.json();
-      if (response.ok && health.service === "hotel-rivage-api") return;
+      if (response.ok && health.service === apiServiceName) return;
     } catch {
       // The API is still starting.
     }

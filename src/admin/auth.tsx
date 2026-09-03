@@ -10,10 +10,8 @@ import {
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { AdminMe, AdminRole, getAdminMe, loginAdmin } from "../api/admin";
 import { RouteMetadata } from "../components/RouteMetadata";
+import { legacyStorageKeys, storageKeys } from "../storageKeys";
 import "../styles/admin.css";
-
-const ACCESS_TOKEN_KEY = "rivage.admin.accessToken";
-const EXPIRES_AT_KEY = "rivage.admin.expiresAt";
 
 type AuthStatus = "checking" | "authenticated" | "unauthenticated";
 
@@ -28,18 +26,27 @@ type AdminAuthContextValue = {
 const AdminAuthContext = createContext<AdminAuthContextValue | null>(null);
 
 function clearStoredSession() {
-  sessionStorage.removeItem(ACCESS_TOKEN_KEY);
-  sessionStorage.removeItem(EXPIRES_AT_KEY);
+  sessionStorage.removeItem(storageKeys.adminAccessToken);
+  sessionStorage.removeItem(storageKeys.adminExpiresAt);
+  sessionStorage.removeItem(legacyStorageKeys.adminAccessToken);
+  sessionStorage.removeItem(legacyStorageKeys.adminExpiresAt);
 }
 
 function readStoredAccessToken() {
-  const token = sessionStorage.getItem(ACCESS_TOKEN_KEY);
-  const expiresAt = Number(sessionStorage.getItem(EXPIRES_AT_KEY));
+  const token = sessionStorage.getItem(storageKeys.adminAccessToken)
+    ?? sessionStorage.getItem(legacyStorageKeys.adminAccessToken);
+  const storedExpiry = sessionStorage.getItem(storageKeys.adminExpiresAt)
+    ?? sessionStorage.getItem(legacyStorageKeys.adminExpiresAt);
+  const expiresAt = Number(storedExpiry);
   if (!token) return null;
   if (Number.isFinite(expiresAt) && expiresAt > 0 && Date.now() >= expiresAt) {
     clearStoredSession();
     return null;
   }
+  sessionStorage.setItem(storageKeys.adminAccessToken, token);
+  if (storedExpiry) sessionStorage.setItem(storageKeys.adminExpiresAt, storedExpiry);
+  sessionStorage.removeItem(legacyStorageKeys.adminAccessToken);
+  sessionStorage.removeItem(legacyStorageKeys.adminExpiresAt);
   return token;
 }
 
@@ -78,8 +85,8 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const session = await loginAdmin(email, password);
-    sessionStorage.setItem(ACCESS_TOKEN_KEY, session.accessToken);
-    sessionStorage.setItem(EXPIRES_AT_KEY, String(Date.now() + session.expiresIn * 1000));
+    sessionStorage.setItem(storageKeys.adminAccessToken, session.accessToken);
+    sessionStorage.setItem(storageKeys.adminExpiresAt, String(Date.now() + session.expiresIn * 1000));
     try {
       const nextProfile = await getAdminMe(session.accessToken);
       setAccessToken(session.accessToken);

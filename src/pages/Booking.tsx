@@ -5,6 +5,7 @@ import { createBooking, getAvailability, getBookingQuote, getExtras } from "../a
 import { BookingStepper } from "../components/BookingStepper";
 import { ResponsiveImage } from "../components/ResponsiveImage";
 import { useRemoteData } from "../hooks/useRemoteData";
+import { legacyStorageKeys, storageKeys } from "../storageKeys";
 import { Accommodation, AvailabilityResult, BookingOption, BookingQuote } from "../types/hotel";
 
 type Customer = {
@@ -241,7 +242,8 @@ export function Booking() {
         accessToken: booking.accessToken,
         holdExpiresAt: booking.holdExpiresAt,
       };
-      sessionStorage.setItem("rivage:latest-confirmation", JSON.stringify(confirmationState));
+      sessionStorage.setItem(storageKeys.latestConfirmation, JSON.stringify(confirmationState));
+      sessionStorage.removeItem(legacyStorageKeys.latestConfirmation);
       navigate("/confirmation", {
         state: confirmationState,
       });

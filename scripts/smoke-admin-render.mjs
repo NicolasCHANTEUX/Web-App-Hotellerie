@@ -348,8 +348,8 @@ async function renderAdmin(pathname, {
   window.document.head.innerHTML = `<link rel="stylesheet" href="/assets/${adminStylesheet}">`;
   window.document.body.innerHTML = '<div id="root"></div>';
   if (withToken) {
-    window.sessionStorage.setItem("rivage.admin.accessToken", "smoke-test-token");
-    window.sessionStorage.setItem("rivage.admin.expiresAt", String(Date.now() + 600_000));
+    window.sessionStorage.setItem("hotel.admin.accessToken", "smoke-test-token");
+    window.sessionStorage.setItem("hotel.admin.expiresAt", String(Date.now() + 600_000));
   }
 
   const browserGlobals = {

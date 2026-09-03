@@ -194,8 +194,8 @@ test("keeps a retry state for an accommodation service failure", async ({ page }
 
 test("loads authenticated admin bookings after the asynchronous request", async ({ page }) => {
   await page.addInitScript(() => {
-    sessionStorage.setItem("rivage.admin.accessToken", "e2e-token");
-    sessionStorage.setItem("rivage.admin.expiresAt", String(Date.now() + 600_000));
+    sessionStorage.setItem("hotel.admin.accessToken", "e2e-token");
+    sessionStorage.setItem("hotel.admin.expiresAt", String(Date.now() + 600_000));
   });
   await page.route("**/api/admin/me", (route) => route.fulfill({ json: { data: {
     user: { id: "user-admin", displayName: "Marie Dupont", email: "marie@rivage.fr" },
@@ -240,8 +240,8 @@ test("loads authenticated admin bookings after the asynchronous request", async 
 
 test("renders planning rooms and occupancy in a real browser", async ({ page }) => {
   await page.addInitScript(() => {
-    sessionStorage.setItem("rivage.admin.accessToken", "e2e-token");
-    sessionStorage.setItem("rivage.admin.expiresAt", String(Date.now() + 600_000));
+    sessionStorage.setItem("hotel.admin.accessToken", "e2e-token");
+    sessionStorage.setItem("hotel.admin.expiresAt", String(Date.now() + 600_000));
   });
   await page.route("**/api/admin/me", (route) => route.fulfill({ json: { data: {
     user: { id: "user-admin", displayName: "Marie Dupont", email: "marie@rivage.fr" },

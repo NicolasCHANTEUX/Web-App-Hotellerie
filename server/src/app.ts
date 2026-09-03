@@ -13,6 +13,8 @@ import { catalogRoutes } from "./modules/catalog/catalog.routes.js";
 import { contactRoutes } from "./modules/contact/contact.routes.js";
 import { paymentRoutes, stripeWebhookRoutes } from "./modules/payments/payment.routes.js";
 
+export const API_SERVICE_NAME = "hotel-app-api";
+
 export async function buildApp() {
   const app = Fastify({
     logger: {
@@ -58,14 +60,14 @@ export async function buildApp() {
   app.get("/", async (_request, reply) => reply.redirect(env.frontendUrl));
 
   app.get("/health/live", async () => ({
-    service: "hotel-rivage-api",
+    service: API_SERVICE_NAME,
     status: "up",
     pid: process.pid,
   }));
 
   app.get("/health", async () => {
     await prisma.property.count();
-    return { service: "hotel-rivage-api", status: "ok", database: "connected", pid: process.pid };
+    return { service: API_SERVICE_NAME, status: "ok", database: "connected", pid: process.pid };
   });
 
   await app.register(catalogRoutes);

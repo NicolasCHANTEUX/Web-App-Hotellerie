@@ -15,8 +15,8 @@ export function parseIdempotencyKey(value: unknown) {
   return value.trim().toLowerCase();
 }
 
-export function bookingReferenceFromIdempotencyKey(idempotencyKey: string) {
-  return `RVG-${idempotencyKey.replaceAll("-", "").toUpperCase()}`;
+export function bookingReferenceFromIdempotencyKey(idempotencyKey: string, prefix: string) {
+  return `${prefix}-${idempotencyKey.replaceAll("-", "").toUpperCase()}`;
 }
 
 export function bookingRequestHash(

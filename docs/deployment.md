@@ -1,5 +1,7 @@
 # Déploiement
 
+Avant de préparer une nouvelle installation, compléter la [fiche d'onboarding établissement](./onboarding-establishment.md).
+
 ## Architecture recommandée
 
 - Construire le frontend Vite comme site statique avec `npm run build:production`. Cette commande refuse une URL canonique absente ou locale.
@@ -42,6 +44,7 @@ La migration et le démarrage de l'API sont séparés volontairement : plusieurs
 - `SUPABASE_STORAGE_BUCKET` ;
 - `CORS_ORIGIN` et `FRONTEND_URL` avec les domaines HTTPS réels ;
 - `PUBLIC_PROPERTY_SLUG`, correspondant à l'établissement affiché par le site public ;
+- `BOOKING_REFERENCE_PREFIX`, composé de 2 à 8 lettres majuscules ou chiffres et choisi avec l'établissement ;
 - `BACKGROUND_WORKER_MODE=embedded` pour une seule instance, ou `standalone` lorsque les traitements sont exécutés par un processus dédié ;
 - `NODE_ENV=production`, `HOST=0.0.0.0` et `TRUST_PROXY=true` uniquement derrière un proxy maîtrisé.
 

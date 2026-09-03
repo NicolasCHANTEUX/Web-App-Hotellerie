@@ -33,7 +33,13 @@ if (!["embedded", "standalone", "disabled"].includes(backgroundWorkerMode)) {
 }
 
 const bookingAccessTokenSecret = process.env.BOOKING_ACCESS_TOKEN_SECRET?.trim()
-  || (nodeEnv === "production" ? required("BOOKING_ACCESS_TOKEN_SECRET") : "hotel-rivage-local-booking-token-secret-change-me");
+  || (nodeEnv === "production" ? required("BOOKING_ACCESS_TOKEN_SECRET") : "hotel-app-local-booking-token-secret-change-me");
+const bookingReferencePrefix = process.env.BOOKING_REFERENCE_PREFIX?.trim().toUpperCase()
+  || (nodeEnv === "production" ? required("BOOKING_REFERENCE_PREFIX").toUpperCase() : "BKG");
+
+if (!/^[A-Z0-9]{2,8}$/.test(bookingReferencePrefix)) {
+  throw new Error("BOOKING_REFERENCE_PREFIX must contain 2 to 8 uppercase letters or digits.");
+}
 
 export const env = {
   nodeEnv: nodeEnv as "development" | "test" | "production",
@@ -59,4 +65,5 @@ export const env = {
   stripeSecretKey: process.env.STRIPE_SECRET_KEY?.trim() || null,
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET?.trim() || null,
   bookingAccessTokenSecret,
+  bookingReferencePrefix,
 };

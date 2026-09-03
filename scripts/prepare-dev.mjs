@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 
 const statePath = resolve("server", ".api-dev-state.json");
+const apiServiceName = "hotel-app-api";
 
 async function readHealth() {
   for (const endpoint of ["health/live", "health"]) {
@@ -25,7 +26,7 @@ if (!health) {
   process.exit(0);
 }
 
-if (health.service !== "hotel-rivage-api") {
+if (health.service !== apiServiceName) {
   console.error("Le port 3001 est occupé par un autre programme. Aucun processus n'a été arrêté.");
   process.exit(1);
 }
@@ -34,7 +35,7 @@ let state;
 try {
   state = JSON.parse(await readFile(statePath, "utf8"));
 } catch {
-  console.error("Une API Hôtel Rivage existe déjà, mais son fichier d'état est absent. Arrêtez-la avant de relancer.");
+  console.error("L'API du projet existe déjà, mais son fichier d'état est absent. Arrêtez-la avant de relancer.");
   process.exit(1);
 }
 

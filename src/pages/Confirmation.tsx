@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
 import { createStripeCheckout, getPaymentConfig, getPublicBooking, getStripeCheckoutStatus } from "../api/hotel";
 import { propertyAddress, useProperty } from "../context/PropertyContext";
+import { legacyStorageKeys, storageKeys } from "../storageKeys";
 
 type ConfirmationState = {
   reference?: string;
@@ -21,8 +22,12 @@ type ConfirmationState = {
 
 function readStoredConfirmation(): ConfirmationState {
   try {
-    const value = JSON.parse(sessionStorage.getItem("rivage:latest-confirmation") ?? "null") as unknown;
+    const storedValue = sessionStorage.getItem(storageKeys.latestConfirmation)
+      ?? sessionStorage.getItem(legacyStorageKeys.latestConfirmation);
+    const value = JSON.parse(storedValue ?? "null") as unknown;
     if (typeof value !== "object" || value === null || !("reference" in value) || typeof value.reference !== "string") return {};
+    sessionStorage.setItem(storageKeys.latestConfirmation, JSON.stringify(value));
+    sessionStorage.removeItem(legacyStorageKeys.latestConfirmation);
     return value as ConfirmationState;
   } catch {
     return {};
@@ -99,7 +104,7 @@ export function Confirmation() {
       .then((freshBooking) => {
         const updated = { ...freshBooking, accessToken } satisfies ConfirmationState;
         setBooking(updated);
-        sessionStorage.setItem("rivage:latest-confirmation", JSON.stringify(updated));
+        sessionStorage.setItem(storageKeys.latestConfirmation, JSON.stringify(updated));
       })
       .catch(() => undefined);
     return () => controller.abort();
@@ -124,12 +129,13 @@ export function Confirmation() {
         const result = await getStripeCheckoutStatus(sessionId, accessToken, controller.signal);
         setBooking((current) => {
           const updated = { ...current, ...result.booking } satisfies ConfirmationState;
-          sessionStorage.setItem("rivage:latest-confirmation", JSON.stringify(updated));
+          sessionStorage.setItem(storageKeys.latestConfirmation, JSON.stringify(updated));
           return updated;
         });
 
         if (["CONFIRMED", "CHECKED_IN", "COMPLETED"].includes(result.booking.status) && result.paymentStatus === "SUCCEEDED") {
-          sessionStorage.removeItem(`rivage:payment-key:${result.booking.reference}`);
+          sessionStorage.removeItem(storageKeys.paymentKey(result.booking.reference));
+          sessionStorage.removeItem(legacyStorageKeys.paymentKey(result.booking.reference));
           setPaymentNotice("Votre paiement a été confirmé par l'hôtel.");
           setPaymentSynchronizing(false);
           return;
@@ -171,9 +177,13 @@ export function Confirmation() {
     if (!booking.reference || !booking.accessToken || paymentStarting) return;
     setPaymentStarting(true);
     setPaymentError(null);
-    const storageKey = `rivage:payment-key:${booking.reference}`;
-    const key = sessionStorage.getItem(storageKey) ?? `checkout:${crypto.randomUUID()}`;
+    const storageKey = storageKeys.paymentKey(booking.reference);
+    const legacyStorageKey = legacyStorageKeys.paymentKey(booking.reference);
+    const key = sessionStorage.getItem(storageKey)
+      ?? sessionStorage.getItem(legacyStorageKey)
+      ?? `checkout:${crypto.randomUUID()}`;
     sessionStorage.setItem(storageKey, key);
+    sessionStorage.removeItem(legacyStorageKey);
     try {
       const session = await createStripeCheckout(booking.accessToken, key);
       window.location.assign(session.checkoutUrl);
