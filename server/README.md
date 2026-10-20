@@ -255,7 +255,18 @@ npm run typecheck
 npm test
 ```
 
-À la racine du projet, `npm run verify` ajoute le build frontend et les tests de rendu. La procédure Docker et la liste des variables de production sont dans `../docs/deployment.md`.
+`npm test` exécute les tests unitaires, c'est-à-dire tous les fichiers `src/**/*.test.ts` : un nouveau fichier est pris en compte automatiquement.
+
+Les tests d'intégration de `test/integration/` exécutent la réservation, les paiements Stripe, la facturation et la confirmation par la réception contre un vrai PostgreSQL. Ils couvrent notamment les demandes simultanées, les options expirées et les paiements tardifs. Ils exigent `TEST_DATABASE_URL`, une base **jetable** avec les migrations appliquées, et refusent de s'exécuter sur la base configurée dans `.env`. Chaque test crée son propre établissement, ce qui évite de vider la base entre deux exécutions.
+
+```powershell
+$env:DATABASE_URL = "postgresql://postgres@127.0.0.1:5433/hotel_test?sslmode=disable"
+npm run db:migrate:deploy
+$env:TEST_DATABASE_URL = $env:DATABASE_URL
+npm run test:integration
+```
+
+À la racine du projet, `npm run verify` ajoute le build frontend et les tests de rendu. La CI exécute aussi les tests d'intégration sur son PostgreSQL. La procédure Docker et la liste des variables de production sont dans `../docs/deployment.md`.
 
 `prisma/manual/room_allocation_constraints.sql` conserve une copie lisible des regles natives a reporter dans toute migration initiale regeneree. Prisma ne les exprime pas dans `schema.prisma`.
 

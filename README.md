@@ -73,6 +73,8 @@ Pour lancer les validations Prisma, les tests backend, le build frontend et les 
 npm run verify
 ```
 
+Pour lancer les tests d'intégration du moteur de réservation, des paiements et de la facturation contre un PostgreSQL jetable, définir `TEST_DATABASE_URL` puis lancer `npm run test:integration`. La procédure est détaillée dans `server/README.md`.
+
 Pour produire une version destinée au déploiement, définir `VITE_PUBLIC_SITE_URL` avec l'origine HTTPS publique puis utiliser `npm run build:production`. La commande s'arrête avant le build si l'URL est absente ou locale.
 
 Pour lancer les parcours navigateur Playwright (accueil public, formulaire de contact et liste des reservations admin) :
