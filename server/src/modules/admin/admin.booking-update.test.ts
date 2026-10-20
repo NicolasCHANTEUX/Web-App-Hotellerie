@@ -2,11 +2,18 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { bookingPricingChanged, parseAdminBookingUpdateBody } from "./admin.booking-update.js";
 
+function dateFromToday(days: number) {
+  const date = new Date();
+  date.setUTCHours(0, 0, 0, 0);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 const body = {
   updatedAt: "2026-08-30T12:00:00.000Z",
   roomTypeId: "123e4567-e89b-42d3-a456-426614174000",
-  arrival: "2026-09-10",
-  departure: "2026-09-12",
+  arrival: dateFromToday(30),
+  departure: dateFromToday(32),
   adults: 2,
   children: 0,
   extraIds: ["223e4567-e89b-42d3-a456-426614174000"],

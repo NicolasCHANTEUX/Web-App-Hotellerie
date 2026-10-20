@@ -8,13 +8,22 @@ import {
 
 const ROOM_TYPE_ID = "11111111-1111-4111-8111-111111111111";
 const EXTRA_ID = "22222222-2222-4222-8222-222222222222";
+const ARRIVAL = dateFromToday(30);
+const DEPARTURE = dateFromToday(32);
+
+function dateFromToday(days: number) {
+  const date = new Date();
+  date.setUTCHours(0, 0, 0, 0);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
 
 function validBooking() {
   return {
     source: "PHONE",
     roomTypeId: ROOM_TYPE_ID,
-    arrival: "2026-09-10",
-    departure: "2026-09-12",
+    arrival: ARRIVAL,
+    departure: DEPARTURE,
     adults: 2,
     children: 0,
     extraIds: [EXTRA_ID],
@@ -75,14 +84,14 @@ test("adapte les coordonnées obligatoires au canal de réservation", () => {
 
 test("valide les critères de disponibilité et la clé d'idempotence", () => {
   const options = parseAdminBookingOptionsQuery({
-    arrival: "2026-09-10",
-    departure: "2026-09-12",
+    arrival: ARRIVAL,
+    departure: DEPARTURE,
     adults: "2",
     children: "1",
   });
   assert.equal(options.adults, 2);
   assert.equal(options.children, 1);
-  assert.equal(options.arrival.toISOString().slice(0, 10), "2026-09-10");
+  assert.equal(options.arrival.toISOString().slice(0, 10), ARRIVAL);
   assert.equal(
     parseAdminBookingIdempotencyKey("550E8400-E29B-41D4-A716-446655440000"),
     "550e8400-e29b-41d4-a716-446655440000",

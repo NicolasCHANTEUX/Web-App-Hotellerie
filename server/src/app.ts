@@ -5,6 +5,7 @@ import multipart from "@fastify/multipart";
 import Fastify from "fastify";
 import { startBackgroundWorker } from "./background-worker.js";
 import { env } from "./config/env.js";
+import { errorResponse, HttpError, NOT_FOUND_ERROR } from "./lib/http-errors.js";
 import { prisma } from "./lib/prisma.js";
 import { adminRoutes } from "./modules/admin/index.js";
 import { availabilityRoutes } from "./modules/availability/availability.routes.js";
@@ -34,23 +35,32 @@ export async function buildApp() {
     trustProxy: env.trustProxy,
   });
 
+  // Fastify binds the error handler to each route when the route is declared:
+  // it must be set before any plugin or route registration.
+  app.setErrorHandler((error, request, reply) => {
+    const { statusCode, payload } = errorResponse(error);
+    if (statusCode >= 500) request.log.error({ err: error }, "Unhandled request error");
+    else request.log.info({ err: error }, "Request rejected");
+    return reply.code(statusCode).send(payload);
+  });
+  app.setNotFoundHandler((_request, reply) => reply.code(404).send({ error: NOT_FOUND_ERROR }));
+
   await app.register(helmet);
 
   await app.register(cors, {
     origin(origin, callback) {
       if (!origin || env.corsOrigins.includes(origin)) return callback(null, true);
-      callback(new Error("Origin not allowed"), false);
+      callback(new HttpError(403, "ORIGIN_NOT_ALLOWED", "Cette origine n'est pas autorisée."), false);
     },
   });
 
   await app.register(rateLimit, {
     global: false,
-    errorResponseBuilder: () => ({
-      error: {
-        code: "RATE_LIMITED",
-        message: "Trop de tentatives. Réessayez dans quelques instants.",
-      },
-    }),
+    errorResponseBuilder: (_request, context) => new HttpError(
+      context.statusCode,
+      "RATE_LIMITED",
+      "Trop de tentatives. Réessayez dans quelques instants.",
+    ),
   });
 
   await app.register(multipart, {
@@ -81,26 +91,6 @@ export async function buildApp() {
   const backgroundWorker = env.backgroundWorkerMode === "embedded"
     ? startBackgroundWorker(app.log)
     : null;
-
-  app.setErrorHandler((error, _request, reply) => {
-    if (
-      typeof error === "object" &&
-      error !== null &&
-      "statusCode" in error &&
-      error.statusCode === 429
-    ) {
-      return reply.code(429).send({
-        error: {
-          code: "RATE_LIMITED",
-          message: "Trop de tentatives. Réessayez dans quelques instants.",
-        },
-      });
-    }
-    app.log.error(error);
-    reply.code(500).send({
-      error: { code: "INTERNAL_ERROR", message: "Le service est momentanément indisponible." },
-    });
-  });
 
   app.addHook("onClose", async () => {
     backgroundWorker?.stop();

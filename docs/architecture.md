@@ -50,7 +50,7 @@ Les routes `/admin/*` exigent un jeton Supabase Auth et une `AdminMembership` ac
 
 Le planning croise les allocations de chambres sur quatorze jours avec les dossiers de réservation. `ADMIN` et `RECEPTION` peuvent ouvrir les séjours et exécuter les opérations quotidiennes. `HOUSEKEEPING` voit les occupations et blocages sans identité client. Le cycle opérationnel est explicite : `CONFIRMED` → `CHECKED_IN` le jour du séjour, puis `COMPLETED` à partir du départ ; les absences et annulations suivent des transitions contrôlées côté serveur.
 
-Les tables applicatives ont RLS activée sans politique publique. Les secrets, jetons et mots de passe sont masqués dans les logs. Le rate limiting protège les créations de réservation, les connexions et les demandes de contact.
+Les tables applicatives ont RLS activée sans politique publique. Les secrets, jetons et mots de passe sont masqués dans les logs. Une erreur inattendue est journalisée côté serveur, mais le client ne reçoit qu'un message générique `INTERNAL_ERROR`, sans détail technique. Les requêtes venant d'une origine absente de `CORS_ORIGIN` sont refusées en 403. Le rate limiting protège les créations de réservation, les connexions et les demandes de contact ; une limite atteinte renvoie 429 `RATE_LIMITED`.
 
 ## Conservation des données
 
