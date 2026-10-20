@@ -11,7 +11,7 @@ import {
 } from "./booking.idempotency.js";
 import { assertExpectedTotal, buildTaxInclusivePrice } from "./booking.pricing.js";
 import type { BookingConfirmation, CreateBookingInput } from "./booking.types.js";
-import { enqueueBookingNotification } from "../notifications/notification.service.js";
+import { adminBookingUrl, enqueueBookingNotification } from "../notifications/notification.service.js";
 import { retentionDeadlineFrom } from "../privacy/retention.service.js";
 import { bookingAccessToken, bookingAccessTokenExpiresAt, bookingAccessTokenHash } from "./booking.access.js";
 
@@ -181,6 +181,7 @@ export async function createBooking(
             property: {
               select: {
                 id: true,
+                email: true,
                 currency: true,
                 taxRules: {
                   where: {
@@ -611,6 +612,34 @@ export async function createBooking(
               total: Number(total),
               currency: ratePlan.currency,
               holdExpiresAt: hold.expiresAt.toISOString(),
+            },
+          });
+        }
+
+        // Requests entered by the reception are already known to the team; only
+        // website requests must reach the hotel before their option lapses.
+        if (!options) {
+          await enqueueBookingNotification(transaction, {
+            propertyId: roomType.propertyId,
+            bookingId: booking.id,
+            recipient: roomType.property.email,
+            template: "BOOKING_REQUEST_RECEIVED",
+            idempotencyKey: `booking:${booking.id}:staff-request`,
+            payload: {
+              reference: booking.reference,
+              guestName: `${input.guest.firstName} ${input.guest.lastName}`,
+              guestEmail: input.guest.email,
+              guestPhone: input.guest.phone,
+              roomName: roomType.name,
+              arrival: dateOnly(input.arrival),
+              departure: dateOnly(input.departure),
+              adults: input.adults,
+              children: input.children,
+              total: Number(total),
+              currency: ratePlan.currency,
+              specialRequests: input.specialRequests,
+              holdExpiresAt: hold.expiresAt.toISOString(),
+              adminUrl: adminBookingUrl(booking.id),
             },
           });
         }

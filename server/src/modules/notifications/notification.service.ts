@@ -24,9 +24,20 @@ export type NotificationPayload = {
   contactPhone?: string;
   contactSubject?: string;
   contactMessage?: string;
+  guestName?: string;
+  guestEmail?: string;
+  guestPhone?: string;
+  adults?: number;
+  children?: number;
+  specialRequests?: string;
+  adminUrl?: string;
 };
 
 type NotificationTransaction = Pick<Prisma.TransactionClient, "notification" | "property">;
+
+export function adminBookingUrl(bookingId: string) {
+  return `${env.frontendUrl.replace(/\/+$/, "")}/admin/reservations?booking=${encodeURIComponent(bookingId)}`;
+}
 
 function escapeHtml(value: string) {
   return value
@@ -64,7 +75,36 @@ export function notificationSubject(template: NotificationTemplate, payload: Not
     case "PAYMENT_SUCCEEDED": return `Paiement reçu pour la réservation ${payload.reference}`;
     case "PAYMENT_REFUNDED": return `Remboursement de la réservation ${payload.reference}`;
     case "CONTACT_REQUEST_RECEIVED": return `Nouveau message — ${payload.contactSubject ?? "Site internet"}`;
+    case "BOOKING_REQUEST_RECEIVED": return `Nouvelle demande de réservation ${payload.reference}`;
+    case "PAYMENT_REQUIRES_ATTENTION": return `Action requise : paiement reçu pour ${payload.reference}`;
   }
+}
+
+function guestsLabel(adults?: number, children?: number) {
+  if (typeof adults !== "number") return null;
+  const parts = [`${adults} adulte${adults > 1 ? "s" : ""}`];
+  if (children) parts.push(`${children} enfant${children > 1 ? "s" : ""}`);
+  return parts.join(", ");
+}
+
+function presentParagraphs(values: Array<string | null | undefined>) {
+  return values.filter((value): value is string => Boolean(value));
+}
+
+function renderStaffMessage(
+  template: NotificationTemplate,
+  payload: NotificationPayload,
+  propertyName: string,
+  headline: string,
+  paragraphs: string[],
+) {
+  const actionLabel = "Ouvrir dans l'administration";
+  const text = presentParagraphs([...paragraphs, payload.adminUrl && `${actionLabel} : ${payload.adminUrl}`]).join("\n\n");
+  const action = payload.adminUrl
+    ? `<p style="margin:28px 0 0"><a href="${escapeHtml(payload.adminUrl)}" style="display:inline-block;background:#28231e;color:#fff;text-decoration:none;padding:12px 20px;border-radius:999px;font-weight:700">${actionLabel}</a></p>`
+    : "";
+  const html = `<!doctype html><html lang="fr"><body style="margin:0;background:#f4f0ea;color:#28231e;font-family:Arial,sans-serif"><div style="max-width:620px;margin:0 auto;padding:32px 20px"><div style="background:#fff;border:1px solid #ded4c8;border-radius:14px;padding:32px"><p style="margin:0 0 24px;color:#9a7345;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase">${escapeHtml(propertyName)}</p><h1 style="margin:0 0 24px;font-family:Georgia,serif;font-size:30px;font-weight:500">${escapeHtml(headline)}</h1>${paragraphs.map((paragraph) => `<p style="margin:0 0 16px;line-height:1.65;white-space:pre-wrap">${escapeHtml(paragraph)}</p>`).join("")}${action}</div></div></body></html>`;
+  return { subject: notificationSubject(template, payload), text, html };
 }
 
 export function renderNotification(template: NotificationTemplate, payload: NotificationPayload) {
@@ -72,25 +112,48 @@ export function renderNotification(template: NotificationTemplate, payload: Noti
   const teamSignature = payload.propertyName?.trim()
     ? `L'équipe de ${propertyName}`
     : "L'équipe de votre établissement";
-  if (template === "CONTACT_REQUEST_RECEIVED") {
-    const headline = "Nouveau message depuis le site";
-    const paragraphs = [
-      `Nom : ${payload.contactName ?? "Non renseigné"}`,
-      `Email : ${payload.contactEmail ?? "Non renseigné"}`,
-      payload.contactPhone ? `Téléphone : ${payload.contactPhone}` : null,
-      `Sujet : ${payload.contactSubject ?? "Autre demande"}`,
-      payload.contactMessage ?? "Message vide",
-    ].filter((value): value is string => Boolean(value));
-    const text = paragraphs.join("\n\n");
-    const html = `<!doctype html><html lang="fr"><body style="margin:0;background:#f4f0ea;color:#28231e;font-family:Arial,sans-serif"><div style="max-width:620px;margin:0 auto;padding:32px 20px"><div style="background:#fff;border:1px solid #ded4c8;border-radius:14px;padding:32px"><p style="margin:0 0 24px;color:#9a7345;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase">${escapeHtml(propertyName)}</p><h1 style="margin:0 0 24px;font-family:Georgia,serif;font-size:30px;font-weight:500">${headline}</h1>${paragraphs.map((paragraph) => `<p style="margin:0 0 16px;line-height:1.65;white-space:pre-wrap">${escapeHtml(paragraph)}</p>`).join("")}</div></div></body></html>`;
-    return { subject: notificationSubject(template, payload), text, html };
-  }
-
-  const greeting = payload.firstName ? `Bonjour ${payload.firstName},` : "Bonjour,";
   const stay = payload.arrival && payload.departure
     ? `Séjour du ${date(payload.arrival, payload.timezone)} au ${date(payload.departure, payload.timezone)}${payload.roomName ? ` - ${payload.roomName}` : ""}.`
     : payload.roomName ? `Hébergement : ${payload.roomName}.` : null;
   const total = money(payload.total, payload.currency);
+
+  if (template === "CONTACT_REQUEST_RECEIVED") {
+    return renderStaffMessage(template, payload, propertyName, "Nouveau message depuis le site", presentParagraphs([
+      `Nom : ${payload.contactName ?? "Non renseigné"}`,
+      `Email : ${payload.contactEmail ?? "Non renseigné"}`,
+      payload.contactPhone && `Téléphone : ${payload.contactPhone}`,
+      `Sujet : ${payload.contactSubject ?? "Autre demande"}`,
+      payload.contactMessage ?? "Message vide",
+    ]));
+  }
+
+  if (template === "BOOKING_REQUEST_RECEIVED" || template === "PAYMENT_REQUIRES_ATTENTION") {
+    const guestDetails = [
+      `Client : ${payload.guestName ?? "Non renseigné"}`,
+      payload.guestEmail && `E-mail : ${payload.guestEmail}`,
+      payload.guestPhone && `Téléphone : ${payload.guestPhone}`,
+      stay,
+      guestsLabel(payload.adults, payload.children) && `Voyageurs : ${guestsLabel(payload.adults, payload.children)}`,
+    ];
+    if (template === "BOOKING_REQUEST_RECEIVED") {
+      return renderStaffMessage(template, payload, propertyName, "Nouvelle demande de réservation", presentParagraphs([
+        `Référence : ${payload.reference}`,
+        ...guestDetails,
+        total && `Montant : ${total}`,
+        payload.specialRequests && `Demande particulière : ${payload.specialRequests}`,
+        payload.holdExpiresAt
+          && `La chambre est optionnée jusqu'au ${date(payload.holdExpiresAt, payload.timezone)}. Sans paiement en ligne ni confirmation de votre part, la demande expirera automatiquement.`,
+      ]));
+    }
+    return renderStaffMessage(template, payload, propertyName, "Paiement reçu à traiter", presentParagraphs([
+      `Un paiement en ligne${total ? ` de ${total}` : ""} a été reçu pour la réservation ${payload.reference}, mais elle n'a pas pu être confirmée automatiquement.`,
+      payload.reason && `Motif : ${payload.reason}`,
+      ...guestDetails,
+      "Contactez le client pour lui proposer une solution, ou remboursez le paiement depuis l'administration.",
+    ]));
+  }
+
+  const greeting = payload.firstName ? `Bonjour ${payload.firstName},` : "Bonjour,";
   let headline: string;
   let message: string;
 
@@ -229,7 +292,7 @@ export async function dispatchPendingNotifications(logger?: FastifyBaseLogger) {
       };
       const rendered = renderNotification(candidate.template, payload);
       const providerReference = env.notificationDelivery === "resend"
-        ? await sendWithResend(candidate.recipient, candidate.subject, rendered.html, rendered.text, payload.contactEmail)
+        ? await sendWithResend(candidate.recipient, candidate.subject, rendered.html, rendered.text, payload.contactEmail ?? payload.guestEmail)
         : `log-${candidate.id}`;
       await prisma.notification.update({
         where: { id: candidate.id },

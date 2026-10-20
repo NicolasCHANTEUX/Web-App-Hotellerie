@@ -71,6 +71,8 @@ Routes disponibles :
 - `GET /payments/stripe/status?sessionId=cs_...`
 - `POST /payments/stripe/webhook`
 - `POST /admin/auth/login`
+- `POST /admin/auth/refresh` (corps `{ "refreshToken": "..." }`)
+- `POST /admin/auth/logout` (révoque la session Supabase du jeton fourni)
 - `GET /admin/me`
 - `GET /admin/bookings`
 - `GET /admin/booking-options?arrival=2026-08-25&departure=2026-08-26&adults=2&children=0`
@@ -232,9 +234,15 @@ Cette commande ecrit dans la base configuree par `DATABASE_URL`; elle n'est jama
 
 ## Avant une mise en production publique
 
-Le limiteur actuel est adapte au MVP mono-instance : trois demandes par heure et par IP, plus deux demandes actives maximum pour une meme adresse e-mail ou un meme telephone. Avant exposition publique, ajouter un challenge anti-bot et un store de rate-limit partage entre instances.
+Le limiteur actuel est adapte au MVP mono-instance : dix tentatives de reservation par heure et par IP, erreurs comprises, plus deux demandes actives maximum pour une meme adresse e-mail ou un meme telephone. Les compteurs sont gardes en memoire par instance. Avant exposition publique, ajouter un challenge anti-bot et un store de rate-limit partage entre instances.
 
-Si l'API est placee derriere un reverse proxy de confiance, definir `TRUST_PROXY=true` pour que le limiteur lise l'adresse client transmise par ce proxy. Le laisser a `false` lorsque l'API est directement accessible.
+`TRUST_PROXY` est obligatoire en production, pour que le limiteur lise la vraie adresse du client :
+
+- `false` lorsque les clients atteignent directement l'API ;
+- le nombre de proxies places devant l'API (`1` sur la plupart des hebergeurs), ou leurs adresses (`10.0.0.0/8,192.168.1.1`) ;
+- `true` fait confiance a toute adresse transmise et permet a un client direct de choisir la sienne : a eviter.
+
+Sans ce reglage derriere un proxy, tous les visiteurs partagent l'adresse du proxy et donc les memes limites. L'API journalise alors un avertissement a la premiere requete portant `X-Forwarded-For`.
 
 Compléter l'identité juridique, la médiation, les conditions tarifaires et la politique de confidentialité avant toute ouverture commerciale. La commande d'anonymisation doit ensuite être planifiée et supervisée ; elle ne s'exécute jamais implicitement au démarrage de l'API.
 

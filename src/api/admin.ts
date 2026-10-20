@@ -22,17 +22,40 @@ export class AdminApiError extends Error {
   }
 }
 
+type AdminSessionRenewal = {
+  currentAccessToken: () => string | null;
+  renew: (expiredAccessToken: string) => Promise<string | null>;
+};
+
+let sessionRenewal: AdminSessionRenewal | null = null;
+
+/** Lets the authentication provider supply and renew the current access token. */
+export function setAdminSessionRenewal(renewal: AdminSessionRenewal | null) {
+  sessionRenewal = renewal;
+}
+
+function sendAdminRequest(path: string, options: RequestInit, accessToken?: string) {
+  const headers = new Headers(options.headers);
+  headers.set("Accept", "application/json");
+  if (options.body && !(options.body instanceof FormData)) headers.set("Content-Type", "application/json");
+  if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
+  return fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+}
+
 async function adminRequest<T>(
   path: string,
   options: RequestInit = {},
   accessToken?: string,
 ) {
-  const headers = new Headers(options.headers);
-  headers.set("Accept", "application/json");
-  if (options.body && !(options.body instanceof FormData)) headers.set("Content-Type", "application/json");
-  if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
-
-  const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+  // Screens keep the token received at sign-in: requests always use the latest
+  // renewed one, and renew it once when the API reports it expired. Replaying
+  // is safe because a 401 is returned before any change is made.
+  const token = accessToken ? sessionRenewal?.currentAccessToken() ?? accessToken : undefined;
+  let response = await sendAdminRequest(path, options, token);
+  if (response.status === 401 && token && sessionRenewal) {
+    const renewedToken = await sessionRenewal.renew(token);
+    if (renewedToken) response = await sendAdminRequest(path, options, renewedToken);
+  }
   const body = await response.json().catch(() => null) as ApiEnvelope<T> | ApiErrorBody | null;
 
   if (!response.ok) {
@@ -51,6 +74,7 @@ export type AdminRole = "ADMIN" | "RECEPTION" | "ACCOUNTING" | "HOUSEKEEPING";
 
 export type AdminLoginResult = {
   accessToken: string;
+  refreshToken: string;
   expiresIn: number;
 };
 
@@ -408,6 +432,30 @@ export function loginAdmin(email: string, password: string, signal?: AbortSignal
     body: JSON.stringify({ email, password }),
     signal,
   });
+}
+
+export function refreshAdminSession(refreshToken: string) {
+  return adminRequest<AdminLoginResult>("/admin/auth/refresh", {
+    method: "POST",
+    body: JSON.stringify({ refreshToken }),
+  });
+}
+
+/**
+ * Revokes the session server side, renewing an expired access token first so
+ * that its refresh token is revoked too. Failures are ignored: the browser has
+ * already forgotten the session.
+ */
+export async function revokeAdminSession(accessToken: string, refreshToken: string | null) {
+  try {
+    const response = await sendAdminRequest("/admin/auth/logout", { method: "POST" }, accessToken);
+    if (response.status === 401 && refreshToken) {
+      const renewed = await refreshAdminSession(refreshToken);
+      await sendAdminRequest("/admin/auth/logout", { method: "POST" }, renewed.accessToken);
+    }
+  } catch {
+    // Best effort only.
+  }
 }
 
 export function getAdminMe(accessToken: string, signal?: AbortSignal) {

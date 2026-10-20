@@ -48,3 +48,48 @@ test("prepare le recapitulatif d'une reservation modifiee", () => {
   assert.match(rendered.text, /15 septembre 2026/);
   assert.match(rendered.text, /555/);
 });
+
+test("alerte l'hôtel d'une nouvelle demande avec un lien vers la réservation", () => {
+  const rendered = renderNotification("BOOKING_REQUEST_RECEIVED", {
+    propertyName: "Hôtel des Dunes",
+    timezone: "Europe/Paris",
+    reference: "RVG-TEST-003",
+    guestName: "Camille <Martin>",
+    guestEmail: "camille@example.com",
+    guestPhone: "+33 6 12 34 56 78",
+    roomName: "Suite Rivage",
+    arrival: "2026-09-12",
+    departure: "2026-09-15",
+    adults: 2,
+    children: 1,
+    total: 780,
+    currency: "EUR",
+    specialRequests: "Lit bébé",
+    holdExpiresAt: "2026-09-01T08:30:00.000Z",
+    adminUrl: "https://hotel.example/admin/reservations?booking=abc&x=\"",
+  });
+  assert.match(rendered.subject, /Nouvelle demande de réservation RVG-TEST-003/);
+  assert.match(rendered.text, /Camille <Martin>/);
+  assert.match(rendered.html, /Camille &lt;Martin&gt;/);
+  assert.match(rendered.text, /2 adultes, 1 enfant/);
+  assert.match(rendered.text, /Lit bébé/);
+  assert.match(rendered.text, /1 septembre 2026 à 10:30/);
+  assert.match(rendered.text, /https:\/\/hotel\.example\/admin\/reservations\?booking=abc/);
+  assert.match(rendered.html, /href="https:\/\/hotel\.example\/admin\/reservations\?booking=abc&amp;x=&quot;"/);
+});
+
+test("alerte l'hôtel d'un paiement reçu qui n'a pas pu confirmer la réservation", () => {
+  const rendered = renderNotification("PAYMENT_REQUIRES_ATTENTION", {
+    reference: "RVG-TEST-004",
+    reason: "l'option avait expiré et aucune chambre de cette catégorie n'est plus disponible pour ces dates.",
+    guestName: "Camille Martin",
+    total: 780,
+    currency: "EUR",
+    adminUrl: "https://hotel.example/admin/reservations?booking=def",
+  });
+  assert.match(rendered.subject, /Action requise : paiement reçu pour RVG-TEST-004/);
+  assert.match(rendered.text, /780,00\s€/);
+  assert.match(rendered.text, /Motif : l'option avait expiré/);
+  assert.match(rendered.text, /remboursez le paiement/);
+  assert.match(rendered.text, /booking=def/);
+});

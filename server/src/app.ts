@@ -45,6 +45,15 @@ export async function buildApp() {
   });
   app.setNotFoundHandler((_request, reply) => reply.code(404).send({ error: NOT_FOUND_ERROR }));
 
+  if (env.trustProxy === false) {
+    let proxyWarningLogged = false;
+    app.addHook("onRequest", async (request) => {
+      if (proxyWarningLogged || request.headers["x-forwarded-for"] === undefined) return;
+      proxyWarningLogged = true;
+      request.log.warn("X-Forwarded-For received while TRUST_PROXY=false: every client behind this proxy shares its address and rate limits.");
+    });
+  }
+
   await app.register(helmet);
 
   await app.register(cors, {

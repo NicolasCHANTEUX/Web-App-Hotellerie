@@ -40,6 +40,10 @@ export class ExpiringTokenCache<T> {
     this.entries.set(key, { expiresAt: now + this.ttlMs, value });
   }
 
+  delete(token: string) {
+    this.entries.delete(this.key(token));
+  }
+
   clear() {
     this.entries.clear();
   }

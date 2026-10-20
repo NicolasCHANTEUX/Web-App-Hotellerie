@@ -1,5 +1,6 @@
 export const storageKeys = {
   adminAccessToken: "hotel.admin.accessToken",
+  adminRefreshToken: "hotel.admin.refreshToken",
   adminExpiresAt: "hotel.admin.expiresAt",
   latestConfirmation: "hotel:latest-confirmation",
   paymentKey: (reference: string) => `hotel:payment-key:${reference}`,

@@ -46,7 +46,10 @@ La migration et le démarrage de l'API sont séparés volontairement : plusieurs
 - `PUBLIC_PROPERTY_SLUG`, correspondant à l'établissement affiché par le site public ;
 - `BOOKING_REFERENCE_PREFIX`, composé de 2 à 8 lettres majuscules ou chiffres et choisi avec l'établissement ;
 - `BACKGROUND_WORKER_MODE=embedded` pour une seule instance, ou `standalone` lorsque les traitements sont exécutés par un processus dédié ;
-- `NODE_ENV=production`, `HOST=0.0.0.0` et `TRUST_PROXY=true` uniquement derrière un proxy maîtrisé.
+- `NODE_ENV=production` et `HOST=0.0.0.0` ;
+- `TRUST_PROXY`, obligatoire en production : `false` si les clients atteignent directement l'API, sinon le nombre de proxies placés devant elle (`1` sur la plupart des hébergeurs) ou leurs adresses. Sans ce réglage derrière un proxy, tous les visiteurs partagent les mêmes limites de tentatives.
+
+L'adresse e-mail de l'établissement (`Property.email`) reçoit les messages du formulaire de contact, chaque nouvelle demande de réservation du site et les paiements en ligne qui n'ont pas pu confirmer automatiquement un séjour. Elle doit donc être relevée chaque jour.
 
 Stripe et Resend restent facultatifs. S'ils sont activés, configurer le webhook Stripe, vérifier le domaine d'expédition et utiliser exclusivement des secrets de production côté serveur.
 

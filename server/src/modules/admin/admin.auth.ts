@@ -182,24 +182,34 @@ export function resolveMembership(request: FastifyRequest) {
   return [...eligible].sort((left, right) => rolePriority[left.role] - rolePriority[right.role])[0]!;
 }
 
-type PasswordLoginPayload = {
+type SupabaseSessionPayload = {
   access_token?: unknown;
   refresh_token?: unknown;
   expires_in?: unknown;
 };
 
-export async function loginWithPassword(email: string, password: string) {
+export type AdminSession = {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+};
+
+async function requestSupabaseSession(
+  grantType: "password" | "refresh_token",
+  body: Record<string, string>,
+  rejectedError: AdminApiError,
+) {
   const { supabaseUrl, publishableKey } = getAdminAuthConfig();
   let response: Response;
 
   try {
-    response = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+    response = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=${grantType}`, {
       method: "POST",
       headers: {
         apikey: publishableKey,
         "content-type": "application/json",
       },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(AUTH_TIMEOUT_MS),
     });
   } catch {
@@ -211,7 +221,7 @@ export async function loginWithPassword(email: string, password: string) {
   }
 
   if (response.status === 400 || response.status === 401 || response.status === 403) {
-    throw new AdminApiError(401, "INVALID_CREDENTIALS", "Adresse e-mail ou mot de passe incorrect.");
+    throw rejectedError;
   }
   if (response.status === 429) {
     throw new AdminApiError(429, "AUTH_RATE_LIMITED", "Trop de tentatives. Réessayez dans quelques instants.");
@@ -224,10 +234,11 @@ export async function loginWithPassword(email: string, password: string) {
     );
   }
 
-  const payload = (await response.json().catch(() => null)) as PasswordLoginPayload | null;
+  const payload = (await response.json().catch(() => null)) as SupabaseSessionPayload | null;
   if (
     !payload ||
     typeof payload.access_token !== "string" ||
+    typeof payload.refresh_token !== "string" ||
     typeof payload.expires_in !== "number"
   ) {
     throw new AdminApiError(
@@ -237,15 +248,72 @@ export async function loginWithPassword(email: string, password: string) {
     );
   }
 
+  // Checked on every renewal too, so that a deactivated account cannot keep
+  // its session alive with a refresh token.
   const authUser = await fetchSupabaseUser(payload.access_token);
   const context = await findAdminContext(authUser);
+  const session: AdminSession = {
+    accessToken: payload.access_token,
+    refreshToken: payload.refresh_token,
+    expiresIn: payload.expires_in,
+  };
+  return { context, session };
+}
+
+export async function loginWithPassword(email: string, password: string) {
+  const { context, session } = await requestSupabaseSession(
+    "password",
+    { email, password },
+    new AdminApiError(401, "INVALID_CREDENTIALS", "Adresse e-mail ou mot de passe incorrect."),
+  );
   await prisma.adminUser.update({
     where: { id: context.user.id },
     data: { lastLoginAt: new Date() },
   });
+  return session;
+}
 
-  return {
-    accessToken: payload.access_token,
-    expiresIn: payload.expires_in,
-  };
+export async function refreshAdminSession(refreshToken: string) {
+  const { session } = await requestSupabaseSession(
+    "refresh_token",
+    { refresh_token: refreshToken },
+    new AdminApiError(401, "SESSION_EXPIRED", "Votre session a expiré. Reconnectez-vous."),
+  );
+  return session;
+}
+
+export async function revokeAdminSession(request: FastifyRequest) {
+  const accessToken = bearerToken(request);
+  validatedUserCache.delete(accessToken);
+  const { supabaseUrl, publishableKey } = getAdminAuthConfig();
+  let response: Response;
+  try {
+    response = await fetch(`${supabaseUrl}/auth/v1/logout?scope=local`, {
+      method: "POST",
+      headers: {
+        apikey: publishableKey,
+        authorization: `Bearer ${accessToken}`,
+      },
+      signal: AbortSignal.timeout(AUTH_TIMEOUT_MS),
+    });
+  } catch {
+    throw new AdminApiError(
+      503,
+      "AUTH_UNAVAILABLE",
+      "Le service d'authentification est momentanément indisponible.",
+    );
+  }
+  // An expired access token is reported as such: the client renews it and
+  // retries, so that the refresh token is revoked too. A session that no
+  // longer exists needs no revocation.
+  if (response.status === 401 || response.status === 403) {
+    throw new AdminApiError(401, "INVALID_TOKEN", "La session administrateur a expiré ou est invalide.");
+  }
+  if (!response.ok && response.status !== 404) {
+    throw new AdminApiError(
+      503,
+      "AUTH_UNAVAILABLE",
+      "Le service d'authentification est momentanément indisponible.",
+    );
+  }
 }

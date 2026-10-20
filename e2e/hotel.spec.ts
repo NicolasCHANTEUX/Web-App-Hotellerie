@@ -284,6 +284,62 @@ test("loads authenticated admin bookings after the asynchronous request", async 
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem("e2e.copied-reference"))).toBe("RVG-2026-001");
 });
 
+test("renews an expired admin session once and revokes it on sign-out", async ({ page }) => {
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem("e2e.session-seeded")) return;
+    sessionStorage.setItem("e2e.session-seeded", "true");
+    sessionStorage.setItem("hotel.admin.accessToken", "expired-token");
+    sessionStorage.setItem("hotel.admin.refreshToken", "refresh-1");
+    sessionStorage.setItem("hotel.admin.expiresAt", String(Date.now() - 60_000));
+  });
+  const refreshRequests: unknown[] = [];
+  const revokedAuthorizations: Array<string | undefined> = [];
+  const expired = { status: 401, json: { error: { code: "INVALID_TOKEN", message: "La session administrateur a expiré ou est invalide." } } };
+  const isRenewed = (authorization?: string) => authorization === "Bearer renewed-token";
+  await page.route("**/api/admin/auth/refresh", async (route) => {
+    refreshRequests.push(route.request().postDataJSON());
+    await route.fulfill({ json: { data: { accessToken: "renewed-token", refreshToken: "refresh-2", expiresIn: 3600 } } });
+  });
+  await page.route("**/api/admin/auth/logout", async (route) => {
+    revokedAuthorizations.push(route.request().headers().authorization);
+    await route.fulfill({ status: 204 });
+  });
+  await page.route("**/api/admin/me", (route) => route.fulfill(isRenewed(route.request().headers().authorization)
+    ? { json: { data: {
+      user: { id: "user-admin", displayName: "Marie Dupont", email: "marie@rivage.fr" },
+      membership: {
+        propertyId: "property-rivage",
+        role: "ADMIN",
+        property: { id: "property-rivage", name: "Hôtel Rivage", slug: "hotel-rivage", timezone: "Europe/Paris", currency: "EUR" },
+      },
+    } } }
+    : expired));
+  await page.route("**/api/admin/bookings?*", (route) => route.fulfill(isRenewed(route.request().headers().authorization)
+    ? { json: { data: {
+      items: [],
+      page: 1,
+      pageSize: 5,
+      total: 0,
+      totalPages: 1,
+      summary: { total: 0, byStatus: {}, arrivalsToday: 0, departuresToday: 0 },
+    } } }
+    : expired));
+
+  await page.goto("/admin/reservations");
+
+  await expect(page.getByRole("heading", { level: 1, name: "Réservations" })).toBeVisible();
+  expect(refreshRequests).toEqual([{ refreshToken: "refresh-1" }]);
+  expect(await page.evaluate(() => [
+    sessionStorage.getItem("hotel.admin.accessToken"),
+    sessionStorage.getItem("hotel.admin.refreshToken"),
+  ])).toEqual(["renewed-token", "refresh-2"]);
+
+  await page.getByRole("button", { name: "Se déconnecter" }).click();
+  await expect(page).toHaveURL(/\/admin\/connexion$/);
+  await expect.poll(() => revokedAuthorizations).toEqual(["Bearer renewed-token"]);
+  expect(await page.evaluate(() => sessionStorage.getItem("hotel.admin.refreshToken"))).toBeNull();
+});
+
 test("renders planning rooms and occupancy in a real browser", async ({ page }) => {
   await page.addInitScript(() => {
     sessionStorage.setItem("hotel.admin.accessToken", "e2e-token");

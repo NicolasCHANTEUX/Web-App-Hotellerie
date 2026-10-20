@@ -5,6 +5,11 @@ import { getBookingQuote } from "./booking.quote.service.js";
 import { parseBookingQuoteBody, parseCreateBookingBody } from "./booking.validation.js";
 import { parseIdempotencyKey } from "./booking.idempotency.js";
 
+// Counts every attempt from one address, failed ones included, so it leaves
+// room for corrections and for visitors sharing an address. Holding rooms is
+// bounded separately by the active requests allowed per guest contact.
+export const BOOKING_CREATION_RATE_LIMIT = { max: 10, timeWindow: "1 hour" };
+
 export async function bookingRoutes(app: FastifyInstance) {
   app.post<{ Body: unknown }>("/quotes", {
     config: { rateLimit: { max: 60, timeWindow: "15 minutes" } },
@@ -22,7 +27,7 @@ export async function bookingRoutes(app: FastifyInstance) {
   });
 
   app.post<{ Body: unknown }>("/bookings", {
-    config: { rateLimit: { max: 3, timeWindow: "1 hour" } },
+    config: { rateLimit: BOOKING_CREATION_RATE_LIMIT },
   }, async (request, reply) => {
     try {
       const input = parseCreateBookingBody(request.body);

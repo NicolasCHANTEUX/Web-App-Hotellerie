@@ -20,3 +20,13 @@ test("ne confond pas deux jetons et borne le nombre d'entrees", () => {
   assert.equal(cache.get("token-b", 1_003), "b");
   assert.equal(cache.get("token-c", 1_003), "c");
 });
+
+test("oublie immédiatement un jeton révoqué", () => {
+  const cache = new ExpiringTokenCache<string>(10_000, 10);
+  cache.set("token-a", "a", 1_000);
+  cache.set("token-b", "b", 1_000);
+  cache.delete("token-a");
+
+  assert.equal(cache.get("token-a", 1_001), null);
+  assert.equal(cache.get("token-b", 1_001), "b");
+});

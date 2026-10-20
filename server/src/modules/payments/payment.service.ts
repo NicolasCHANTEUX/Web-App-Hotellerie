@@ -5,8 +5,9 @@ import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
 import { issuePaidInvoice } from "../billing/invoice.service.js";
 import { failRefundPayment, finalizeRefundPayment } from "../billing/billing.service.js";
-import { enqueueBookingNotification } from "../notifications/notification.service.js";
+import { adminBookingUrl, enqueueBookingNotification } from "../notifications/notification.service.js";
 import { bookingAccessTokenHash } from "../booking/booking.access.js";
+import { expireStaleBookingHolds } from "../booking/booking.holds.js";
 
 export class PaymentApiError extends Error {
   constructor(readonly statusCode: number, readonly code: string, message: string) {
@@ -174,15 +175,43 @@ function paymentIdFromEvent(event: Stripe.Event) {
   return typeof value === "string" && /^[0-9a-f-]{36}$/i.test(value) ? value : null;
 }
 
+const CONFIRMED_BOOKING_STATUSES: BookingStatus[] = [BookingStatus.CONFIRMED, BookingStatus.CHECKED_IN, BookingStatus.COMPLETED];
+
+/**
+ * Finds a free room of the booked type for a payment processed after the
+ * option lapsed, preferring the room initially held. Stale holds are closed
+ * first so that the guest's own expired option does not block its room.
+ */
+async function findRoomForLatePayment(
+  transaction: Prisma.TransactionClient,
+  booking: { propertyId: string; checkIn: Date; checkOut: Date },
+  roomTypeId: string,
+  preferredRoomId: string | undefined,
+) {
+  await expireStaleBookingHolds(transaction, new Date(), booking.propertyId);
+  const rooms = await transaction.room.findMany({
+    where: {
+      propertyId: booking.propertyId,
+      roomTypeId,
+      status: "ACTIVE",
+      allocations: { none: { status: "ACTIVE", checkIn: { lt: booking.checkOut }, checkOut: { gt: booking.checkIn } } },
+    },
+    orderBy: { number: "asc" },
+    select: { id: true, number: true },
+  });
+  return rooms.find((room) => room.id === preferredRoomId) ?? rooms[0] ?? null;
+}
+
 async function finalizePayment(transaction: Prisma.TransactionClient, paymentId: string, providerReference?: string, method = "card") {
   const payment = await transaction.payment.findUnique({
     where: { id: paymentId },
     include: {
       booking: {
         include: {
+          property: { select: { email: true } },
           hold: { include: { allocation: true, room: { select: { number: true } } } },
           rooms: { orderBy: { createdAt: "asc" }, take: 1 },
-          guests: { where: { isPrimary: true }, take: 1, select: { firstName: true, email: true } },
+          guests: { where: { isPrimary: true }, take: 1, select: { firstName: true, lastName: true, email: true, phone: true } },
         },
       },
     },
@@ -190,31 +219,100 @@ async function finalizePayment(transaction: Prisma.TransactionClient, paymentId:
   if (!payment || payment.provider !== "STRIPE") throw new PaymentApiError(404, "PAYMENT_NOT_FOUND", "Paiement introuvable.");
   if (payment.status === PaymentStatus.SUCCEEDED || payment.status === PaymentStatus.PARTIALLY_REFUNDED || payment.status === PaymentStatus.REFUNDED) return;
   const booking = payment.booking;
+  const bookingRoom = booking.rooms[0];
+  const hold = booking.hold;
+  let bookingStatusAfterPayment = booking.status;
+  let lateRoomNumber: string | null = null;
+  let attentionReason: string | null = null;
 
-  if (booking.status === BookingStatus.PENDING_PAYMENT) {
-    const hold = booking.hold;
-    const room = booking.rooms[0];
-    if (!hold || hold.status !== "ACTIVE" || hold.expiresAt <= new Date() || !hold.allocation || hold.allocation.status !== "ACTIVE" || !room) {
-      throw new PaymentApiError(409, "PAID_BOOKING_HOLD_EXPIRED", "Le paiement a été reçu après l'expiration de l'option. Une intervention est requise.");
-    }
+  if (CONFIRMED_BOOKING_STATUSES.includes(booking.status)) {
+    // Already confirmed by the reception or by an earlier event for this payment.
+  } else if (
+    booking.status === BookingStatus.PENDING_PAYMENT
+    && bookingRoom
+    && hold?.status === "ACTIVE"
+    && hold.expiresAt > new Date()
+    && hold.allocation?.status === "ACTIVE"
+  ) {
     await transaction.roomAllocation.update({ where: { id: hold.allocation.id }, data: { status: "RELEASED" } });
     await transaction.reservationHold.update({ where: { id: hold.id }, data: { status: "CONVERTED" } });
-    await transaction.bookingRoom.update({ where: { id: room.id }, data: { roomId: hold.roomId, roomNumberSnapshot: hold.room.number } });
+    await transaction.bookingRoom.update({ where: { id: bookingRoom.id }, data: { roomId: hold.roomId, roomNumberSnapshot: hold.room.number } });
     await transaction.roomAllocation.create({
-      data: { roomId: hold.roomId, bookingRoomId: room.id, source: "BOOKING", status: "ACTIVE", checkIn: booking.checkIn, checkOut: booking.checkOut },
+      data: { roomId: hold.roomId, bookingRoomId: bookingRoom.id, source: "BOOKING", status: "ACTIVE", checkIn: booking.checkIn, checkOut: booking.checkOut },
     });
     await transaction.booking.update({ where: { id: booking.id }, data: { status: BookingStatus.CONFIRMED, confirmedAt: new Date() } });
-  } else if (booking.status !== BookingStatus.CONFIRMED && booking.status !== BookingStatus.CHECKED_IN && booking.status !== BookingStatus.COMPLETED) {
-    throw new PaymentApiError(409, "BOOKING_NOT_CONFIRMABLE", "Le paiement concerne une réservation qui ne peut plus être confirmée automatiquement.");
+    bookingStatusAfterPayment = BookingStatus.CONFIRMED;
+  } else if ((booking.status === BookingStatus.PENDING_PAYMENT || booking.status === BookingStatus.EXPIRED) && bookingRoom) {
+    // Stripe only accepts the payment while its Checkout session, bounded by the
+    // option, is open: an event processed late (outage, Stripe retries) must not
+    // leave a paid stay unconfirmed while a room is still free.
+    const room = await findRoomForLatePayment(transaction, booking, bookingRoom.roomTypeId, hold?.roomId);
+    if (room) {
+      await transaction.reservationHold.updateMany({ where: { bookingId: booking.id, status: "ACTIVE" }, data: { status: "CONVERTED" } });
+      await transaction.bookingRoom.update({ where: { id: bookingRoom.id }, data: { roomId: room.id, roomNumberSnapshot: room.number } });
+      await transaction.roomAllocation.upsert({
+        where: { bookingRoomId: bookingRoom.id },
+        create: { roomId: room.id, bookingRoomId: bookingRoom.id, source: "BOOKING", status: "ACTIVE", checkIn: booking.checkIn, checkOut: booking.checkOut },
+        update: { roomId: room.id, status: "ACTIVE", checkIn: booking.checkIn, checkOut: booking.checkOut },
+      });
+      await transaction.booking.update({ where: { id: booking.id }, data: { status: BookingStatus.CONFIRMED, confirmedAt: new Date() } });
+      bookingStatusAfterPayment = BookingStatus.CONFIRMED;
+      lateRoomNumber = room.number;
+    } else {
+      attentionReason = "l'option avait expiré et aucune chambre de cette catégorie n'est plus disponible pour ces dates.";
+    }
+  } else {
+    attentionReason = booking.status === BookingStatus.CANCELLED
+      ? "la réservation avait été annulée avant la réception du paiement."
+      : `la réservation ne pouvait plus être confirmée automatiquement (statut ${booking.status}).`;
   }
-  const bookingStatusAfterPayment = booking.status === BookingStatus.PENDING_PAYMENT
-    ? BookingStatus.CONFIRMED
-    : booking.status;
 
+  // The money has been received in every case: the payment is recorded as such
+  // so that Stripe stops retrying and the team can refund it if needed.
   const updated = await transaction.payment.update({
     where: { id: payment.id },
     data: { status: PaymentStatus.SUCCEEDED, providerReference: providerReference ?? payment.providerReference, paymentMethodType: method, processedAt: new Date(), failureReason: null },
   });
+  const guest = booking.guests[0];
+
+  if (attentionReason) {
+    await transaction.auditLog.create({
+      data: {
+        propertyId: booking.propertyId,
+        bookingId: booking.id,
+        action: "STRIPE_PAYMENT_REQUIRES_ATTENTION",
+        entityType: "Payment",
+        entityId: payment.id,
+        before: { paymentStatus: payment.status, bookingStatus: booking.status },
+        after: { paymentStatus: updated.status, bookingStatus: booking.status },
+        metadata: { reason: attentionReason },
+      },
+    });
+    await enqueueBookingNotification(transaction, {
+      propertyId: booking.propertyId,
+      bookingId: booking.id,
+      recipient: booking.property.email,
+      template: "PAYMENT_REQUIRES_ATTENTION",
+      idempotencyKey: `payment:${payment.id}:requires-attention`,
+      payload: {
+        reference: booking.reference,
+        reason: attentionReason,
+        guestName: guest ? `${guest.firstName} ${guest.lastName}` : undefined,
+        guestEmail: guest?.email ?? undefined,
+        guestPhone: guest?.phone ?? undefined,
+        roomName: bookingRoom?.roomTypeNameSnapshot,
+        arrival: booking.checkIn.toISOString().slice(0, 10),
+        departure: booking.checkOut.toISOString().slice(0, 10),
+        adults: booking.adults,
+        children: booking.children,
+        total: Number(payment.amount),
+        currency: payment.currency,
+        adminUrl: adminBookingUrl(booking.id),
+      },
+    });
+    return;
+  }
+
   const invoice = await issuePaidInvoice(transaction, booking.id);
   await transaction.auditLog.create({
     data: {
@@ -225,10 +323,9 @@ async function finalizePayment(transaction: Prisma.TransactionClient, paymentId:
       entityId: payment.id,
       before: { paymentStatus: payment.status, bookingStatus: booking.status },
       after: { paymentStatus: updated.status, bookingStatus: bookingStatusAfterPayment },
-      metadata: { invoiceNumber: invoice.number },
+      metadata: { invoiceNumber: invoice.number, ...(lateRoomNumber ? { confirmedAfterHoldExpiry: true, roomNumber: lateRoomNumber } : {}) },
     },
   });
-  const guest = booking.guests[0];
   if (guest?.email) {
     await enqueueBookingNotification(transaction, {
       propertyId: booking.propertyId,

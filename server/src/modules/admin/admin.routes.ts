@@ -3,8 +3,10 @@ import { BookingStatus, RoomStatus } from "../../generated/prisma/client.js";
 import {
   authenticateAdmin,
   loginWithPassword,
+  refreshAdminSession,
   requireAdminContext,
   resolveMembership,
+  revokeAdminSession,
 } from "./admin.auth.js";
 import { AdminApiError, sendAdminError } from "./admin.errors.js";
 import { parseRoomPeriodQuery } from "./admin.room-query.js";
@@ -70,6 +72,10 @@ import {
 type LoginBody = {
   email?: unknown;
   password?: unknown;
+};
+
+type RefreshBody = {
+  refreshToken?: unknown;
 };
 
 type BookingListQuery = {
@@ -284,6 +290,27 @@ export async function adminRoutes(app: FastifyInstance) {
         throw new AdminApiError(400, "INVALID_CREDENTIALS", "Adresse e-mail ou mot de passe invalide.");
       }
       return { data: await loginWithPassword(email, password) };
+    });
+  });
+
+  app.post<{ Body: RefreshBody }>("/admin/auth/refresh", {
+    config: { rateLimit: { max: 30, timeWindow: "15 minutes" } },
+  }, async (request, reply) => {
+    return handleAdminRoute(reply, async () => {
+      const refreshToken = typeof request.body?.refreshToken === "string" ? request.body.refreshToken.trim() : "";
+      if (!refreshToken || refreshToken.length > 1024 || /\s/.test(refreshToken)) {
+        throw new AdminApiError(400, "INVALID_SESSION", "La session administrateur est invalide.");
+      }
+      return { data: await refreshAdminSession(refreshToken) };
+    });
+  });
+
+  app.post("/admin/auth/logout", {
+    config: { rateLimit: { max: 30, timeWindow: "15 minutes" } },
+  }, async (request, reply) => {
+    return handleAdminRoute(reply, async () => {
+      await revokeAdminSession(request);
+      return reply.code(204).send();
     });
   });
 

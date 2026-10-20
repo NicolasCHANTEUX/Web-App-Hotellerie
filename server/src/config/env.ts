@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { isIP } from "node:net";
 
 function required(name: string) {
   const value = process.env[name]?.trim();
@@ -6,8 +7,44 @@ function required(name: string) {
   return value;
 }
 
+const PROXY_ADDRESS_KEYWORDS = new Set(["loopback", "linklocal", "uniquelocal"]);
+
+function isProxyAddress(value: string) {
+  if (PROXY_ADDRESS_KEYWORDS.has(value)) return true;
+  const [address, prefix, ...rest] = value.split("/");
+  if (!address || rest.length > 0 || !isIP(address)) return false;
+  if (prefix === undefined) return true;
+  const maxPrefix = isIP(address) === 4 ? 32 : 128;
+  return /^\d{1,3}$/.test(prefix) && Number(prefix) <= maxPrefix;
+}
+
+/**
+ * Client addresses drive the rate limits: behind a proxy they must be read from
+ * X-Forwarded-For, otherwise every visitor shares the proxy address. A hop
+ * count or the proxy addresses should be preferred over `true`, which trusts
+ * any forwarded address and lets a direct caller choose its own.
+ */
+export function parseTrustProxy(value: string | undefined, production: boolean): boolean | number | string[] {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) {
+    if (production) {
+      throw new Error("TRUST_PROXY is required in production: false when clients reach the API directly, otherwise the number of proxies in front of it or their addresses.");
+    }
+    return false;
+  }
+  if (normalized === "false") return false;
+  if (normalized === "true") return true;
+  if (/^\d+$/.test(normalized)) {
+    const hops = Number(normalized);
+    if (hops >= 1 && hops <= 10) return hops;
+  } else {
+    const addresses = normalized.split(",").map((item) => item.trim()).filter(Boolean);
+    if (addresses.length > 0 && addresses.every(isProxyAddress)) return addresses;
+  }
+  throw new Error("TRUST_PROXY must be true, false, a number of proxies between 1 and 10, or a comma-separated list of proxy addresses.");
+}
+
 const port = Number(process.env.PORT ?? 3001);
-const trustProxy = process.env.TRUST_PROXY?.trim().toLowerCase() === "true";
 const notificationDelivery = process.env.NOTIFICATION_DELIVERY?.trim().toLowerCase() || "disabled";
 const backgroundWorkerMode = process.env.BACKGROUND_WORKER_MODE?.trim().toLowerCase() || "embedded";
 const nodeEnv = process.env.NODE_ENV?.trim().toLowerCase() || "development";
@@ -15,6 +52,8 @@ const nodeEnv = process.env.NODE_ENV?.trim().toLowerCase() || "development";
 if (!["development", "test", "production"].includes(nodeEnv)) {
   throw new Error("NODE_ENV must be development, test or production.");
 }
+
+const trustProxy = parseTrustProxy(process.env.TRUST_PROXY, nodeEnv === "production");
 
 if (!["disabled", "log", "resend"].includes(notificationDelivery)) {
   throw new Error("NOTIFICATION_DELIVERY must be disabled, log or resend.");

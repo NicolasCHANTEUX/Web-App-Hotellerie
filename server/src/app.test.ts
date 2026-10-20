@@ -7,6 +7,7 @@ import { errorResponse, HttpError } from "./lib/http-errors.js";
 process.env.BACKGROUND_WORKER_MODE = "disabled";
 process.env.CORS_ORIGIN = "https://hotel.example";
 const { buildApp } = await import("./app.js");
+const { BOOKING_CREATION_RATE_LIMIT } = await import("./modules/booking/booking.routes.js");
 
 const INTERNAL_ERROR = {
   statusCode: 500,
@@ -67,12 +68,15 @@ test("applique le format d'erreur aux routes déclarées par l'application", asy
 test("répond 429 lorsque la limite de demandes de réservation est atteinte", async (t) => {
   const app = await testApp(t);
   const responses = [];
-  for (let attempt = 0; attempt < 4; attempt += 1) {
+  for (let attempt = 0; attempt <= BOOKING_CREATION_RATE_LIMIT.max; attempt += 1) {
     responses.push(await app.inject({ method: "POST", url: "/bookings", payload: {} }));
   }
 
-  assert.deepEqual(responses.map((response) => response.statusCode), [400, 400, 400, 429]);
-  const limited = responses[3]!;
+  assert.deepEqual(
+    responses.map((response) => response.statusCode),
+    [...Array<number>(BOOKING_CREATION_RATE_LIMIT.max).fill(400), 429],
+  );
+  const limited = responses.at(-1)!;
   assert.equal(limited.json().error.code, "RATE_LIMITED");
   assert.ok(limited.headers["retry-after"]);
 });

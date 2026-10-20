@@ -140,6 +140,13 @@ export function Confirmation() {
           setPaymentSynchronizing(false);
           return;
         }
+        if (["CANCELLED", "EXPIRED", "NO_SHOW"].includes(result.booking.status) && result.paymentStatus === "SUCCEEDED") {
+          sessionStorage.removeItem(storageKeys.paymentKey(result.booking.reference));
+          sessionStorage.removeItem(legacyStorageKeys.paymentKey(result.booking.reference));
+          setPaymentNotice("Votre paiement a bien été reçu, mais l'option sur la chambre n'était plus active. L'hôtel a été prévenu et vous contactera rapidement pour confirmer votre séjour ou vous rembourser.");
+          setPaymentSynchronizing(false);
+          return;
+        }
         if (result.paymentStatus === "FAILED" || result.paymentStatus === "CANCELLED") {
           setPaymentError("Le paiement n'a pas été validé. Vous pouvez réessayer tant que l'option est active.");
           setPaymentSynchronizing(false);
