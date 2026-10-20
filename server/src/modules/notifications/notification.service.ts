@@ -2,6 +2,7 @@ import type { FastifyBaseLogger } from "fastify";
 import { Prisma, type NotificationTemplate } from "../../generated/prisma/client.js";
 import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
+import { publicBookingUrl } from "../booking/booking.access.js";
 
 const MAX_ATTEMPTS = 5;
 const DELIVERY_TIMEOUT_MS = 8_000;
@@ -31,7 +32,15 @@ export type NotificationPayload = {
   children?: number;
   specialRequests?: string;
   adminUrl?: string;
+  /** Added when the message is sent, never stored: it contains the access token. */
+  bookingUrl?: string;
 };
+
+const STAFF_TEMPLATES = new Set<NotificationTemplate>([
+  "CONTACT_REQUEST_RECEIVED",
+  "BOOKING_REQUEST_RECEIVED",
+  "PAYMENT_REQUIRES_ATTENTION",
+]);
 
 type NotificationTransaction = Pick<Prisma.TransactionClient, "notification" | "property">;
 
@@ -91,6 +100,10 @@ function presentParagraphs(values: Array<string | null | undefined>) {
   return values.filter((value): value is string => Boolean(value));
 }
 
+function actionButton(url: string, label: string) {
+  return `<p style="margin:28px 0 0"><a href="${escapeHtml(url)}" style="display:inline-block;background:#28231e;color:#fff;text-decoration:none;padding:12px 20px;border-radius:999px;font-weight:700">${escapeHtml(label)}</a></p>`;
+}
+
 function renderStaffMessage(
   template: NotificationTemplate,
   payload: NotificationPayload,
@@ -100,9 +113,7 @@ function renderStaffMessage(
 ) {
   const actionLabel = "Ouvrir dans l'administration";
   const text = presentParagraphs([...paragraphs, payload.adminUrl && `${actionLabel} : ${payload.adminUrl}`]).join("\n\n");
-  const action = payload.adminUrl
-    ? `<p style="margin:28px 0 0"><a href="${escapeHtml(payload.adminUrl)}" style="display:inline-block;background:#28231e;color:#fff;text-decoration:none;padding:12px 20px;border-radius:999px;font-weight:700">${actionLabel}</a></p>`
-    : "";
+  const action = payload.adminUrl ? actionButton(payload.adminUrl, actionLabel) : "";
   const html = `<!doctype html><html lang="fr"><body style="margin:0;background:#f4f0ea;color:#28231e;font-family:Arial,sans-serif"><div style="max-width:620px;margin:0 auto;padding:32px 20px"><div style="background:#fff;border:1px solid #ded4c8;border-radius:14px;padding:32px"><p style="margin:0 0 24px;color:#9a7345;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase">${escapeHtml(propertyName)}</p><h1 style="margin:0 0 24px;font-family:Georgia,serif;font-size:30px;font-weight:500">${escapeHtml(headline)}</h1>${paragraphs.map((paragraph) => `<p style="margin:0 0 16px;line-height:1.65;white-space:pre-wrap">${escapeHtml(paragraph)}</p>`).join("")}${action}</div></div></body></html>`;
   return { subject: notificationSubject(template, payload), text, html };
 }
@@ -189,8 +200,17 @@ export function renderNotification(template: NotificationTemplate, payload: Noti
     : null;
   const paragraphs = [greeting, message, stay, updatedTotal, teamSignature]
     .filter((value): value is string => Boolean(value));
-  const text = paragraphs.join("\n\n");
-  const html = `<!doctype html><html lang="fr"><body style="margin:0;background:#f4f0ea;color:#28231e;font-family:Arial,sans-serif"><div style="max-width:620px;margin:0 auto;padding:32px 20px"><div style="background:#fff;border:1px solid #ded4c8;border-radius:14px;padding:32px"><p style="margin:0 0 24px;color:#9a7345;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase">${escapeHtml(propertyName)}</p><h1 style="margin:0 0 24px;font-family:Georgia,serif;font-size:30px;font-weight:500">${escapeHtml(headline)}</h1>${paragraphs.map((paragraph) => `<p style="margin:0 0 16px;line-height:1.65">${escapeHtml(paragraph)}</p>`).join("")}<p style="margin:28px 0 0;color:#776f66;font-size:12px">Message automatique - merci de ne pas transmettre votre référence de réservation.</p></div></div></body></html>`;
+  const actionLabel = "Consulter ma réservation";
+  const notice = payload.bookingUrl
+    ? "Ce lien personnel donne accès à votre réservation : ne transférez pas ce message."
+    : "Message automatique - merci de ne pas transmettre votre référence de réservation.";
+  const text = presentParagraphs([
+    ...paragraphs,
+    payload.bookingUrl && `${actionLabel} : ${payload.bookingUrl}`,
+    payload.bookingUrl && notice,
+  ]).join("\n\n");
+  const action = payload.bookingUrl ? actionButton(payload.bookingUrl, actionLabel) : "";
+  const html = `<!doctype html><html lang="fr"><body style="margin:0;background:#f4f0ea;color:#28231e;font-family:Arial,sans-serif"><div style="max-width:620px;margin:0 auto;padding:32px 20px"><div style="background:#fff;border:1px solid #ded4c8;border-radius:14px;padding:32px"><p style="margin:0 0 24px;color:#9a7345;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase">${escapeHtml(propertyName)}</p><h1 style="margin:0 0 24px;font-family:Georgia,serif;font-size:30px;font-weight:500">${escapeHtml(headline)}</h1>${paragraphs.map((paragraph) => `<p style="margin:0 0 16px;line-height:1.65">${escapeHtml(paragraph)}</p>`).join("")}${action}<p style="margin:28px 0 0;color:#776f66;font-size:12px">${escapeHtml(notice)}</p></div></div></body></html>`;
   return { subject: notificationSubject(template, payload), text, html };
 }
 
@@ -273,7 +293,10 @@ export async function dispatchPendingNotifications(logger?: FastifyBaseLogger) {
     },
     orderBy: { createdAt: "asc" },
     take: 20,
-    include: { property: { select: { name: true, timezone: true } } },
+    include: {
+      property: { select: { name: true, timezone: true } },
+      booking: { select: { id: true, publicAccessTokenHash: true, publicAccessTokenExpiresAt: true } },
+    },
   });
 
   let sent = 0;
@@ -285,10 +308,14 @@ export async function dispatchPendingNotifications(logger?: FastifyBaseLogger) {
     });
     if (claimed.count !== 1) continue;
     try {
-      const payload = {
+      const bookingUrl = candidate.booking && !STAFF_TEMPLATES.has(candidate.template)
+        ? publicBookingUrl(candidate.booking)
+        : undefined;
+      const payload: NotificationPayload = {
         ...(candidate.payload as NotificationPayload),
         propertyName: candidate.property.name,
         timezone: candidate.property.timezone,
+        ...(bookingUrl ? { bookingUrl } : {}),
       };
       const rendered = renderNotification(candidate.template, payload);
       const providerReference = env.notificationDelivery === "resend"

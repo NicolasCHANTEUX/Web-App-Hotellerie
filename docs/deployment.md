@@ -33,7 +33,7 @@ Node.js 22 est la version de référence pour le développement local, la CI et 
 
 4. Vérifier `/health/live`, puis `/health`.
 5. Construire le frontend avec `VITE_API_URL=https://api.exemple.fr`, `VITE_PUBLIC_SITE_URL=https://www.exemple.fr` et `npm run build:production`, puis exécuter `npm run seo:verify` et publier `dist/`.
-6. Tester une recherche, une demande de réservation, la connexion admin, un paiement de test, un PDF et un téléversement d'image.
+6. Tester une recherche, une demande de réservation, l'ouverture du lien reçu par e-mail, la connexion admin, un paiement de test, un PDF et un téléversement d'image. Les liens des e-mails sont construits à partir de `FRONTEND_URL` : vérifier qu'il s'agit bien du domaine public du site.
 
 La migration et le démarrage de l'API sont séparés volontairement : plusieurs instances ne doivent pas tenter de migrer la base simultanément.
 

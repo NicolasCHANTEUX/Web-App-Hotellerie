@@ -3,8 +3,8 @@ import test from "node:test";
 import { BookingError } from "./booking.errors.js";
 import {
   assertIdempotencyRequestMatches,
-  bookingReferenceFromIdempotencyKey,
   bookingRequestHash,
+  generateBookingReference,
   parseIdempotencyKey,
 } from "./booking.idempotency.js";
 import type { CreateBookingInput } from "./booking.types.js";
@@ -47,13 +47,14 @@ test("valide et normalise une clé d'idempotence UUID", () => {
   );
 });
 
-test("dérive une référence stable et insensible à la casse", () => {
-  assert.equal(
-    bookingReferenceFromIdempotencyKey(KEY, "BKG"),
-    bookingReferenceFromIdempotencyKey(KEY.toLowerCase(), "BKG"),
-  );
-  assert.equal(bookingReferenceFromIdempotencyKey(KEY, "BKG"), "BKG-123E4567E89B42D3A456426614174000");
-  assert.equal(bookingReferenceFromIdempotencyKey(KEY, "RIV"), "RIV-123E4567E89B42D3A456426614174000");
+test("génère une référence courte, lisible et indépendante de la clé du client", () => {
+  const references = new Set(Array.from({ length: 200 }, () => generateBookingReference("BKG")));
+
+  for (const reference of references) {
+    assert.match(reference, /^BKG-[2-9A-HJKMNP-TW-Z]{6}$/);
+  }
+  assert.ok(references.size > 195);
+  assert.match(generateBookingReference("RIV"), /^RIV-[2-9A-HJKMNP-TW-Z]{6}$/);
 });
 
 test("le hash est stable quand seul l'ordre des options change", () => {

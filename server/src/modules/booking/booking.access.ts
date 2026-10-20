@@ -22,6 +22,27 @@ export function bookingAccessTokenExpiresAt(checkOut: Date) {
   return expiry;
 }
 
+type PublicAccess = {
+  id: string;
+  publicAccessTokenHash: string | null;
+  publicAccessTokenExpiresAt: Date | null;
+};
+
+/**
+ * Personal link to the booking page, while the booking still grants public
+ * access. The token sits in the fragment, which browsers never send to servers
+ * nor in Referer headers; the page reads it from `#acces=`.
+ */
+export function publicBookingUrl(booking: PublicAccess, now = new Date()) {
+  if (!booking.publicAccessTokenHash || !booking.publicAccessTokenExpiresAt || booking.publicAccessTokenExpiresAt <= now) {
+    return undefined;
+  }
+  const token = bookingAccessToken(booking.id);
+  // A rotated secret no longer matches the stored hash: the link would fail.
+  if (bookingAccessTokenHash(token) !== booking.publicAccessTokenHash) return undefined;
+  return `${env.frontendUrl.replace(/\/+$/, "")}/confirmation#acces=${token}`;
+}
+
 export function parseBookingAccessToken(value: unknown) {
   if (typeof value !== "string" || !TOKEN_PATTERN.test(value.trim())) {
     throw new BookingError(404, "BOOKING_NOT_FOUND", "Réservation introuvable.");

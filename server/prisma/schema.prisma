@@ -391,6 +391,7 @@ model Booking {
   id                         String        @id @default(uuid()) @db.Uuid
   propertyId                 String        @db.Uuid
   reference                  String        @unique
+  idempotencyKey             String?       @unique @db.Uuid
   status                     BookingStatus @default(DRAFT)
   source                     BookingSource @default(WEBSITE)
   checkIn                    DateTime      @db.Date

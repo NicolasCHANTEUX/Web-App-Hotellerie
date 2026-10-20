@@ -1,4 +1,4 @@
-import { CalendarPlus, CheckCircle2, CreditCard, Download } from "lucide-react";
+import { CalendarPlus, CheckCircle2, CircleX, CreditCard, Download } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
 import { createStripeCheckout, getPaymentConfig, getPublicBooking, getStripeCheckoutStatus } from "../api/hotel";
@@ -18,6 +18,20 @@ type ConfirmationState = {
   currency?: string;
   accessToken?: string;
   holdExpiresAt?: string;
+};
+
+// Personal link sent by e-mail: the token sits in the fragment so that it never
+// reaches a server log nor a Referer header.
+const ACCESS_LINK = /^#acces=((?:bkg|rvg)_[A-Za-z0-9_-]{43})$/;
+
+function readAccessLink(hash: string) {
+  return ACCESS_LINK.exec(hash)?.[1] ?? null;
+}
+
+const INACTIVE_LABELS: Partial<Record<NonNullable<ConfirmationState["status"]>, string>> = {
+  CANCELLED: "Réservation annulée",
+  EXPIRED: "Option expirée",
+  NO_SHOW: "Séjour non honoré",
 };
 
 function readStoredConfirmation(): ConfirmationState {
@@ -75,7 +89,12 @@ export function Confirmation() {
   const [paymentStarting, setPaymentStarting] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const navigationState = (location.state as ConfirmationState | null) ?? {};
-  const [booking, setBooking] = useState<ConfirmationState>(() => navigationState.reference ? navigationState : readStoredConfirmation());
+  const [linkToken] = useState(() => readAccessLink(location.hash));
+  const [linkStatus, setLinkStatus] = useState<"idle" | "loading" | "invalid">(() => linkToken ? "loading" : "idle");
+  const [booking, setBooking] = useState<ConfirmationState>(() => {
+    if (linkToken) return { accessToken: linkToken };
+    return navigationState.reference ? navigationState : readStoredConfirmation();
+  });
   const paymentReturn = new URLSearchParams(location.search).get("payment");
   const checkoutSessionId = new URLSearchParams(location.search).get("session_id");
   const [paymentSynchronizing, setPaymentSynchronizing] = useState(
@@ -86,7 +105,13 @@ export function Confirmation() {
   );
 
   const isConfirmed = booking.status === "CONFIRMED" || booking.status === "CHECKED_IN" || booking.status === "COMPLETED";
-  const isInactive = booking.status === "CANCELLED" || booking.status === "EXPIRED" || booking.status === "NO_SHOW";
+  const inactiveLabel = booking.status ? INACTIVE_LABELS[booking.status] ?? null : null;
+  const isInactive = inactiveLabel !== null;
+
+  useEffect(() => {
+    if (!linkToken) return;
+    window.history.replaceState(window.history.state, "", `${location.pathname}${location.search}`);
+  }, [linkToken, location.pathname, location.search]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -104,9 +129,12 @@ export function Confirmation() {
       .then((freshBooking) => {
         const updated = { ...freshBooking, accessToken } satisfies ConfirmationState;
         setBooking(updated);
+        setLinkStatus("idle");
         sessionStorage.setItem(storageKeys.latestConfirmation, JSON.stringify(updated));
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!controller.signal.aborted) setLinkStatus((current) => current === "loading" ? "invalid" : current);
+      });
     return () => controller.abort();
   }, [booking.accessToken, paymentReturn]);
 
@@ -178,6 +206,33 @@ export function Confirmation() {
     };
   }, [booking.accessToken, checkoutSessionId, paymentReturn]);
 
+  if (linkStatus === "loading") {
+    return (
+      <section className="confirmation-page">
+        <div className="confirmation-card">
+          <p className="confirmation-lead" role="status">Chargement de votre réservation…</p>
+        </div>
+      </section>
+    );
+  }
+
+  if (linkStatus === "invalid") {
+    return (
+      <section className="confirmation-page">
+        <div className="confirmation-card">
+          <CircleX className="confirmation-icon" />
+          <p className="eyebrow">Lien de réservation</p>
+          <h1>Votre réservation n'a pas pu être affichée.</h1>
+          <p className="confirmation-lead">
+            Le lien a peut-être expiré après votre séjour, ou le service est momentanément indisponible.
+            Contactez l'hôtel à {property.email}{property.phone ? ` ou au ${property.phone}` : ""}.
+          </p>
+          <div className="confirmation-actions"><Link className="btn-primary" to="/">Retour à l'accueil</Link></div>
+        </div>
+      </section>
+    );
+  }
+
   if (!booking.reference && !paymentSynchronizing) return <Navigate to="/reservation" replace />;
 
   async function startOnlinePayment() {
@@ -235,7 +290,7 @@ export function Confirmation() {
       const pageWidth = documentPdf.internal.pageSize.getWidth();
       const margin = 22;
       const contentWidth = pageWidth - margin * 2;
-      const statusLabel = isConfirmed ? "Réservation confirmée" : "Demande en attente de confirmation";
+      const statusLabel = isConfirmed ? "Réservation confirmée" : inactiveLabel ?? "Demande en attente de confirmation";
       const optionsLabel = booking.options?.length ? booking.options.join(", ") : "Aucune option";
       const rows = [
         ["Hébergement", booking.room ?? property.name],
@@ -243,7 +298,7 @@ export function Confirmation() {
         ["Voyageurs", `${booking.adults ?? 2} adulte(s)${booking.children ? ` - ${booking.children} enfant(s)` : ""}`],
         ["Options", optionsLabel],
         ["Montant du séjour", amountLabel(booking.total, booking.currency)],
-        ...(!isConfirmed ? [["Maintien de la chambre", `Jusqu'au ${dateTimeLabel(booking.holdExpiresAt, property.timezone)}`]] : []),
+        ...(!isConfirmed && !isInactive ? [["Maintien de la chambre", `Jusqu'au ${dateTimeLabel(booking.holdExpiresAt, property.timezone)}`]] : []),
       ];
 
       documentPdf.setFillColor(43, 39, 34);
@@ -288,7 +343,7 @@ export function Confirmation() {
       documentPdf.setFont("helvetica", "bold");
       documentPdf.setTextColor(43, 39, 34);
       documentPdf.setFontSize(11);
-      documentPdf.text(isConfirmed ? "Votre séjour est confirmé." : "Votre demande a bien été enregistrée.", margin + 8, cursorY + 19);
+      documentPdf.text(isConfirmed ? "Votre séjour est confirmé." : isInactive ? "Cette réservation n'est plus active." : "Votre demande a bien été enregistrée.", margin + 8, cursorY + 19);
       documentPdf.setFont("helvetica", "normal");
       documentPdf.setFontSize(9);
       documentPdf.setTextColor(113, 104, 94);
@@ -307,12 +362,14 @@ export function Confirmation() {
   return (
     <section className="confirmation-page">
       <div className="confirmation-card">
-        <CheckCircle2 className="confirmation-icon" />
-        <p className="eyebrow">{isConfirmed ? "Réservation confirmée" : "Demande enregistrée"}</p>
-        <h1>{isConfirmed ? "Votre séjour est confirmé." : "Votre réservation nous est bien parvenue."}</h1>
+        {isInactive ? <CircleX className="confirmation-icon" /> : <CheckCircle2 className="confirmation-icon" />}
+        <p className="eyebrow">{isConfirmed ? "Réservation confirmée" : inactiveLabel ?? "Demande enregistrée"}</p>
+        <h1>{isConfirmed ? "Votre séjour est confirmé." : isInactive ? "Cette réservation n'est plus active." : "Votre réservation nous est bien parvenue."}</h1>
         <p className="confirmation-lead">{isConfirmed
           ? <>La réservation a été confirmée par l'hôtel. Un récapitulatif a été envoyé à l'adresse renseignée lors de la réservation.</>
-          : <>La demande est enregistrée en attente de confirmation manuelle par l'hôtel. L'option sur la chambre est maintenue pendant 24 h.</>}</p>
+          : isInactive
+            ? <>Pour toute question, contactez l'hôtel à {property.email}{property.phone ? ` ou au ${property.phone}` : ""}.</>
+            : <>La demande est enregistrée en attente de confirmation manuelle par l'hôtel. L'option sur la chambre est maintenue pendant 24 h.</>}</p>
         <div className="confirmation-reference"><span>Numéro de réservation</span><strong>{booking.reference ?? "À retrouver dans votre confirmation"}</strong></div>
         <dl className="confirmation-details">
           <div><dt>Hébergement</dt><dd>{booking.room ?? property.name}</dd></div>
@@ -320,7 +377,7 @@ export function Confirmation() {
           <div><dt>Voyageurs</dt><dd>{booking.adults ?? 2} adulte(s){booking.children ? ` · ${booking.children} enfant(s)` : ""}</dd></div>
           <div><dt>Options</dt><dd>{booking.options?.length ? booking.options.join(", ") : "Aucune option"}</dd></div>
           <div><dt>Montant du séjour</dt><dd>{amountLabel(booking.total, booking.currency)}</dd></div>
-          {!isConfirmed && <div><dt>Maintien de la chambre</dt><dd>Jusqu'au {dateTimeLabel(booking.holdExpiresAt, property.timezone)}</dd></div>}
+          {!isConfirmed && !isInactive && <div><dt>Maintien de la chambre</dt><dd>Jusqu'au {dateTimeLabel(booking.holdExpiresAt, property.timezone)}</dd></div>}
         </dl>
         {paymentSynchronizing && <p className="confirmation-payment-notice" role="status">Vérification du paiement auprès de l'hôtel…</p>}
         {paymentNotice && !paymentSynchronizing && <p className="confirmation-payment-notice" role="status">{paymentNotice}</p>}

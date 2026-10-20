@@ -6,8 +6,8 @@ import { BookingError } from "./booking.errors.js";
 import { expireStaleBookingHolds } from "./booking.holds.js";
 import {
   assertIdempotencyRequestMatches,
-  bookingReferenceFromIdempotencyKey,
   bookingRequestHash,
+  generateBookingReference,
 } from "./booking.idempotency.js";
 import { assertExpectedTotal, buildTaxInclusivePrice } from "./booking.pricing.js";
 import type { BookingConfirmation, CreateBookingInput } from "./booking.types.js";
@@ -78,7 +78,6 @@ export async function createBooking(
   idempotencyKey: string,
   options?: BookingCreationOptions,
 ): Promise<BookingConfirmation> {
-  const reference = bookingReferenceFromIdempotencyKey(idempotencyKey, env.bookingReferencePrefix);
   const bookingId = randomUUID();
   const requestHash = bookingRequestHash(input, options ? {
     propertyId: options.propertyId,
@@ -91,7 +90,7 @@ export async function createBooking(
       return await prisma.$transaction(async (transaction) => {
         const now = new Date();
         const existingBooking = await transaction.booking.findUnique({
-          where: { reference },
+          where: { idempotencyKey },
           include: {
             rooms: { orderBy: { createdAt: "asc" }, take: 1 },
             extras: { orderBy: { createdAt: "asc" } },
@@ -468,7 +467,9 @@ export async function createBooking(
           data: {
             id: bookingId,
             propertyId: roomType.propertyId,
-            reference,
+            // Drawn again on each attempt: a rare collision is retried as a conflict.
+            reference: generateBookingReference(env.bookingReferencePrefix),
+            idempotencyKey,
             status: "PENDING_PAYMENT",
             source: options?.source ?? "WEBSITE",
             checkIn: input.arrival,

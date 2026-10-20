@@ -22,6 +22,8 @@ Les périodes hôtelières utilisent toujours l'intervalle semi-ouvert `[arrivé
 
 Une demande publique est traitée dans une transaction `SERIALIZABLE`. Le serveur recalcule le montant, choisit une chambre physique libre, crée un `ReservationHold`, son `RoomAllocation`, puis la réservation `PENDING_PAYMENT`. La contrainte d'exclusion PostgreSQL empêche deux allocations actives de se chevaucher sur une même chambre. Les reprises après conflit sont bornées et idempotentes.
 
+Chaque réservation reçoit une référence courte générée par le serveur, par exemple `BKG-7K3F9Q`, lisible au téléphone. Elle n'est pas secrète. La clé d'idempotence du client est conservée séparément et identifie les demandes rejouées.
+
 La création depuis l'administration réutilise exactement ce moteur de disponibilité et de tarification, avec une clé d'idempotence distincte par saisie. Elle convertit ensuite l'option en allocation confirmée, enregistre le canal (`PHONE`, `EMAIL`, `WALK_IN` ou `ADMIN`), fige l'acceptation des conditions et journalise l'administrateur à l'origine de l'opération.
 
 Les noms, tarifs, taxes, conditions et options sont figés dans des instantanés. Une modification ultérieure du catalogue ne réécrit jamais une réservation historique.
@@ -45,6 +47,8 @@ Les paiements réussis peuvent émettre une facture numérotée. Les rembourseme
 Les notifications sont écrites dans la même transaction que l'événement métier. Un worker les livre ensuite via le fournisseur configuré ; une panne d'e-mail ne peut donc pas annuler une réservation, un paiement ou une demande de contact.
 
 L'adresse de l'établissement reçoit chaque nouvelle demande de réservation du site, avec un lien vers le dossier dans l'administration ; les réservations saisies par la réception n'en génèrent pas. Elle reçoit aussi les paiements à traiter manuellement. Une réponse à ces messages part directement au client.
+
+Les e-mails adressés au client contiennent un lien personnel vers sa réservation. Le jeton d'accès figure après le `#` de l'URL, que le navigateur ne transmet jamais aux serveurs. Ce lien est calculé au moment de l'envoi et n'est pas stocké. Il permet notamment de payer en ligne plus tard, depuis un autre appareil.
 
 Le formulaire public `POST /contact-requests` valide strictement les champs, exige le consentement, limite les tentatives, protège les reprises par clé d'idempotence et conserve chaque demande en base avant de notifier l'adresse de l'établissement.
 

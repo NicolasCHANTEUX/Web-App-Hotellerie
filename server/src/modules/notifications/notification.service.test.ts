@@ -93,3 +93,19 @@ test("alerte l'hôtel d'un paiement reçu qui n'a pas pu confirmer la réservati
   assert.match(rendered.text, /remboursez le paiement/);
   assert.match(rendered.text, /booking=def/);
 });
+
+test("ajoute au courriel client un lien personnel vers sa réservation", () => {
+  const withLink = renderNotification("BOOKING_OPTIONED", {
+    firstName: "Camille",
+    reference: "BKG-7K3F9Q",
+    bookingUrl: "https://hotel.example/confirmation#acces=bkg_token",
+  });
+  assert.match(withLink.html, /href="https:\/\/hotel\.example\/confirmation#acces=bkg_token"/);
+  assert.match(withLink.html, /Consulter ma réservation/);
+  assert.match(withLink.text, /Consulter ma réservation : https:\/\/hotel\.example\/confirmation#acces=bkg_token/);
+  assert.match(withLink.text, /ne transférez pas ce message/);
+
+  const withoutLink = renderNotification("BOOKING_OPTIONED", { firstName: "Camille", reference: "BKG-7K3F9Q" });
+  assert.doesNotMatch(withoutLink.html, /Consulter ma réservation/);
+  assert.doesNotMatch(withoutLink.text, /acces=/);
+});

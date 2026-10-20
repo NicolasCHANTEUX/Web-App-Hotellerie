@@ -115,6 +115,64 @@ test("renders a controlled error page for an unknown admin route", async ({ page
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", "noindex, nofollow");
 });
 
+const accessToken = `bkg_${"A".repeat(43)}`;
+
+async function mockPublicBooking(page: Page, status: number, booking?: Record<string, unknown>) {
+  const tokens: Array<string | undefined> = [];
+  await mockProperty(page);
+  await page.route("**/api/payments/config", (route) => route.fulfill({ json: { data: { stripeEnabled: false } } }));
+  await page.route("**/api/bookings/public", async (route) => {
+    tokens.push(route.request().headers()["x-booking-access-token"]);
+    await route.fulfill(booking
+      ? { json: { data: booking } }
+      : { status, json: { error: { code: "BOOKING_NOT_FOUND", message: "Réservation introuvable." } } });
+  });
+  return tokens;
+}
+
+const linkedBooking = {
+  reference: "BKG-7K3F9Q",
+  status: "CONFIRMED",
+  room: "Chambre Élégance",
+  arrival: "2027-03-12",
+  departure: "2027-03-14",
+  adults: 2,
+  children: 0,
+  options: [],
+  total: 270,
+  currency: "EUR",
+};
+
+test("opens a booking from the personal link of an e-mail", async ({ page }) => {
+  const tokens = await mockPublicBooking(page, 200, linkedBooking);
+
+  await page.goto(`/confirmation#acces=${accessToken}`);
+
+  await expect(page.getByRole("heading", { level: 1, name: "Votre séjour est confirmé." })).toBeVisible();
+  await expect(page.getByText("BKG-7K3F9Q", { exact: true })).toBeVisible();
+  expect(tokens).toEqual([accessToken]);
+  await expect(page).toHaveURL(/\/confirmation$/);
+});
+
+test("shows a cancelled booking opened from its link as inactive", async ({ page }) => {
+  await mockPublicBooking(page, 200, { ...linkedBooking, status: "CANCELLED" });
+
+  await page.goto(`/confirmation#acces=${accessToken}`);
+
+  await expect(page.getByRole("heading", { level: 1, name: "Cette réservation n'est plus active." })).toBeVisible();
+  await expect(page.getByText("Réservation annulée", { exact: true })).toBeVisible();
+  await expect(page.getByText("Maintien de la chambre")).toHaveCount(0);
+});
+
+test("explains an expired booking link instead of redirecting", async ({ page }) => {
+  await mockPublicBooking(page, 404);
+
+  await page.goto(`/confirmation#acces=${accessToken}`);
+
+  await expect(page.getByRole("heading", { level: 1, name: "Votre réservation n'a pas pu être affichée." })).toBeVisible();
+  await expect(page).toHaveURL(/\/confirmation$/);
+});
+
 test("submits a contact request and confirms the success response", async ({ page }) => {
   await mockProperty(page);
   let submittedBody: unknown = null;

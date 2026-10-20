@@ -35,6 +35,7 @@ const requiredConstraints = [
 const requiredColumns = [
   ["bookings", "publicAccessTokenHash"],
   ["bookings", "publicAccessTokenExpiresAt"],
+  ["bookings", "idempotencyKey"],
   ["payments", "refundReason"],
 ] as const;
 
