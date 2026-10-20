@@ -401,6 +401,16 @@
 .admin-room-type-form-grid input:focus, .admin-room-type-form-grid textarea:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgb(169 130 86 / 10%); }
 .admin-room-type-form-grid input[readonly] { background: #f2efeb; color: #7b7168; }
 .admin-room-type-form-grid small { color: #8a8076; font-size: 9px; font-weight: 400; }
+.admin-room-type-form-grid select { width: 100%; min-width: 0; min-height: 42px; border: 1px solid #d8d0c8; border-radius: 6px; outline: 0; background: #fdfcfa; padding: 10px 11px; color: #443d37; font: inherit; font-size: 12px; font-weight: 400; }
+.admin-room-type-form-grid select:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgb(169 130 86 / 10%); }
+.admin-extras-dialog { width: min(640px, 100%); }
+.admin-extra-actions { display: inline-flex; justify-content: flex-end; gap: 7px; }
+.admin-extra-actions button { display: inline-flex; min-height: 34px; align-items: center; justify-content: center; gap: 6px; border: 1px solid #dcd4cb; border-radius: 5px; background: white; padding: 0 10px; color: #655c54; font-size: 10px; font-weight: 650; cursor: pointer; }
+.admin-extra-actions button.danger { border-color: #e2c6c2; color: #9b5149; }
+.admin-extra-actions button:disabled { opacity: .42; cursor: not-allowed; }
+.admin-extra-actions button svg { width: 13px; }
+.admin-extra-actions.compact button { width: 34px; padding: 0; }
+.admin-extras-table td > small { max-width: 320px; white-space: normal; }
 .admin-room-type-promotion-field { display: grid; gap: 14px; border: 1px solid #e0d4c7; border-radius: 9px; background: #fbf7f1; padding: 16px 18px; }
 .admin-room-type-promotion-toggle { display: flex; align-items: center; gap: 10px; color: #50473f; cursor: pointer; }
 .admin-room-type-promotion-toggle > input { width: 16px; height: 16px; accent-color: var(--gold-dark); }
@@ -697,6 +707,7 @@ button.admin-planning-slot { font: inherit; }
 
 .admin-mobile-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .admin-mobile-card-head > span { display: grid; gap: 4px; text-align: left; }
+.admin-mobile-card-head > .admin-status { display: inline-flex; flex: 0 0 auto; }
 .admin-mobile-card-head > span small { color: #938a81; font-size: 9px; font-weight: 400; }
 
 /* Keep operational information legible at normal browser zoom. */

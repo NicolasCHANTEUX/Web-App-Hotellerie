@@ -476,3 +476,96 @@ test("renders planning rooms and occupancy in a real browser", async ({ page }) 
   await expect(planning.getByRole("rowheader", { name: /101/ })).toBeVisible();
   await expect(planning.locator(".admin-planning-slot.booking").first()).toBeVisible();
 });
+
+async function signInAs(page: Page, role: "ADMIN" | "RECEPTION") {
+  await page.addInitScript(() => {
+    sessionStorage.setItem("hotel.admin.accessToken", "e2e-token");
+    sessionStorage.setItem("hotel.admin.refreshToken", "e2e-refresh");
+    sessionStorage.setItem("hotel.admin.expiresAt", String(Date.now() + 600_000));
+  });
+  await page.route("**/api/admin/me", (route) => route.fulfill({ json: { data: {
+    user: { id: "user-admin", displayName: "Marie Dupont", email: "marie@rivage.fr" },
+    membership: {
+      propertyId: "property-rivage",
+      role,
+      property: { id: "property-rivage", name: "Hôtel Rivage", slug: "hotel-rivage", timezone: "Europe/Paris", currency: "EUR" },
+    },
+  } } }));
+}
+
+test("manages the stay options from the administration", async ({ page }) => {
+  await signInAs(page, "ADMIN");
+  const extra = (id: string, name: string, overrides: Record<string, unknown> = {}) => ({
+    id,
+    code: name.toUpperCase(),
+    name,
+    description: "",
+    price: 15,
+    currency: "EUR",
+    pricingUnit: "PER_NIGHT",
+    taxRate: 10,
+    isActive: true,
+    displayOrder: 0,
+    bookingCount: 0,
+    canDelete: true,
+    updatedAt: "2026-10-20T08:00:00.000Z",
+    ...overrides,
+  });
+  let extras = [
+    extra("extra-breakfast", "Petit-déjeuner", { price: 18, pricingUnit: "PER_PERSON_PER_NIGHT", bookingCount: 3, canDelete: false }),
+    extra("extra-parking", "Parking", { displayOrder: 1 }),
+  ];
+  const writes: Array<{ method: string; url: string; body: unknown }> = [];
+  await page.route("**/api/admin/extras**", async (route) => {
+    const request = route.request();
+    if (request.method() === "GET") return route.fulfill({ json: { data: extras } });
+    writes.push({ method: request.method(), url: request.url(), body: request.postDataJSON() });
+    if (request.method() === "POST") {
+      const created = extra("extra-baby-bed", "Lit bébé", { price: 8, pricingUnit: "ONE_TIME", displayOrder: 2 });
+      extras = [...extras, created];
+      return route.fulfill({ status: 201, json: { data: created } });
+    }
+    extras = extras.filter((item) => !request.url().endsWith(item.id));
+    return route.fulfill({ json: { data: { id: "extra-parking" } } });
+  });
+
+  await page.goto("/admin/options");
+
+  await expect(page.getByRole("heading", { level: 1, name: "Options" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Petit-déjeuner", exact: true })).toBeVisible();
+  await expect(page.getByText("par personne / nuit", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Supprimer Petit-déjeuner" })).toBeDisabled();
+
+  await page.getByRole("button", { name: "Nouvelle option" }).click();
+  const editor = page.getByRole("dialog", { name: "Nouvelle option" });
+  await expect(editor.getByLabel("Nom")).toBeFocused();
+  await editor.getByLabel("Nom").fill("Lit bébé");
+  await editor.getByLabel(/Prix TTC/).fill("8");
+  await editor.getByLabel("Facturation").selectOption("ONE_TIME");
+  await editor.getByRole("button", { name: "Enregistrer" }).click();
+  await expect(editor).toHaveCount(0);
+  await expect(page.getByRole("cell", { name: "Lit bébé", exact: true })).toBeVisible();
+  expect(writes[0]).toMatchObject({
+    method: "POST",
+    body: { name: "Lit bébé", description: "", price: 8, pricingUnit: "ONE_TIME", taxRate: 10, isActive: true, displayOrder: 2 },
+  });
+
+  await page.getByRole("button", { name: "Supprimer Parking" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Supprimer définitivement" }).click();
+  await expect(page.getByRole("cell", { name: "Parking", exact: true })).toHaveCount(0);
+  expect(writes[1]).toMatchObject({ method: "DELETE", body: { updatedAt: "2026-10-20T08:00:00.000Z" } });
+  expect(writes[1]?.url).toMatch(/\/api\/admin\/extras\/extra-parking$/);
+});
+
+test("hides the catalogue options from the reception", async ({ page }) => {
+  await signInAs(page, "RECEPTION");
+  await page.route("**/api/admin/bookings?*", (route) => route.fulfill({ json: { data: {
+    items: [], page: 1, pageSize: 5, total: 0, totalPages: 1,
+    summary: { total: 0, byStatus: {}, arrivalsToday: 0, departuresToday: 0 },
+  } } }));
+
+  await page.goto("/admin/options");
+
+  await expect(page).toHaveURL(/\/admin\/reservations$/);
+  await expect(page.getByRole("link", { name: "Options" })).toHaveCount(0);
+});

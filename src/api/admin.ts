@@ -638,6 +638,58 @@ export function deleteAdminRoomType(id: string, updatedAt: string, accessToken: 
   );
 }
 
+export type AdminPricingUnit = "PER_PERSON_PER_NIGHT" | "PER_NIGHT" | "ONE_TIME";
+
+export type AdminExtra = {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  price: number;
+  currency: string;
+  pricingUnit: AdminPricingUnit;
+  taxRate: number | null;
+  isActive: boolean;
+  displayOrder: number;
+  bookingCount: number;
+  canDelete: boolean;
+  updatedAt: string;
+};
+
+export type AdminExtraInput = {
+  name: string;
+  description: string;
+  price: number;
+  pricingUnit: AdminPricingUnit;
+  taxRate: number;
+  isActive: boolean;
+  displayOrder: number;
+};
+
+export function getAdminExtras(accessToken: string, signal?: AbortSignal) {
+  return adminRequest<AdminExtra[]>("/admin/extras", { signal }, accessToken);
+}
+
+export function createAdminExtra(input: AdminExtraInput, accessToken: string, signal?: AbortSignal) {
+  return adminRequest<AdminExtra>("/admin/extras", { method: "POST", body: JSON.stringify(input), signal }, accessToken);
+}
+
+export function updateAdminExtra(id: string, input: AdminExtraInput & { updatedAt: string }, accessToken: string, signal?: AbortSignal) {
+  return adminRequest<AdminExtra>(
+    `/admin/extras/${encodeURIComponent(id)}`,
+    { method: "PATCH", body: JSON.stringify(input), signal },
+    accessToken,
+  );
+}
+
+export function deleteAdminExtra(id: string, updatedAt: string, accessToken: string, signal?: AbortSignal) {
+  return adminRequest<{ id: string }>(
+    `/admin/extras/${encodeURIComponent(id)}`,
+    { method: "DELETE", body: JSON.stringify({ updatedAt }), signal },
+    accessToken,
+  );
+}
+
 export function updateAdminRoom(id: string, input: UpdateAdminRoomInput, accessToken: string, signal?: AbortSignal) {
   return adminRequest<AdminRoomEditable>(
     `/admin/rooms/${encodeURIComponent(id)}`,

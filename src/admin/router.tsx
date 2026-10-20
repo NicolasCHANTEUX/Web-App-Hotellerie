@@ -5,6 +5,7 @@ import {
   AdminIndexRedirect,
   AdminRoot,
   RequireAdminAuth,
+  RequireCatalogAccess,
   RequirePlanningAccess,
   RequireReservationAccess,
 } from "./auth";
@@ -39,6 +40,13 @@ export function createAdminRouter() {
                 },
               },
               { path: "chambres", lazy: async () => ({ Component: (await import("../pages/admin/AdminRooms")).AdminRooms }) },
+              {
+                path: "options",
+                lazy: async () => {
+                  const { AdminExtras } = await import("../pages/admin/AdminExtras");
+                  return { Component: () => <RequireCatalogAccess><AdminExtras /></RequireCatalogAccess> };
+                },
+              },
             ],
           },
         ],

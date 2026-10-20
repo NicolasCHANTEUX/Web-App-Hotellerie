@@ -39,6 +39,13 @@ import {
   updateAdminBooking,
 } from "./admin.booking-update.js";
 import { parseAdminAvailabilityBlockBody } from "./admin.availability-block.js";
+import {
+  parseAdminExtraCreateBody,
+  parseAdminExtraDeleteBody,
+  parseAdminExtraUpdateBody,
+  requireCatalogPermission,
+} from "./admin.extra.js";
+import { createAdminExtra, deleteAdminExtra, listAdminExtras, updateAdminExtra } from "./admin.extra.service.js";
 import { parseIdempotencyKey, parseManualPaymentBody, parseRefundBody } from "../billing/billing.validation.js";
 import { recordManualPayment, refundPayment } from "../billing/billing.service.js";
 import { getInvoiceForProperty, listBookingInvoices, renderInvoicePdf } from "../billing/invoice.service.js";
@@ -112,6 +119,10 @@ type BlockParams = {
 };
 
 type InvoiceParams = {
+  id: string;
+};
+
+type ExtraParams = {
   id: string;
 };
 
@@ -696,6 +707,69 @@ export async function adminRoutes(app: FastifyInstance) {
           ),
         };
       }),
+  );
+
+  app.get(
+    "/admin/extras",
+    { preHandler: authenticateAdmin },
+    async (request, reply) => handleAdminRoute(reply, async () => ({
+      data: await listAdminExtras(requireCatalogPermission(resolveMembership(request)).propertyId),
+    })),
+  );
+
+  app.post<{ Body: unknown }>(
+    "/admin/extras",
+    { preHandler: authenticateAdmin, config: { rateLimit: { max: 30, timeWindow: "15 minutes" } } },
+    async (request, reply) => handleAdminRoute(reply, async () => {
+      const membership = requireCatalogPermission(resolveMembership(request));
+      const extra = await createAdminExtra(
+        membership,
+        requireAdminContext(request).user.id,
+        parseAdminExtraCreateBody(request.body),
+        request.ip,
+      );
+      return reply.code(201).send({ data: extra });
+    }),
+  );
+
+  app.patch<{ Params: ExtraParams; Body: unknown }>(
+    "/admin/extras/:id",
+    { preHandler: authenticateAdmin, config: { rateLimit: { max: 60, timeWindow: "15 minutes" } } },
+    async (request, reply) => handleAdminRoute(reply, async () => {
+      if (!uuidPattern.test(request.params.id)) {
+        throw new AdminApiError(400, "INVALID_EXTRA_ID", "L'identifiant de l'option est invalide.");
+      }
+      const membership = requireCatalogPermission(resolveMembership(request));
+      return {
+        data: await updateAdminExtra(
+          membership,
+          requireAdminContext(request).user.id,
+          request.params.id,
+          parseAdminExtraUpdateBody(request.body),
+          request.ip,
+        ),
+      };
+    }),
+  );
+
+  app.delete<{ Params: ExtraParams; Body: unknown }>(
+    "/admin/extras/:id",
+    { preHandler: authenticateAdmin, config: { rateLimit: { max: 20, timeWindow: "15 minutes" } } },
+    async (request, reply) => handleAdminRoute(reply, async () => {
+      if (!uuidPattern.test(request.params.id)) {
+        throw new AdminApiError(400, "INVALID_EXTRA_ID", "L'identifiant de l'option est invalide.");
+      }
+      const membership = requireCatalogPermission(resolveMembership(request));
+      return {
+        data: await deleteAdminExtra(
+          membership,
+          requireAdminContext(request).user.id,
+          request.params.id,
+          parseAdminExtraDeleteBody(request.body),
+          request.ip,
+        ),
+      };
+    }),
   );
 
   app.post<{ Body: unknown }>(

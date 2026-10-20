@@ -223,6 +223,16 @@ export function canUsePlanning(role?: AdminRole) {
   return role === "ADMIN" || role === "RECEPTION" || role === "HOUSEKEEPING";
 }
 
+export function canManageCatalog(role?: AdminRole) {
+  return role === "ADMIN";
+}
+
+export function RequireCatalogAccess({ children }: { children: ReactNode }) {
+  const { profile } = useAdminAuth();
+  if (!canManageCatalog(profile?.membership.role)) return <AdminIndexRedirect />;
+  return children;
+}
+
 export function RequireReservationAccess({ children }: { children: ReactNode }) {
   const { profile } = useAdminAuth();
   if (!canReadReservations(profile?.membership.role)) {
