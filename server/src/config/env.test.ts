@@ -9,8 +9,9 @@ test("exige un choix explicite de TRUST_PROXY en production", () => {
   assert.equal(parseTrustProxy("false", true), false);
 });
 
-test("accepte un booléen, un nombre de proxies ou leurs adresses", () => {
-  assert.equal(parseTrustProxy("TRUE", true), true);
+test("accepte un nombre de proxies ou leurs adresses en production", () => {
+  assert.equal(parseTrustProxy("TRUE", false), true);
+  assert.throws(() => parseTrustProxy("TRUE", true), /unsafe in production/);
   assert.equal(parseTrustProxy("2", true), 2);
   assert.deepEqual(parseTrustProxy("10.0.0.0/8, 192.168.1.1", true), ["10.0.0.0/8", "192.168.1.1"]);
   assert.deepEqual(parseTrustProxy("loopback,fd00::/8", true), ["loopback", "fd00::/8"]);

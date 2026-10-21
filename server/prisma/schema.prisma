@@ -969,3 +969,12 @@ model AuditLog {
   @@index([bookingId, createdAt])
   @@map("audit_logs")
 }
+
+model RateLimitCounter {
+  key       String   @id @db.Char(64)
+  hits      BigInt
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+
+  @@index([expiresAt], map: "rate_limit_counters_expires_at_idx")
+  @@map("rate_limit_counters")
+}

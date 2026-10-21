@@ -25,7 +25,8 @@ export async function availabilityRoutes(app: FastifyInstance) {
     const adults = Number(request.query.adults ?? 2);
     const children = Number(request.query.children ?? 0);
 
-    if (!arrival || !departure || departure <= arrival) {
+    const nights = arrival && departure ? (departure.getTime() - arrival.getTime()) / 86_400_000 : 0;
+    if (!arrival || !departure || !Number.isInteger(nights) || nights < 1 || nights > 365) {
       return reply.code(400).send({ error: { code: "INVALID_DATES", message: "Les dates du séjour sont invalides." } });
     }
     if (!Number.isInteger(adults) || adults < 1 || adults > 10 || !Number.isInteger(children) || children < 0 || children > 10) {

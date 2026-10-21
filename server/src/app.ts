@@ -7,6 +7,7 @@ import { startBackgroundWorker } from "./background-worker.js";
 import { env } from "./config/env.js";
 import { errorResponse, HttpError, NOT_FOUND_ERROR } from "./lib/http-errors.js";
 import { prisma } from "./lib/prisma.js";
+import { PostgresRateLimitStore } from "./lib/postgres-rate-limit-store.js";
 import { adminRoutes } from "./modules/admin/index.js";
 import { availabilityRoutes } from "./modules/availability/availability.routes.js";
 import { bookingRoutes } from "./modules/booking/booking.routes.js";
@@ -68,6 +69,7 @@ export async function buildApp() {
 
   await app.register(rateLimit, {
     global: false,
+    ...(env.nodeEnv === "production" ? { store: PostgresRateLimitStore } : {}),
     errorResponseBuilder: (_request, context) => new HttpError(
       context.statusCode,
       "RATE_LIMITED",

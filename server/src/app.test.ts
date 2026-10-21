@@ -81,6 +81,16 @@ test("répond 429 lorsque la limite de demandes de réservation est atteinte", a
   assert.ok(limited.headers["retry-after"]);
 });
 
+test("rejette une recherche de disponibilités trop longue avant le calcul des tarifs", async (t) => {
+  const app = await testApp(t);
+  const response = await app.inject({
+    method: "GET",
+    url: "/availability?arrival=2030-01-01&departure=9999-12-31&adults=2&children=0",
+  });
+  assert.equal(response.statusCode, 400);
+  assert.equal(response.json().error.code, "INVALID_DATES");
+});
+
 test("refuse une origine non autorisée sans erreur serveur", async (t) => {
   const app = await testApp(t);
 

@@ -245,13 +245,13 @@ Cette commande ecrit dans la base configuree par `DATABASE_URL`; elle n'est jama
 
 ## Avant une mise en production publique
 
-Le limiteur actuel est adapte au MVP mono-instance : dix tentatives de reservation par heure et par IP, erreurs comprises, plus deux demandes actives maximum pour une meme adresse e-mail ou un meme telephone. Les compteurs sont gardes en memoire par instance. Avant exposition publique, ajouter un challenge anti-bot et un store de rate-limit partage entre instances.
+Le limiteur autorise dix tentatives de reservation par heure et par IP, erreurs comprises, plus deux demandes actives maximum pour une meme adresse e-mail ou un meme telephone. En production, les compteurs sont partages entre les instances dans PostgreSQL ; la migration `20261023090000_shared_rate_limit` doit etre appliquee avant le deploiement de l'API. Si la base est indisponible, les routes limitees echouent sans laisser passer les requetes. En developpement et dans les tests, le limiteur reste en memoire. Un challenge anti-bot peut completer ces limites avant une campagne publique.
 
 `TRUST_PROXY` est obligatoire en production, pour que le limiteur lise la vraie adresse du client :
 
 - `false` lorsque les clients atteignent directement l'API ;
 - le nombre de proxies places devant l'API (`1` sur la plupart des hebergeurs), ou leurs adresses (`10.0.0.0/8,192.168.1.1`) ;
-- `true` fait confiance a toute adresse transmise et permet a un client direct de choisir la sienne : a eviter.
+- `true` est refuse en production, car un client direct pourrait choisir son adresse transmise.
 
 Sans ce reglage derriere un proxy, tous les visiteurs partagent l'adresse du proxy et donc les memes limites. L'API journalise alors un avertissement a la premiere requete portant `X-Forwarded-For`.
 

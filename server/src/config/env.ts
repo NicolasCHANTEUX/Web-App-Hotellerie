@@ -33,7 +33,10 @@ export function parseTrustProxy(value: string | undefined, production: boolean):
     return false;
   }
   if (normalized === "false") return false;
-  if (normalized === "true") return true;
+  if (normalized === "true") {
+    if (production) throw new Error("TRUST_PROXY=true is unsafe in production; configure the proxy hop count or trusted proxy addresses.");
+    return true;
+  }
   if (/^\d+$/.test(normalized)) {
     const hops = Number(normalized);
     if (hops >= 1 && hops <= 10) return hops;

@@ -22,7 +22,7 @@ Le navigateur appelle l'API publique sur le meme domaine avec `/api`. Laisser `V
 
 Configurer les variables de production du backend indiquees ci-dessous dans Vercel, notamment `DATABASE_URL`, les cles Supabase, `BOOKING_ACCESS_TOKEN_SECRET`, `BOOKING_REFERENCE_PREFIX` et `TRUST_PROXY`. Donner a `FRONTEND_URL` et `CORS_ORIGIN` l'origine HTTPS publique du site (ajouter les origines de preview si elles doivent fonctionner). Ne pas definir manuellement `PORT`, `HOST`, `NODE_ENV` ou `BACKGROUND_WORKER_MODE` : l'image Vercel les definit. Le backend en conteneur ecoute sur le port 80 et desactive son worker integre, car Vercel peut demarrer plusieurs instances et les arreter entre les requetes.
 
-Appliquer les migrations Prisma avant le deploiement avec la cible `migrate` du Dockerfile habituel. Si les notifications ou la purge des images sont utilisees, executer le worker `start:notifications` sur un hebergement de processus permanent. Apres deploiement, verifier `/api/health/live`, `/api/health`, `/api/property`, les routes React en acces direct et le webhook Stripe sur `/api/payments/stripe/webhook` si Stripe est active.
+Appliquer les migrations Prisma avant le deploiement avec la cible `migrate` du Dockerfile habituel. La migration des compteurs de limitation est obligatoire : sans elle, les routes limitees refusent les requetes. Si les notifications ou la purge des images sont utilisees, executer le worker `start:notifications` sur un hebergement de processus permanent. Apres deploiement, verifier `/api/health/live`, `/api/health`, `/api/property`, les routes React en acces direct et le webhook Stripe sur `/api/payments/stripe/webhook` si Stripe est active.
 
 ## Ordre d'une mise en ligne
 
