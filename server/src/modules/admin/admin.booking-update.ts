@@ -1,6 +1,14 @@
 import { Prisma, BookingStatus, type BookingSource } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import { assertExpectedTotal, buildTaxInclusivePrice, moneyToCents, touristTaxPeriodFilter } from "../booking/booking.pricing.js";
+import {
+  minStayMessage,
+  nightlyRatesSnapshot,
+  priceStayNights,
+  quotedStay,
+  staySeasonsSelection,
+  stayPricingRelations,
+} from "../booking/booking.stay-rates.js";
 import { parseCreateBookingBody } from "../booking/booking.validation.js";
 import { BookingError } from "../booking/booking.errors.js";
 import { bookingAccessTokenExpiresAt } from "../booking/booking.access.js";
@@ -131,6 +139,7 @@ async function resolveUpdatedPricing(
       property: {
         select: {
           currency: true,
+          seasons: staySeasonsSelection(input.arrival, input.departure),
           taxRules: {
             where: {
               isActive: true,
@@ -153,15 +162,7 @@ async function resolveUpdatedPricing(
         },
         orderBy: { basePricePerNight: "asc" },
       },
-      promotions: {
-        where: {
-          isActive: true,
-          validFrom: { lte: input.arrival },
-          OR: [{ validUntil: null }, { validUntil: { gte: input.departure } }],
-        },
-        orderBy: [{ validFrom: "desc" }, { createdAt: "desc" }],
-        take: 1,
-      },
+      ...stayPricingRelations(input.arrival, input.departure),
       rooms: {
         where: {
           status: "ACTIVE",
@@ -203,8 +204,17 @@ async function resolveUpdatedPricing(
 
   const ratePlan = roomType.ratePlans.find((rate) => rate.currency === roomType.property.currency);
   if (!ratePlan) throw new AdminApiError(409, "RATE_NOT_AVAILABLE", "Aucun tarif TTC n'est disponible pour ce séjour.");
-  const promotion = roomType.promotions[0] ?? null;
-  const nightlyPrice = promotion?.promotionalPricePerNight ?? ratePlan.basePricePerNight;
+  const stayRates = priceStayNights({
+    arrival: input.arrival,
+    nights,
+    basePrice: ratePlan.basePricePerNight,
+    seasons: roomType.property.seasons,
+    rates: roomType.seasonRates,
+    promotions: roomType.promotions,
+  });
+  if (stayRates.minStay) throw new AdminApiError(409, "MIN_STAY_NOT_MET", minStayMessage(stayRates.minStay));
+  const promotion = stayRates.promotion;
+  const nightlyPrice = stayRates.averagePrice;
   const selectedExtras = input.extraIds.length
     ? await transaction.extra.findMany({
         where: {
@@ -222,10 +232,9 @@ async function resolveUpdatedPricing(
   }
 
   const price = buildTaxInclusivePrice({
-    nightlyPrice,
+    nightlyPrices: stayRates.nights.map((night) => night.price),
     accommodationTaxRate: ratePlan.taxRate,
     arrival: input.arrival,
-    nights,
     adults: input.adults,
     children: input.children,
     extras: selectedExtras.map((extra) => ({
@@ -248,7 +257,7 @@ async function resolveUpdatedPricing(
   const pricedExtras = price.extras.map(({ item, ...values }) => ({ extra: item, ...values }));
 
   const pricingSnapshot = {
-    version: 4,
+    version: 5,
     priceTaxMode: "INCLUSIVE",
     revision: { channel: "ADMIN_BOOKING_UPDATE", reason },
     nights,
@@ -267,11 +276,11 @@ async function resolveUpdatedPricing(
       id: promotion.id,
       label: promotion.label,
       discountPercent: promotion.discountPercent.toFixed(2),
-      referenceNightlyPriceTtc: money(promotion.referencePricePerNight),
-      promotionalNightlyPriceTtc: money(promotion.promotionalPricePerNight),
       validFrom: dateOnly(promotion.validFrom),
       validUntil: promotion.validUntil ? dateOnly(promotion.validUntil) : null,
     } : null,
+    regularAccommodationTotalTtc: money(stayRates.regularTotal),
+    nightlyRates: nightlyRatesSnapshot(stayRates.nights),
     extras: pricedExtras.map(({ extra, quantity, lineSubtotal, lineTotal, taxRate, taxAmount }) => ({
       id: extra.id,
       code: extra.code,
@@ -295,7 +304,7 @@ async function resolveUpdatedPricing(
     currency: ratePlan.currency,
   };
 
-  return { nights, roomType, room, ratePlan, nightlyPrice, price, pricedExtras, pricingSnapshot };
+  return { nights, roomType, room, ratePlan, nightlyPrice, stayRates, price, pricedExtras, pricingSnapshot };
 }
 
 export async function getAdminBookingUpdateQuote(
@@ -330,16 +339,10 @@ export async function getAdminBookingUpdateQuote(
       id: resolved.roomType.id,
       slug: resolved.roomType.slug,
       name: resolved.roomType.name,
-      unitPrice: Number(resolved.nightlyPrice),
       subtotal: Number(resolved.price.accommodationSubtotal),
       taxAmount: Number(resolved.price.accommodationTax),
       total: Number(resolved.price.accommodationTotal),
-      promotion: resolved.roomType.promotions[0] ? {
-        id: resolved.roomType.promotions[0].id,
-        label: resolved.roomType.promotions[0].label,
-        discountPercent: Number(resolved.roomType.promotions[0].discountPercent),
-        referenceUnitPrice: Number(resolved.roomType.promotions[0].referencePricePerNight),
-      } : null,
+      ...quotedStay(resolved.stayRates),
     },
     extras: resolved.pricedExtras.map(({ extra, quantity, unitPrice, pricingUnit, lineSubtotal, taxAmount, lineTotal }) => ({
       id: extra.id,
@@ -545,6 +548,7 @@ export async function updateAdminBooking(
               roomTypeNameSnapshot: resolved.roomType.name,
               roomNumberSnapshot: booking.status === BookingStatus.CONFIRMED ? resolved.room.number : null,
               nightlyPriceSnapshot: resolved.nightlyPrice,
+              nightlyRatesSnapshot: nightlyRatesSnapshot(resolved.stayRates.nights),
               taxRateSnapshot: resolved.ratePlan.taxRate,
               taxAmountSnapshot: resolved.price.accommodationTax,
               priceTaxModeSnapshot: "INCLUSIVE",

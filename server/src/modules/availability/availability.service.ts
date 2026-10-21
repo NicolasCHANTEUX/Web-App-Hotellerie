@@ -1,6 +1,7 @@
 import { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import { priceTaxRule, roundMoney, touristTaxPeriodFilter } from "../booking/booking.pricing.js";
+import { priceStayNights, staySeasonsSelection, stayPricingRelations } from "../booking/booking.stay-rates.js";
 import { serializeRoomType } from "../catalog/catalog.service.js";
 
 export type AvailabilityInput = {
@@ -29,6 +30,7 @@ export async function searchAvailability(input: AvailabilityInput, propertyId?: 
       property: {
         select: {
           currency: true,
+          seasons: staySeasonsSelection(input.arrival, input.departure),
           taxRules: {
             where: {
               isActive: true,
@@ -52,14 +54,7 @@ export async function searchAvailability(input: AvailabilityInput, propertyId?: 
         },
         orderBy: { basePricePerNight: "asc" },
       },
-      promotions: {
-        where: {
-          isActive: true,
-          validFrom: { lte: input.arrival },
-          OR: [{ validUntil: null }, { validUntil: { gte: input.departure } }],
-        },
-        orderBy: [{ validFrom: "desc" }, { createdAt: "desc" }],
-      },
+      ...stayPricingRelations(input.arrival, input.departure),
       _count: {
         select: {
           rooms: {
@@ -86,14 +81,31 @@ export async function searchAvailability(input: AvailabilityInput, propertyId?: 
     },
   });
 
+  // Seasons belong to the property: a minimum stay applies to every room type.
+  let minStay: { minNights: number; seasonLabel: string } | null = null;
   const availableRoomTypes = roomTypes.flatMap((roomType) => {
-    if (!roomType._count.rooms) return [];
-    const serialized = serializeRoomType(roomType, { arrival: input.arrival, departure: input.departure });
-    if (!serialized) return [];
-    const stay = {
+    const rate = roomType.ratePlans[0];
+    if (!roomType._count.rooms || !rate) return [];
+    const stayRates = priceStayNights({
       arrival: input.arrival,
       nights,
-      nightlyPrice: new Prisma.Decimal(serialized.price),
+      basePrice: rate.basePricePerNight,
+      seasons: roomType.property.seasons,
+      rates: roomType.seasonRates,
+      promotions: roomType.promotions,
+    });
+    if (stayRates.minStay) {
+      minStay = stayRates.minStay;
+      return [];
+    }
+    const serialized = serializeRoomType(roomType, rate, {
+      price: stayRates.averagePrice,
+      originalPrice: stayRates.promotion ? roundMoney(stayRates.regularTotal.div(nights)) : null,
+      promotion: stayRates.promotion,
+    });
+    const stay = {
+      arrival: input.arrival,
+      nightlyPrices: stayRates.nights.map((night) => night.price),
       adults: input.adults,
       children: input.children,
     };
@@ -105,7 +117,9 @@ export async function searchAvailability(input: AvailabilityInput, propertyId?: 
     return [{
       ...serialized,
       availableUnits: roomType._count.rooms,
-      totalPrice: serialized.price * nights,
+      // Exact sums of the nights: `price` is only their average.
+      totalPrice: Number(stayRates.total),
+      ...(stayRates.promotion ? { originalTotalPrice: Number(stayRates.regularTotal) } : {}),
       touristTaxTotal: Number(touristTaxTotal),
     }];
   });
@@ -119,5 +133,6 @@ export async function searchAvailability(input: AvailabilityInput, propertyId?: 
     },
     nights,
     roomTypes: availableRoomTypes,
+    minStay: minStay as { minNights: number; seasonLabel: string } | null,
   };
 }

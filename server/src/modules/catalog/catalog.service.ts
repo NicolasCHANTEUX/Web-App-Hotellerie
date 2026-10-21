@@ -1,22 +1,60 @@
+import type { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import { env } from "../../config/env.js";
+import { priceStayNights, type StayPromotion, type StaySeason, type StaySeasonRate } from "../booking/booking.stay-rates.js";
 
-const roomTypeInclude = {
-  amenities: {
-    orderBy: { sortOrder: "asc" as const },
-    include: { amenity: true },
-  },
-  ratePlans: {
-    where: { isActive: true, priceTaxMode: "INCLUSIVE" as const },
-    orderBy: { basePricePerNight: "asc" as const },
-  },
-  promotions: {
-    where: { isActive: true },
-    orderBy: { validFrom: "desc" as const },
-  },
-} as const;
+// "From" prices look at the nights of the coming year.
+const CATALOG_HORIZON_NIGHTS = 365;
 
-type CatalogRoomType = Awaited<ReturnType<typeof findRoomTypes>>[number];
+function today() {
+  return new Date(new Date().toISOString().slice(0, 10) + "T00:00:00.000Z");
+}
+
+function catalogRoomTypeInclude() {
+  return {
+    amenities: {
+      orderBy: { sortOrder: "asc" as const },
+      include: { amenity: true },
+    },
+    ratePlans: {
+      where: { isActive: true, priceTaxMode: "INCLUSIVE" as const },
+      orderBy: { basePricePerNight: "asc" as const },
+    },
+    promotions: {
+      where: { isActive: true, OR: [{ validUntil: null }, { validUntil: { gt: today() } }] },
+      orderBy: { validFrom: "asc" as const },
+    },
+    seasonRates: {
+      where: { season: { validUntil: { gte: today() } } },
+      include: { season: true },
+    },
+  };
+}
+
+type CatalogRoomTypeFields = {
+  id: string;
+  slug: string;
+  name: string;
+  shortName: string | null;
+  description: string;
+  maxGuests: number;
+  maxAdults: number;
+  maxChildren: number;
+  surfaceSqm: number;
+  bedLabel: string;
+  coverImageUrl: string;
+  gallery: Prisma.JsonValue;
+  amenities: Array<{ amenity: { label: string } }>;
+};
+
+type CatalogRate = { taxRate: Prisma.Decimal; currency: string; refundable: boolean };
+
+/** Nightly price shown for a room type, with its regular price when promoted. */
+export type NightlyOffer = {
+  price: Prisma.Decimal;
+  originalPrice: Prisma.Decimal | null;
+  promotion: StayPromotion | null;
+};
 
 function imageGallery(value: unknown, coverImageUrl: string) {
   if (!Array.isArray(value)) return [coverImageUrl];
@@ -24,20 +62,33 @@ function imageGallery(value: unknown, coverImageUrl: string) {
   return images.length ? images : [coverImageUrl];
 }
 
-export function serializeRoomType(
-  roomType: CatalogRoomType,
-  promotionPeriod?: { arrival: Date; departure: Date },
-) {
-  const rate = roomType.ratePlans[0];
-  if (!rate) return null;
-  const arrival = promotionPeriod?.arrival ?? new Date(new Date().toISOString().slice(0, 10) + "T00:00:00.000Z");
-  const departure = promotionPeriod?.departure ?? new Date(arrival.getTime() + 86_400_000);
-  const promotion = roomType.promotions.find((item) =>
-    item.isActive
-    && item.validFrom <= arrival
-    && (!item.validUntil || item.validUntil >= departure),
-  );
+/**
+ * Lowest nightly price actually offered over the coming year, seasons,
+ * weekends and promotions included: the "from" price of the catalogue.
+ */
+export function lowestNightlyOffer(
+  roomType: { promotions: StayPromotion[]; seasonRates: Array<StaySeasonRate & { season: StaySeason }> },
+  basePrice: Prisma.Decimal,
+  from = today(),
+): NightlyOffer {
+  const { nights } = priceStayNights({
+    arrival: from,
+    nights: CATALOG_HORIZON_NIGHTS,
+    basePrice,
+    seasons: roomType.seasonRates.map((rate) => rate.season),
+    rates: roomType.seasonRates,
+    promotions: roomType.promotions,
+  });
+  const cheapest = nights.reduce((best, night) => (night.price.lessThan(best.price) ? night : best));
+  return {
+    price: cheapest.price,
+    originalPrice: cheapest.promotion ? cheapest.regularPrice : null,
+    promotion: cheapest.promotion,
+  };
+}
 
+export function serializeRoomType(roomType: CatalogRoomTypeFields, rate: CatalogRate, offer: NightlyOffer) {
+  const { promotion } = offer;
   return {
     id: roomType.id,
     slug: roomType.slug,
@@ -45,8 +96,8 @@ export function serializeRoomType(
     category: roomType.shortName?.trim() || "Hébergement",
     shortDescription: roomType.description,
     description: roomType.description,
-    price: Number(promotion?.promotionalPricePerNight ?? rate.basePricePerNight),
-    originalPrice: promotion ? Number(promotion.referencePricePerNight) : undefined,
+    price: Number(offer.price),
+    originalPrice: offer.originalPrice ? Number(offer.originalPrice) : undefined,
     promotion: promotion ? {
       label: promotion.label,
       discountPercent: Number(promotion.discountPercent),
@@ -67,17 +118,25 @@ export function serializeRoomType(
   };
 }
 
+type CatalogRoomType = Awaited<ReturnType<typeof findRoomTypes>>[number];
+
+function serializeCatalogRoomType(roomType: CatalogRoomType) {
+  const rate = roomType.ratePlans[0];
+  if (!rate) return null;
+  return serializeRoomType(roomType, rate, lowestNightlyOffer(roomType, rate.basePricePerNight));
+}
+
 export function findRoomTypes() {
   return prisma.roomType.findMany({
     where: { property: { slug: env.publicPropertySlug }, isPublished: true, archivedAt: null },
     orderBy: { displayOrder: "asc" },
-    include: roomTypeInclude,
+    include: catalogRoomTypeInclude(),
   });
 }
 
 export async function listRoomTypes() {
   const roomTypes = await findRoomTypes();
-  return roomTypes.map((roomType) => serializeRoomType(roomType)).filter((item) => item !== null);
+  return roomTypes.map(serializeCatalogRoomType).filter((item) => item !== null);
 }
 
 type PublicPropertyRecord = {
@@ -169,9 +228,9 @@ export async function getPublicProperty() {
 export async function findRoomTypeBySlug(slug: string) {
   const roomType = await prisma.roomType.findFirst({
     where: { property: { slug: env.publicPropertySlug }, slug, isPublished: true, archivedAt: null },
-    include: roomTypeInclude,
+    include: catalogRoomTypeInclude(),
   });
-  return roomType ? serializeRoomType(roomType) : null;
+  return roomType ? serializeCatalogRoomType(roomType) : null;
 }
 
 export async function listExtras(propertyId?: string) {

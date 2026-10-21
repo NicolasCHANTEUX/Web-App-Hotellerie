@@ -39,10 +39,9 @@ test("calcule une réduction en pourcentage depuis le prix de référence", () =
 
 test("compose un devis TTC et ajoute uniquement la taxe de séjour", () => {
   const quote = buildTaxInclusivePrice({
-    nightlyPrice: new Prisma.Decimal("95"),
+    nightlyPrices: [new Prisma.Decimal("95"), new Prisma.Decimal("95")],
     accommodationTaxRate: new Prisma.Decimal("10"),
     arrival: new Date("2027-03-10T00:00:00.000Z"),
-    nights: 2,
     adults: 2,
     children: 0,
     extras: [{
@@ -74,7 +73,7 @@ test("calcule la quantité d'une taxe fixe selon sa règle", () => {
 });
 
 test("valorise une règle de taxe fixe ou proportionnelle avec le même arrondi", () => {
-  const stay = { arrival: new Date("2027-03-10T00:00:00.000Z"), nights: 2, nightlyPrice: new Prisma.Decimal("99.95"), adults: 2, children: 1 };
+  const stay = { arrival: new Date("2027-03-10T00:00:00.000Z"), nightlyPrices: [new Prisma.Decimal("99.95"), new Prisma.Decimal("99.95")], adults: 2, children: 1 };
   const fixed = priceTaxRule({ calculationMode: "PER_ADULT_PER_NIGHT", rate: null, amount: new Prisma.Decimal("2.15") }, stay);
   assert.equal(fixed.quantity.toFixed(0), "4");
   assert.equal(fixed.amount.toFixed(2), "8.60");
@@ -98,10 +97,9 @@ const night = (value: string) => new Date(`${value}T00:00:00.000Z`);
 function newYearQuote(taxRules: Parameters<typeof buildTaxInclusivePrice<null, { code: string }>>[0]["taxRules"]) {
   // Nights of 30 and 31 December, then 1 January.
   return buildTaxInclusivePrice({
-    nightlyPrice: new Prisma.Decimal("100"),
+    nightlyPrices: [new Prisma.Decimal("100"), new Prisma.Decimal("100"), new Prisma.Decimal("100")],
     accommodationTaxRate: new Prisma.Decimal("10"),
     arrival: night("2026-12-30"),
-    nights: 3,
     adults: 2,
     children: 1,
     extras: [],
@@ -138,9 +136,9 @@ test("ignore une règle hors du séjour et rattache un forfait à la nuit d'arri
 
 test("compte la dernière nuit d'une règle mais jamais le jour du départ", () => {
   const until = { validFrom: null, validUntil: night("2026-12-31") };
-  assert.deepEqual(nightsCoveredByTaxRule(until, night("2026-12-30"), 2), { covered: 2, coversArrival: true });
-  assert.deepEqual(nightsCoveredByTaxRule({ validFrom: night("2027-01-01") }, night("2026-12-30"), 2), { covered: 0, coversArrival: false });
-  assert.deepEqual(nightsCoveredByTaxRule({}, night("2026-12-30"), 3), { covered: 3, coversArrival: true });
+  assert.deepEqual(nightsCoveredByTaxRule(until, night("2026-12-30"), 2), { covered: 2, coversArrival: true, indexes: [0, 1] });
+  assert.deepEqual(nightsCoveredByTaxRule({ validFrom: night("2027-01-01") }, night("2026-12-30"), 2), { covered: 0, coversArrival: false, indexes: [] });
+  assert.deepEqual(nightsCoveredByTaxRule({}, night("2026-12-30"), 3), { covered: 3, coversArrival: true, indexes: [0, 1, 2] });
 
   assert.deepEqual(touristTaxPeriodFilter(night("2026-12-30"), night("2027-01-01")), {
     AND: [

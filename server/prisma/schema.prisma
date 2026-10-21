@@ -201,6 +201,7 @@ model Property {
   extras             Extra[]
   ratePlans          RatePlan[]
   roomTypePromotions RoomTypePromotion[]
+  seasons            Season[]
   bookings           Booking[]
   reservationHolds   ReservationHold[]
   availabilityBlocks AvailabilityBlock[]
@@ -247,6 +248,7 @@ model RoomType {
   reservationHolds ReservationHold[]
   storedFiles      StoredFile[]
   promotions       RoomTypePromotion[]
+  seasonRates      SeasonRate[]
 
   @@unique([propertyId, slug])
   @@index([propertyId, isPublished, archivedAt, displayOrder])
@@ -372,6 +374,44 @@ model RoomTypePromotion {
   @@map("room_type_promotions")
 }
 
+/// Hotel-wide pricing period. Both bounds are nights, included; two seasons of
+/// a property never overlap (enforced by a database exclusion constraint).
+model Season {
+  id         String   @id @default(uuid()) @db.Uuid
+  propertyId String   @db.Uuid
+  label      String
+  validFrom  DateTime @db.Date
+  validUntil DateTime @db.Date
+  minNights  Int?
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
+
+  property Property     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  rates    SeasonRate[]
+
+  @@index([propertyId, validFrom, validUntil])
+  @@map("seasons")
+}
+
+/// Nightly price of a room type during a season; without one, the room type
+/// keeps its base price. The weekend price applies to Friday and Saturday nights.
+model SeasonRate {
+  id                  String   @id @default(uuid()) @db.Uuid
+  seasonId            String   @db.Uuid
+  roomTypeId          String   @db.Uuid
+  nightlyPrice        Decimal  @db.Decimal(12, 2)
+  weekendNightlyPrice Decimal? @db.Decimal(12, 2)
+  createdAt           DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime @updatedAt @db.Timestamptz(3)
+
+  season   Season   @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  roomType RoomType @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([seasonId, roomTypeId])
+  @@index([roomTypeId])
+  @@map("season_rates")
+}
+
 model Extra {
   id           String       @id @default(uuid()) @db.Uuid
   propertyId   String       @db.Uuid
@@ -456,7 +496,9 @@ model BookingRoom {
   ratePlanId           String       @db.Uuid
   roomTypeNameSnapshot String
   roomNumberSnapshot   String?
+  /// Average nightly price; the night-by-night detail is in nightlyRatesSnapshot.
   nightlyPriceSnapshot Decimal      @db.Decimal(12, 2)
+  nightlyRatesSnapshot Json?
   taxRateSnapshot      Decimal      @db.Decimal(5, 2)
   priceTaxModeSnapshot PriceTaxMode @default(INCLUSIVE)
   taxAmountSnapshot    Decimal      @default(0) @db.Decimal(12, 2)

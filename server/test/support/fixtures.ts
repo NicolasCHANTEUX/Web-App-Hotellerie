@@ -92,6 +92,31 @@ export async function createTestHotel({ rooms = 2, touristTax = true }: { rooms?
   return { property, roomType, rooms: createdRooms };
 }
 
+/** A hotel season, priced for the test room type unless `nightlyPrice` is null. */
+export async function createSeason(
+  hotel: TestHotel,
+  season: { label?: string; firstNightInDays: number; lastNightInDays: number; minNights?: number; nightlyPrice?: number | null; weekendNightlyPrice?: number },
+) {
+  return prisma.season.create({
+    data: {
+      propertyId: hotel.property.id,
+      label: season.label ?? "Haute saison",
+      validFrom: dateFromToday(season.firstNightInDays),
+      validUntil: dateFromToday(season.lastNightInDays),
+      minNights: season.minNights ?? null,
+      ...(season.nightlyPrice === null ? {} : {
+        rates: {
+          create: {
+            roomTypeId: hotel.roomType.id,
+            nightlyPrice: season.nightlyPrice ?? 180,
+            weekendNightlyPrice: season.weekendNightlyPrice ?? null,
+          },
+        },
+      }),
+    },
+  });
+}
+
 export async function createReceptionist(hotel: TestHotel) {
   const suffix = randomUUID().slice(0, 8);
   const adminUser = await prisma.adminUser.create({

@@ -30,10 +30,20 @@ export type BookingQuote = {
     id: string;
     slug: string;
     name: string;
+    /** Average nightly price over the stay. */
     unitPrice: number;
     subtotal: number;
     taxAmount: number;
     total: number;
+    /** Accommodation total before promotion. */
+    regularTotal: number;
+    nights: Array<{
+      date: string;
+      season: string | null;
+      weekend: boolean;
+      regularPrice: number;
+      price: number;
+    }>;
     promotion: {
       id: string;
       label: string;

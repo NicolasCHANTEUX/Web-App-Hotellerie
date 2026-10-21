@@ -1,4 +1,5 @@
 import { buildTaxInclusivePrice, touristTaxPeriodFilter } from "./booking.pricing.js";
+import { minStayMessage, priceStayNights, quotedStay, staySeasonsSelection, stayPricingRelations } from "./booking.stay-rates.js";
 import { BookingError } from "./booking.errors.js";
 import type { BookingQuote, BookingSelectionInput } from "./booking.types.js";
 import { prisma } from "../../lib/prisma.js";
@@ -13,6 +14,7 @@ export async function getBookingQuote(input: BookingSelectionInput, propertyId?:
       property: {
         select: {
           currency: true,
+          seasons: staySeasonsSelection(input.arrival, input.departure),
           taxRules: {
             where: {
               isActive: true,
@@ -35,15 +37,7 @@ export async function getBookingQuote(input: BookingSelectionInput, propertyId?:
         },
         orderBy: { basePricePerNight: "asc" },
       },
-      promotions: {
-        where: {
-          isActive: true,
-          validFrom: { lte: input.arrival },
-          OR: [{ validUntil: null }, { validUntil: { gte: input.departure } }],
-        },
-        orderBy: [{ validFrom: "desc" }, { createdAt: "desc" }],
-        take: 1,
-      },
+      ...stayPricingRelations(input.arrival, input.departure),
       rooms: {
         where: {
           status: "ACTIVE",
@@ -82,8 +76,15 @@ export async function getBookingQuote(input: BookingSelectionInput, propertyId?:
   if (!ratePlan) {
     throw new BookingError(409, "RATE_NOT_AVAILABLE", "Aucun tarif TTC n'est disponible pour ce séjour.");
   }
-  const promotion = roomType.promotions[0] ?? null;
-  const nightlyPrice = promotion?.promotionalPricePerNight ?? ratePlan.basePricePerNight;
+  const stayRates = priceStayNights({
+    arrival: input.arrival,
+    nights,
+    basePrice: ratePlan.basePricePerNight,
+    seasons: roomType.property.seasons,
+    rates: roomType.seasonRates,
+    promotions: roomType.promotions,
+  });
+  if (stayRates.minStay) throw new BookingError(409, "MIN_STAY_NOT_MET", minStayMessage(stayRates.minStay));
 
   const selectedExtras = input.extraIds.length
     ? await prisma.extra.findMany({
@@ -102,10 +103,9 @@ export async function getBookingQuote(input: BookingSelectionInput, propertyId?:
   }
 
   const price = buildTaxInclusivePrice({
-    nightlyPrice,
+    nightlyPrices: stayRates.nights.map((night) => night.price),
     accommodationTaxRate: ratePlan.taxRate,
     arrival: input.arrival,
-    nights,
     adults: input.adults,
     children: input.children,
     extras: selectedExtras.map((extra) => ({
@@ -134,16 +134,10 @@ export async function getBookingQuote(input: BookingSelectionInput, propertyId?:
       id: roomType.id,
       slug: roomType.slug,
       name: roomType.name,
-      unitPrice: Number(nightlyPrice),
       subtotal: Number(price.accommodationSubtotal),
       taxAmount: Number(price.accommodationTax),
       total: Number(price.accommodationTotal),
-      promotion: promotion ? {
-        id: promotion.id,
-        label: promotion.label,
-        discountPercent: Number(promotion.discountPercent),
-        referenceUnitPrice: Number(promotion.referencePricePerNight),
-      } : null,
+      ...quotedStay(stayRates),
     },
     extras: price.extras.map(({ item, quantity, unitPrice, pricingUnit, lineSubtotal, taxAmount, lineTotal }) => ({
       id: item.id,

@@ -34,7 +34,17 @@ Le navigateur affiche le devis retourné par le serveur et ne calcule pas le mon
 
 La taxe de séjour est calculée nuit par nuit. Les dates d'une règle désignent sa première et sa dernière nuit, toutes deux incluses : un séjour à cheval sur un changement de tarif paie chaque nuit au tarif alors en vigueur, avec une ligne par règle. Un montant forfaitaire par séjour suit la règle en vigueur la nuit d'arrivée. Plusieurs règles actives sur les mêmes nuits s'additionnent, par exemple une taxe additionnelle. L'administration signale ces chevauchements, car ils viennent souvent d'un ancien tarif qu'on a oublié de terminer.
 
-Les promotions sont rattachées aux types de chambres, bornées dans le temps et évaluées pour toute la période du séjour. Les réservations conservent le prix de référence, la réduction et le prix effectivement accepté.
+Le prix de l'hébergement est calculé nuit par nuit (`booking.stay-rates.ts`), de la même façon pour la recherche, le devis, la réservation et la modification par la réception. Le prix d'une nuit se détermine ainsi :
+
+- c'est le prix du type de chambre pour la saison de cette nuit ;
+- les nuits du vendredi et du samedi prennent son prix de week-end, s'il est défini ;
+- à défaut de saison ou de prix pour ce type, le prix de base du tarif s'applique.
+
+Les saisons (`Season`) sont communes à l'établissement, et leurs bornes sont des nuits incluses. La base interdit leur chevauchement. Une saison peut imposer une durée minimale : la plus exigeante parmi les saisons touchées par le séjour s'applique, et la recherche indique cette contrainte au lieu de proposer des chambres.
+
+Les promotions sont rattachées aux types de chambres et retirent leur pourcentage de chaque nuit couverte, saison comprise. Leur date de fin reste exclue, comme dans la contrainte qui empêche leur chevauchement. Les réservations figent le détail de chaque nuit (`BookingRoom.nightlyRatesSnapshot`), avec son prix normal et son prix accepté. `nightlyPriceSnapshot` n'en est plus que la moyenne.
+
+Le prix « à partir de » du catalogue est le prix de nuit le plus bas réellement proposé sur l'année à venir, saisons et promotions comprises.
 
 ## Paiements et facturation
 

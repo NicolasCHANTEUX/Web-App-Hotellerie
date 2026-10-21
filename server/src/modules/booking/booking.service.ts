@@ -10,6 +10,13 @@ import {
   generateBookingReference,
 } from "./booking.idempotency.js";
 import { assertExpectedTotal, buildTaxInclusivePrice, touristTaxPeriodFilter } from "./booking.pricing.js";
+import {
+  minStayMessage,
+  nightlyRatesSnapshot,
+  priceStayNights,
+  staySeasonsSelection,
+  stayPricingRelations,
+} from "./booking.stay-rates.js";
 import type { BookingConfirmation, CreateBookingInput } from "./booking.types.js";
 import { adminBookingUrl, enqueueBookingNotification } from "../notifications/notification.service.js";
 import { retentionDeadlineFrom } from "../privacy/retention.service.js";
@@ -182,6 +189,7 @@ export async function createBooking(
                 id: true,
                 email: true,
                 currency: true,
+                seasons: staySeasonsSelection(input.arrival, input.departure),
                 taxRules: {
                   where: {
                     isActive: true,
@@ -214,15 +222,7 @@ export async function createBooking(
               },
               orderBy: { basePricePerNight: "asc" },
             },
-            promotions: {
-              where: {
-                isActive: true,
-                validFrom: { lte: input.arrival },
-                OR: [{ validUntil: null }, { validUntil: { gte: input.departure } }],
-              },
-              orderBy: [{ validFrom: "desc" }, { createdAt: "desc" }],
-              take: 1,
-            },
+            ...stayPricingRelations(input.arrival, input.departure),
             rooms: {
               where: {
                 status: "ACTIVE",
@@ -264,8 +264,17 @@ export async function createBooking(
         if (!ratePlan) {
           throw new BookingError(409, "RATE_NOT_AVAILABLE", "Aucun tarif n'est disponible pour ce séjour.");
         }
-        const promotion = roomType.promotions[0] ?? null;
-        const nightlyPrice = promotion?.promotionalPricePerNight ?? ratePlan.basePricePerNight;
+        const stayRates = priceStayNights({
+          arrival: input.arrival,
+          nights,
+          basePrice: ratePlan.basePricePerNight,
+          seasons: roomType.property.seasons,
+          rates: roomType.seasonRates,
+          promotions: roomType.promotions,
+        });
+        if (stayRates.minStay) throw new BookingError(409, "MIN_STAY_NOT_MET", minStayMessage(stayRates.minStay));
+        const promotion = stayRates.promotion;
+        const nightlyPrice = stayRates.averagePrice;
 
         const room = roomType.rooms[0];
         if (!room) {
@@ -290,10 +299,9 @@ export async function createBooking(
         }
 
         const price = buildTaxInclusivePrice({
-          nightlyPrice,
+          nightlyPrices: stayRates.nights.map((night) => night.price),
           accommodationTaxRate: ratePlan.taxRate,
           arrival: input.arrival,
-          nights,
           adults: input.adults,
           children: input.children,
           extras: selectedExtras.map((extra) => ({
@@ -353,7 +361,7 @@ export async function createBooking(
             };
 
         const pricingSnapshot = {
-          version: 3,
+          version: 5,
           priceTaxMode: "INCLUSIVE",
           idempotency: { key: idempotencyKey, requestHash },
           nights,
@@ -372,11 +380,11 @@ export async function createBooking(
             id: promotion.id,
             label: promotion.label,
             discountPercent: promotion.discountPercent.toFixed(2),
-            referenceNightlyPriceTtc: moneySnapshot(promotion.referencePricePerNight),
-            promotionalNightlyPriceTtc: moneySnapshot(promotion.promotionalPricePerNight),
             validFrom: dateOnly(promotion.validFrom),
             validUntil: promotion.validUntil ? dateOnly(promotion.validUntil) : null,
           } : null,
+          regularAccommodationTotalTtc: moneySnapshot(stayRates.regularTotal),
+          nightlyRates: nightlyRatesSnapshot(stayRates.nights),
           extras: pricedExtras.map(({ extra, quantity, lineSubtotal, lineTotal, taxRate, taxAmount }) => ({
             id: extra.id,
             code: extra.code,
@@ -563,6 +571,7 @@ export async function createBooking(
             ratePlanId: ratePlan.id,
             roomTypeNameSnapshot: roomType.name,
             nightlyPriceSnapshot: nightlyPrice,
+            nightlyRatesSnapshot: nightlyRatesSnapshot(stayRates.nights),
             priceTaxModeSnapshot: "INCLUSIVE",
             taxRateSnapshot: ratePlan.taxRate,
             taxAmountSnapshot: accommodationTax,
