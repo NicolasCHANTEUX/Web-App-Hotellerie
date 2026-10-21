@@ -2,6 +2,8 @@ import PDFDocument from "pdfkit";
 import { InvoiceDocumentType, InvoiceStatus, Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import { AdminApiError } from "../admin/admin.errors.js";
+import { includedPercentageTax } from "../booking/booking.pricing.js";
+import { readNightlyRatesSnapshot } from "../booking/booking.stay-rates.js";
 import { retentionDeadlineFrom } from "../privacy/retention.service.js";
 
 type BillingTransaction = Prisma.TransactionClient;
@@ -32,6 +34,28 @@ function nights(checkIn: Date, checkOut: Date) {
   return Math.max(1, Math.round((checkOut.getTime() - checkIn.getTime()) / 86_400_000));
 }
 
+type NightGroup = { count: number; price: string; season: string | null; total: Prisma.Decimal };
+
+/**
+ * Consecutive nights sharing a price and a season, from the night-by-night
+ * detail frozen with a booking room; null when it is missing or unreadable.
+ */
+function nightGroups(snapshot: Prisma.JsonValue | null | undefined) {
+  const nights = readNightlyRatesSnapshot(snapshot);
+  if (!nights) return null;
+  const groups: NightGroup[] = [];
+  for (const { price, season } of nights) {
+    const last = groups.at(-1);
+    if (last && last.price === price && last.season === season) {
+      last.count += 1;
+      last.total = last.total.add(price);
+    } else {
+      groups.push({ count: 1, price, season, total: new Prisma.Decimal(price) });
+    }
+  }
+  return groups;
+}
+
 export function buildInvoiceLines(booking: {
   checkIn: Date;
   checkOut: Date;
@@ -41,6 +65,7 @@ export function buildInvoiceLines(booking: {
     taxRateSnapshot: Prisma.Decimal;
     taxAmountSnapshot: Prisma.Decimal;
     lineTotal: Prisma.Decimal;
+    nightlyRatesSnapshot?: Prisma.JsonValue | null;
   }>;
   extras: Array<{
     nameSnapshot: string;
@@ -59,21 +84,48 @@ export function buildInvoiceLines(booking: {
   const result: InvoiceLineDraft[] = [];
   const stayNights = nights(booking.checkIn, booking.checkOut);
 
-  booking.rooms.forEach((room, index) => {
-    const subtotal = cents(room.lineTotal.minus(room.taxAmountSnapshot));
-    result.push({
-      description: `${room.roomTypeNameSnapshot}${room.roomNumberSnapshot ? ` - chambre ${room.roomNumberSnapshot}` : ""} (${stayNights} nuit${stayNights > 1 ? "s" : ""})`,
-      quantity: new Prisma.Decimal(stayNights),
-      unitPrice: cents(subtotal.div(stayNights)),
-      taxRate: room.taxRateSnapshot,
-      subtotal,
-      taxAmount: room.taxAmountSnapshot,
-      lineTotal: room.lineTotal,
-      sortOrder: index,
+  booking.rooms.forEach((room) => {
+    const roomLabel = `${room.roomTypeNameSnapshot}${room.roomNumberSnapshot ? ` - chambre ${room.roomNumberSnapshot}` : ""}`;
+    const groups = nightGroups(room.nightlyRatesSnapshot);
+    const groupsMatchRoom = groups
+      && groups.reduce((total, group) => total.add(group.total), new Prisma.Decimal(0)).equals(room.lineTotal);
+    if (!groups || !groupsMatchRoom || (groups.length === 1 && !groups[0]!.season)) {
+      const subtotal = cents(room.lineTotal.minus(room.taxAmountSnapshot));
+      result.push({
+        description: `${roomLabel} (${stayNights} nuit${stayNights > 1 ? "s" : ""})`,
+        quantity: new Prisma.Decimal(stayNights),
+        unitPrice: cents(subtotal.div(stayNights)),
+        taxRate: room.taxRateSnapshot,
+        subtotal,
+        taxAmount: room.taxAmountSnapshot,
+        lineTotal: room.lineTotal,
+        sortOrder: result.length,
+      });
+      return;
+    }
+    // One line per price level; the last one takes the VAT left over so that
+    // the lines add up exactly to the VAT computed on the whole stay.
+    let allocatedTax = new Prisma.Decimal(0);
+    groups.forEach((group, index) => {
+      const taxAmount = index === groups.length - 1
+        ? room.taxAmountSnapshot.minus(allocatedTax)
+        : includedPercentageTax(group.total, room.taxRateSnapshot);
+      allocatedTax = allocatedTax.add(taxAmount);
+      const subtotal = cents(group.total.minus(taxAmount));
+      result.push({
+        description: `${roomLabel} (${group.count} nuit${group.count > 1 ? "s" : ""}${group.season ? ` · ${group.season}` : ""})`,
+        quantity: new Prisma.Decimal(group.count),
+        unitPrice: cents(subtotal.div(group.count)),
+        taxRate: room.taxRateSnapshot,
+        subtotal,
+        taxAmount,
+        lineTotal: group.total,
+        sortOrder: result.length,
+      });
     });
   });
 
-  booking.extras.forEach((extra, index) => {
+  booking.extras.forEach((extra) => {
     const subtotal = cents(extra.lineTotal.minus(extra.taxAmountSnapshot));
     result.push({
       description: extra.nameSnapshot,
@@ -83,11 +135,11 @@ export function buildInvoiceLines(booking: {
       subtotal,
       taxAmount: extra.taxAmountSnapshot,
       lineTotal: extra.lineTotal,
-      sortOrder: booking.rooms.length + index,
+      sortOrder: result.length,
     });
   });
 
-  booking.taxLines.filter((line) => line.kind !== "VAT").forEach((line, index) => {
+  booking.taxLines.filter((line) => line.kind !== "VAT").forEach((line) => {
     result.push({
       description: line.labelSnapshot,
       quantity: line.quantitySnapshot,
@@ -96,7 +148,7 @@ export function buildInvoiceLines(booking: {
       subtotal: line.amount,
       taxAmount: new Prisma.Decimal(0),
       lineTotal: line.amount,
-      sortOrder: booking.rooms.length + booking.extras.length + index,
+      sortOrder: result.length,
     });
   });
   return result;

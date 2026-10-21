@@ -47,6 +47,18 @@
 .admin-login-submit svg { width: 18px; }
 .admin-back-link { display: inline-flex; align-items: center; gap: 8px; margin-top: 32px; color: #81776d; font-size: 12px; font-weight: 500; }
 .admin-back-link:hover { color: var(--gold-dark); }
+.admin-login-link { justify-self: end; margin-top: -12px; border: 0; background: transparent; padding: 2px 0; color: var(--gold-dark); font-size: 12px; font-weight: 600; cursor: pointer; }
+.admin-login-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+button.admin-back-link { border: 0; background: transparent; padding: 0; cursor: pointer; }
+.admin-login-back + .admin-back-link { margin-left: 22px; }
+.admin-login-notice { display: grid; gap: 6px; border: 1px solid #cfdccf; border-radius: var(--radius-sm); background: #f1f6f0; padding: 14px 16px; color: #3f5c42; font-size: 13px; line-height: 1.55; }
+.admin-login-field { display: grid; gap: 9px; }
+.admin-login-field > label { color: #514a42; font-size: 12px; font-weight: 600; }
+.admin-login-field > small { color: #8a8076; font-size: 12px; }
+.admin-login-field > small.is-invalid { color: #934b43; }
+.admin-activation-page { grid-template-columns: minmax(0, 1fr); }
+.admin-activation-page .admin-login-mobile-brand { display: flex; }
+.admin-activation-cta { width: 100%; text-decoration: none; }
 .admin-back-link svg { width: 15px; }
 
 .admin-shell { min-height: 100vh; background: #f5f3ef; color: var(--ink); --admin-sidebar-width: 264px; }
@@ -412,6 +424,95 @@
 .admin-extra-actions.compact button { width: 34px; padding: 0; }
 .admin-extras-table td > small { max-width: 320px; white-space: normal; }
 .admin-tax-example { grid-column: 1 / -1; margin: 0; border-radius: 6px; background: #f6f1eb; padding: 10px 12px; color: #6f5a42; font-size: 11px; line-height: 1.5; }
+.admin-dashboard-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); align-items: start; gap: 18px; margin-bottom: 18px; }
+.admin-dashboard-column { display: grid; gap: 18px; }
+.admin-dashboard-panel .admin-panel-head { min-height: 64px; padding: 14px 20px; }
+.admin-dashboard-panel .admin-panel-head h2 { display: flex; align-items: center; gap: 10px; font-size: 19px; }
+.admin-dashboard-count { min-width: 26px; border-radius: 999px; background: #f1ebe4; padding: 2px 8px; color: #6f5a42; font-family: var(--font-sans, inherit); font-size: 12px; font-weight: 650; text-align: center; }
+.admin-dashboard-more { color: var(--gold-dark); font-size: 12px; font-weight: 650; }
+.admin-dashboard-empty { margin: 0; padding: 22px 20px; color: #857b71; font-size: 13px; }
+.admin-dashboard-list { margin: 0; padding: 0; list-style: none; }
+.admin-dashboard-list li + li { border-top: 1px solid #eee9e3; }
+.admin-dashboard-list a { display: grid; grid-template-columns: minmax(0, 1fr) auto 16px; align-items: center; gap: 12px; padding: 13px 20px; color: inherit; text-decoration: none; transition: background 140ms ease; }
+.admin-dashboard-list a:hover { background: #fdfbf8; }
+.admin-dashboard-list.without-status a { grid-template-columns: minmax(0, 1fr) 16px; }
+.admin-metric-card strong { white-space: nowrap; }
+.admin-dashboard-list a > span:first-child { display: grid; min-width: 0; gap: 3px; }
+.admin-dashboard-list strong { overflow: hidden; color: #3f3933; font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.admin-dashboard-list small { color: #776d64; font-size: 12px; line-height: 1.45; }
+.admin-dashboard-chevron { width: 15px; color: #a3988d; }
+.admin-dashboard-callout { display: grid; grid-template-columns: 22px minmax(0, 1fr) 16px; align-items: center; gap: 13px; border: 1px solid #e3ddd5; border-radius: 10px; background: white; padding: 16px 20px; color: inherit; text-decoration: none; box-shadow: 0 9px 30px rgb(49 40 31 / 3.5%); }
+.admin-dashboard-callout svg { width: 18px; color: #8f857b; }
+.admin-dashboard-callout span { display: grid; gap: 3px; }
+.admin-dashboard-callout strong { color: #3f3933; font-size: 13px; font-weight: 600; }
+.admin-dashboard-callout small { color: #776d64; font-size: 12px; }
+.admin-dashboard-callout.is-pending { border-color: #e7cfa9; background: #fdf8f0; }
+.admin-dashboard-callout.is-pending > svg:first-child { color: var(--gold-dark); }
+.admin-dashboard-finance { display: grid; gap: 10px; margin: 0; padding: 18px 20px 6px; }
+.admin-dashboard-finance > div { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; color: #6f665d; font-size: 12px; }
+.admin-dashboard-finance dd { margin: 0; color: #3f3933; font-weight: 650; white-space: nowrap; }
+.admin-dashboard-finance > div.total dd { color: var(--gold-dark); font-family: var(--font-serif); font-size: 24px; font-weight: 500; }
+.admin-dashboard-note { display: flex; align-items: center; gap: 8px; margin: 0; padding: 8px 20px 18px; color: #8a8076; font-size: 11px; }
+.admin-dashboard-note svg { width: 14px; }
+.admin-dashboard-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 10px; margin: 0; padding: 20px; list-style: none; }
+.admin-dashboard-week li { display: grid; justify-items: center; gap: 6px; }
+.admin-dashboard-bar { display: flex; width: 100%; max-width: 54px; height: 110px; align-items: flex-end; overflow: hidden; border-radius: 7px; background: #f3eee8; }
+.admin-dashboard-bar i { display: block; width: 100%; border-radius: 7px 7px 0 0; background: linear-gradient(180deg, #b48c5c, var(--gold-dark)); }
+.admin-dashboard-week strong { color: #3f3933; font-size: 13px; font-weight: 650; }
+.admin-dashboard-week small { color: #857b71; font-size: 11px; text-transform: capitalize; }
+.admin-team-you { display: inline-block; margin-left: 8px; border-radius: 999px; background: #f1ebe4; padding: 2px 8px; color: #6f5a42; font-size: 10px; font-weight: 650; vertical-align: 1px; }
+.admin-team-last-login { color: #6f665d; font-size: 12px; }
+.admin-team-roles { display: grid; gap: 8px; margin: 0; border: 1px solid #e2dcd4; border-radius: 9px; background: white; padding: 14px 18px 18px; }
+.admin-team-roles legend { padding: 0 4px; color: #5e554d; font-size: 11px; font-weight: 650; }
+.admin-team-roles label { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: start; gap: 11px; border: 1px solid #e6dfd6; border-radius: 7px; padding: 11px 13px; cursor: pointer; }
+.admin-team-roles label.is-selected { border-color: var(--gold); background: #fbf7f1; }
+.admin-team-roles input { margin: 2px 0 0; accent-color: var(--gold-dark); }
+.admin-team-roles span { display: grid; gap: 3px; }
+.admin-team-roles strong { color: #3f3933; font-size: 13px; }
+.admin-team-roles small { color: #7b7269; font-size: 12px; line-height: 1.45; }
+.admin-contact-filters { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.admin-contact-filters button { display: inline-flex; min-height: 36px; align-items: center; gap: 8px; border: 1px solid #ddd5cc; border-radius: 999px; background: white; padding: 0 14px; color: #665d55; font-size: 12px; font-weight: 600; cursor: pointer; }
+.admin-contact-filters button span { min-width: 22px; border-radius: 999px; background: #f1ebe4; padding: 2px 7px; color: #6f5a42; font-size: 11px; text-align: center; }
+.admin-contact-filters button[aria-pressed="true"] { border-color: var(--gold-dark); background: var(--gold-dark); color: white; }
+.admin-contact-filters button[aria-pressed="true"] span { background: rgb(255 255 255 / 22%); color: white; }
+.admin-contact-search { grid-template-columns: minmax(220px, 480px); }
+.admin-contact-table td:nth-child(2) > small { max-width: 460px; white-space: normal; }
+.admin-contact-table tr.is-unread td:first-child { box-shadow: inset 3px 0 0 var(--gold); }
+.admin-contact-excerpt { color: #5f574f; font-size: 12px; line-height: 1.5; }
+.admin-contact-dialog { width: min(640px, 100%); }
+.admin-contact-message { margin: 0; color: #3f3933; font-size: 14px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.admin-contact-actions .admin-contact-state { display: flex; align-items: center; gap: 7px; color: #6f665d; font-size: 12px; line-height: 1.4; }
+.admin-contact-state svg { width: 16px; flex: 0 0 auto; color: #557257; }
+.admin-contact-actions > div > * { white-space: nowrap; }
+.admin-room-type-form-actions.admin-contact-actions { margin-top: 13px; }
+a.admin-contact-reply { display: inline-flex; min-height: 42px; align-items: center; justify-content: center; gap: 8px; border-radius: 6px; padding: 0 16px; font-size: 12px; font-weight: 650; text-decoration: none; }
+a.admin-contact-reply svg { width: 15px; }
+.admin-season-dialog { width: min(720px, 100%); }
+.admin-season-grid-panel { margin-top: 18px; }
+.admin-season-grid th strong { display: block; color: #4f4740; font-size: 11px; letter-spacing: 0; text-transform: none; }
+.admin-season-grid th small { display: block; margin-top: 3px; color: #8b8177; font-size: 10px; font-weight: 400; letter-spacing: 0; text-transform: none; }
+.admin-season-grid td .admin-muted { font-size: 12px; }
+.admin-season-rates { display: grid; gap: 0; border: 1px solid #e2dcd4; border-radius: 9px; background: white; padding: 6px 18px 14px; }
+.admin-season-rates-head,
+.admin-season-rate-row { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 13px; }
+.admin-season-rates-head { padding: 8px 0; color: #8b8177; font-size: 10px; font-weight: 650; letter-spacing: .05em; text-transform: uppercase; }
+.admin-season-rate-row { margin: 0; border: 0; border-top: 1px solid #eee9e3; padding: 11px 0; }
+/* Floated, the legend lays out as a grid item instead of sitting on the fieldset border. */
+.admin-season-rate-row legend { float: left; display: grid; gap: 3px; padding: 0; }
+.admin-season-rate-row legend strong { color: #3f3933; font-size: 12px; font-weight: 600; }
+.admin-season-rate-row legend small { color: #8a8076; font-size: 11px; }
+.admin-season-rate-row label { display: grid; gap: 5px; min-width: 0; }
+.admin-season-rate-label { display: none; color: #5e554d; font-size: 10px; font-weight: 650; }
+.admin-season-rate-row input { width: 100%; min-width: 0; min-height: 40px; border: 1px solid #d8d0c8; border-radius: 6px; outline: 0; background: #fdfcfa; padding: 9px 11px; color: #443d37; font: inherit; font-size: 12px; }
+.admin-season-rate-row input:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgb(169 130 86 / 10%); }
+.admin-season-rates .admin-room-type-form-hint { margin: 8px 0 0; line-height: 1.5; }
+.admin-season-lines { display: grid; gap: 9px; margin: 0; border-top: 1px solid #eee8e1; padding-top: 11px; }
+.admin-season-lines > div { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.admin-season-lines dt { display: grid; gap: 2px; color: #4f4740; font-size: 12px; font-weight: 600; }
+.admin-season-lines dt small { color: #8a8076; font-size: 11px; font-weight: 400; }
+.admin-season-lines dd { display: grid; justify-items: end; gap: 2px; margin: 0; color: #403a34; font-size: 12px; text-align: right; }
+.admin-season-lines dd small { color: #8a8076; font-size: 11px; }
+.admin-season-lines .admin-muted { font-size: 11px; }
 .admin-main > .admin-hold-notice { margin: 0 0 16px; }
 .admin-settings-form { display: grid; max-width: 980px; gap: 24px; }
 .admin-settings-section { display: grid; gap: 10px; }
@@ -622,6 +723,7 @@
 .admin-booking-quote-card dl > div { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; color: #655d55; font-size: 12px; }
 .admin-booking-quote-card dt { line-height: 1.45; }
 .admin-booking-quote-card dd { margin: 0; color: #443d37; font-weight: 650; white-space: nowrap; }
+.admin-booking-quote-card dl > div.night-detail { margin-top: -6px; padding-left: 12px; color: #8a8077; font-size: 11px; }
 .admin-booking-quote-card dl > div.total { margin-top: 4px; border-top: 1px solid #dfd6cc; padding-top: 13px; color: #312c27; font-size: 15px; font-weight: 700; }
 .admin-booking-quote-card dl > div.total dd { color: var(--gold-dark); font-family: var(--font-serif); font-size: 23px; }
 .admin-booking-terms { display: flex; align-items: flex-start; gap: 10px; border: 1px solid #ddd4c9; border-radius: 8px; background: white; padding: 14px; color: #4c453e; cursor: pointer; }
@@ -935,7 +1037,25 @@ button.admin-planning-slot { font: inherit; }
 }
 
 
+@media (max-width: 1180px) {
+  .admin-dashboard-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
 @media (max-width: 720px) {
+  .admin-dashboard-list a { padding: 12px 16px; }
+  .admin-dashboard-week { gap: 6px; padding: 16px 12px; }
+  .admin-dashboard-bar { height: 84px; }
+  .admin-dashboard-week strong { font-size: 11px; }
+  .admin-dashboard-week small { font-size: 10px; }
+  .admin-contact-panel-head { flex-wrap: wrap; }
+  .admin-contact-filters { width: 100%; }
+  .admin-contact-filters button { flex: 1 1 auto; justify-content: center; padding: 0 10px; }
+  .admin-season-rates { padding: 4px 14px 12px; }
+  .admin-season-rates-head { display: none; }
+  .admin-season-rate-row { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .admin-season-rate-row:first-of-type { border-top: 0; }
+  .admin-season-rate-row legend { grid-column: 1 / -1; display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+  .admin-season-rate-label { display: block; }
   .admin-settings-actions.admin-room-dialog-actions { bottom: 8px; gap: 8px; padding: 10px 12px; }
   .admin-settings-actions.admin-room-dialog-actions > div { grid-template-columns: 1fr 1.4fr; }
   .admin-settings-actions.admin-room-dialog-actions button { min-height: 38px; }

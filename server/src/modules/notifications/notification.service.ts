@@ -48,6 +48,10 @@ export function adminBookingUrl(bookingId: string) {
   return `${env.frontendUrl.replace(/\/+$/, "")}/admin/reservations?booking=${encodeURIComponent(bookingId)}`;
 }
 
+export function adminContactRequestUrl(contactRequestId: string) {
+  return `${env.frontendUrl.replace(/\/+$/, "")}/admin/demandes?demande=${encodeURIComponent(contactRequestId)}`;
+}
+
 function escapeHtml(value: string) {
   return value
     .replaceAll("&", "&amp;")

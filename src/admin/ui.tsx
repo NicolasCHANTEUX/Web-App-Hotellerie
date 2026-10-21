@@ -1,6 +1,7 @@
 import { AlertCircle, ChevronLeft, ChevronRight, Inbox, RotateCcw } from "lucide-react";
 import { ReactNode } from "react";
 import { BookingStatus, PaymentStatus, RoomStatus } from "../api/admin";
+import { groupNights, nightGroupLabel, showsNightDetail } from "../nightlyRates";
 
 const bookingLabels: Record<BookingStatus, string> = {
   DRAFT: "Brouillon",
@@ -87,6 +88,12 @@ export function formatMoney(amount: number, currency = "EUR") {
   return new Intl.NumberFormat("fr-FR", { style: "currency", currency }).format(amount);
 }
 
+/** Nights grouped by price, worded as on the invoice; empty when the price never changes. */
+export function nightDetailLabels(nights: ReadonlyArray<{ price: number; season: string | null }> | null | undefined, currency = "EUR") {
+  const groups = groupNights(nights ?? []);
+  return showsNightDetail(groups) ? groups.map((group) => nightGroupLabel(group, (value) => formatMoney(value, currency))) : [];
+}
+
 export function stayNights(checkIn: string, checkOut: string) {
   const duration = parseDate(checkOut).getTime() - parseDate(checkIn).getTime();
   return Math.max(1, Math.round(duration / 86_400_000));
@@ -101,7 +108,7 @@ export function PageHeading({ eyebrow, title, description, action }: { eyebrow: 
   );
 }
 
-export function MetricCard({ label, value, detail, icon }: { label: string; value: number; detail?: string; icon: ReactNode }) {
+export function MetricCard({ label, value, detail, icon }: { label: string; value: number | string; detail?: string; icon: ReactNode }) {
   return (
     <article className="admin-metric-card">
       <span className="admin-metric-icon">{icon}</span>

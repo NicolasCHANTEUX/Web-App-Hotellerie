@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { Prisma } from "../../generated/prisma/client.js";
 import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
-import { enqueueNotification } from "../notifications/notification.service.js";
+import { adminContactRequestUrl, enqueueNotification } from "../notifications/notification.service.js";
 import { CONTACT_RETENTION_YEARS, retentionDeadlineFrom } from "../privacy/retention.service.js";
 import { ContactApiError } from "./contact.errors.js";
 import type { ContactRequestInput } from "./contact.types.js";
@@ -78,6 +78,7 @@ export async function createContactRequest(input: ContactRequestInput, idempoten
           contactPhone: input.phone,
           contactSubject: SUBJECT_LABELS[input.subject],
           contactMessage: input.message,
+          adminUrl: adminContactRequestUrl(contact.id),
         },
       });
       return response(contact);

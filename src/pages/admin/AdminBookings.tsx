@@ -58,6 +58,7 @@ import {
   formatDate,
   formatDateTime,
   formatMoney,
+  nightDetailLabels,
   stayNights,
 } from "../../admin/ui";
 
@@ -649,7 +650,7 @@ function BookingDetailDrawer({ id, onClose, onChanged }: { id: string; onClose: 
               <section className="admin-detail-section">
                 <h3><BedDouble />Hébergement</h3>
                 <div className="admin-detail-lines">
-                  {booking.rooms.map((room) => <p key={room.id}><span><strong>{room.roomTypeName}</strong><small>{room.roomNumber ? `Chambre ${room.roomNumber}` : "Chambre à attribuer"}</small></span>{room.lineTotal !== undefined && <strong>{formatMoney(room.lineTotal, booking.currency)}</strong>}</p>)}
+                  {booking.rooms.map((room) => <p key={room.id}><span><strong>{room.roomTypeName}</strong><small>{room.roomNumber ? `Chambre ${room.roomNumber}` : "Chambre à attribuer"}</small>{nightDetailLabels(room.nightlyRates, booking.currency).map((label, index) => <small key={index}>{label}</small>)}</span>{room.lineTotal !== undefined && <strong>{formatMoney(room.lineTotal, booking.currency)}</strong>}</p>)}
                 </div>
                 <div className="admin-rate-conditions"><strong>{booking.rateConditions.name}</strong><small>{booking.rateConditions.refundable === false ? "Tarif non remboursable" : booking.rateConditions.refundable === true ? "Remboursable selon les conditions acceptées" : "Conditions acceptées lors de la réservation"}{booking.rateConditions.termsTitle ? ` · ${booking.rateConditions.termsTitle}` : ""}</small></div>
                 {canOperateBooking && (booking.status === "CONFIRMED" || booking.status === "CHECKED_IN") && <div className="admin-booking-room-assignment">

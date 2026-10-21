@@ -73,6 +73,10 @@ Routes disponibles :
 - `POST /admin/auth/login`
 - `POST /admin/auth/refresh` (corps `{ "refreshToken": "..." }`)
 - `POST /admin/auth/logout` (révoque la session Supabase du jeton fourni)
+- `POST /admin/auth/recover` (corps `{ "email": "..." }` ; répond 202 que le compte existe ou non)
+- `POST /admin/auth/password` (corps `{ "password": "..." }`, avec le jeton du lien d'invitation ou de réinitialisation)
+- `GET /admin/dashboard` (`ADMIN`, `RECEPTION` et `ACCOUNTING` ; arrivées et départs du jour, options à confirmer, occupation des sept prochaines nuits ; demandes de contact pour `ADMIN` et `RECEPTION`, encaissements du mois pour `ADMIN` et `ACCOUNTING`)
+- `GET /admin/team`, `POST /admin/team`, `PATCH /admin/team/:id`, `DELETE /admin/team/:id` (`ADMIN` uniquement ; invitation par e-mail, rôle, retrait de l'accès ; on ne modifie pas son propre accès et l'établissement garde au moins un administrateur)
 - `GET /admin/me`
 - `GET /admin/bookings`
 - `GET /admin/booking-options?arrival=2026-08-25&departure=2026-08-26&adults=2&children=0`
@@ -98,6 +102,8 @@ Routes disponibles :
 - `GET /admin/extras`, `POST /admin/extras`, `PATCH /admin/extras/:id`, `DELETE /admin/extras/:id` (`ADMIN` uniquement ; une option déjà réservée se désactive mais ne se supprime pas)
 - `GET /admin/property`, `PATCH /admin/property` (`ADMIN` uniquement ; coordonnées, horaires et mentions légales, avec la version `updatedAt`)
 - `GET /admin/tourist-taxes`, `POST /admin/tourist-taxes`, `PATCH /admin/tourist-taxes/:id`, `DELETE /admin/tourist-taxes/:id` (`ADMIN` uniquement ; une règle déjà facturée se termine ou se désactive mais ne se supprime pas)
+- `GET /admin/contact-requests?status=OPEN|HANDLED|ALL&search=...&page=1&pageSize=20`, `GET /admin/contact-requests/:id`, `PATCH /admin/contact-requests/:id` (`ADMIN` et `RECEPTION` ; corps `{ "handled": true, "updatedAt": "..." }` pour classer ou rouvrir une demande)
+- `GET /admin/seasons`, `POST /admin/seasons`, `PATCH /admin/seasons/:id`, `DELETE /admin/seasons/:id` (`ADMIN` uniquement ; saisons et grille des prix par type de chambre, sans chevauchement de périodes, avec la version `updatedAt`)
 - `POST /admin/rooms` (`ADMIN` uniquement)
 - `PATCH /admin/rooms/:id` (`ADMIN` uniquement)
 - `DELETE /admin/rooms/:id` (`ADMIN` uniquement)
@@ -227,7 +233,7 @@ npm run admin:provision -- --email admin@example.com --property hotel-rivage --r
 
 Le script ne cree jamais d'identifiants Supabase. Ajouter `--dry-run` permet de verifier le rattachement sans aucune ecriture.
 
-L'interface est ensuite disponible sur `http://127.0.0.1:5173/admin`.
+L'interface est ensuite disponible sur `http://127.0.0.1:5173/admin`. Ce premier administrateur invite les autres membres depuis l'écran Équipe : Supabase leur envoie un lien vers `/admin/activation`, où ils choisissent leur mot de passe. La même page sert au lien « Mot de passe oublié ? ». Les invitations exigent `SUPABASE_SECRET_KEY`, et l'adresse `FRONTEND_URL/admin/activation` doit figurer dans `Authentication > URL Configuration > Redirect URLs`.
 
 Pour remplir volontairement l'admin avec quatre reservations de demonstration idempotentes :
 

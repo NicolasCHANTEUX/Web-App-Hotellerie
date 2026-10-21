@@ -92,3 +92,15 @@ test("refuse une origine non autorisée sans erreur serveur", async (t) => {
   assert.equal(allowed.statusCode, 200);
   assert.equal(allowed.headers["access-control-allow-origin"], "https://hotel.example");
 });
+
+test("serves public API routes under Vercel's /api prefix", async (t) => {
+  const app = await testApp(t);
+
+  const health = await app.inject({ method: "GET", url: "/api/health/live" });
+  assert.equal(health.statusCode, 200);
+  assert.equal(health.json().service, "hotel-app-api");
+
+  const paymentConfig = await app.inject({ method: "GET", url: "/api/payments/config" });
+  assert.equal(paymentConfig.statusCode, 200);
+  assert.equal(typeof paymentConfig.json().data.stripeEnabled, "boolean");
+});

@@ -18,6 +18,9 @@ export const API_SERVICE_NAME = "hotel-app-api";
 
 export async function buildApp() {
   const app = Fastify({
+    // Vercel Services preserves the public /api prefix when routing to this service.
+    // Keep the existing route declarations and local URLs unchanged.
+    rewriteUrl: (request) => request.url?.replace(/^\/api(?=\/|\?|$)/, "") || "/",
     logger: {
       redact: {
         paths: [

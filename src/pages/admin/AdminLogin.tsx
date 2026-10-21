@@ -1,7 +1,7 @@
 import { ArrowLeft, ArrowRight, Eye, EyeOff, Hotel, LockKeyhole, Mail } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
-import { AdminApiError } from "../../api/admin";
+import { AdminApiError, requestAdminPasswordReset } from "../../api/admin";
 import { getProperty } from "../../api/hotel";
 import { useAdminAuth } from "../../admin/auth";
 import { useRemoteData } from "../../hooks/useRemoteData";
@@ -18,6 +18,7 @@ export function AdminLogin() {
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resetMode, setResetMode] = useState(false);
   const propertyName = property?.name ?? "Espace hôtelier";
   const emailDomain = property?.email.split("@")[1];
 
@@ -70,6 +71,9 @@ export function AdminLogin() {
       <section className="admin-login-panel">
         <div className="admin-login-card">
           <div className="admin-login-mobile-brand"><span><Hotel /></span>{propertyName}</div>
+          {resetMode ? (
+            <PasswordResetRequest initialEmail={email} onBack={() => setResetMode(false)} />
+          ) : <>
           <p className="admin-login-kicker">Bienvenue</p>
           <h2>Connexion à l’administration</h2>
           <p className="admin-login-intro">Identifiez-vous pour accéder aux réservations et à l’occupation des chambres.</p>
@@ -83,6 +87,7 @@ export function AdminLogin() {
               <span>Mot de passe</span>
               <span className="admin-input-wrap"><LockKeyhole /><input type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" placeholder="Votre mot de passe" required /><button type="button" aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"} onClick={() => setShowPassword((value) => !value)}>{showPassword ? <EyeOff /> : <Eye />}</button></span>
             </label>
+            <button type="button" className="admin-login-link" onClick={() => setResetMode(true)}>Mot de passe oublié ?</button>
 
             {error && <div className="admin-login-error" role="alert">{error}</div>}
 
@@ -90,10 +95,58 @@ export function AdminLogin() {
               {submitting ? <><span className="admin-spinner light" />Connexion…</> : <>Se connecter<ArrowRight /></>}
             </button>
           </form>
+          </>}
 
           <Link to="/" reloadDocument className="admin-back-link"><ArrowLeft />Retour au site de l’hôtel</Link>
         </div>
       </section>
     </main>
+  );
+}
+
+function PasswordResetRequest({ initialEmail, onBack }: { initialEmail: string; onBack: () => void }) {
+  const [email, setEmail] = useState(initialEmail);
+  const [submitting, setSubmitting] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    try {
+      await requestAdminPasswordReset(email.trim());
+      setSent(true);
+    } catch (nextError) {
+      setError(nextError instanceof AdminApiError ? nextError.message : "La demande n’a pas pu être envoyée. Réessayez dans un instant.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <>
+      <p className="admin-login-kicker">Mot de passe oublié</p>
+      <h2>Choisir un nouveau mot de passe</h2>
+      <p className="admin-login-intro">Indiquez votre adresse professionnelle : nous vous envoyons un lien pour choisir un nouveau mot de passe.</p>
+      {sent ? (
+        <div className="admin-login-notice" role="status">
+          <strong>Vérifiez votre boîte de réception.</strong>
+          <span>Si cette adresse a accès à l’administration, un e-mail vient de partir. Le lien n’est valable que peu de temps.</span>
+        </div>
+      ) : (
+        <form onSubmit={submit} className="admin-login-form">
+          <label>
+            <span>Adresse e-mail</span>
+            <span className="admin-input-wrap"><Mail /><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" required autoFocus /></span>
+          </label>
+          {error && <div className="admin-login-error" role="alert">{error}</div>}
+          <button className="admin-login-submit" type="submit" disabled={submitting}>
+            {submitting ? <><span className="admin-spinner light" />Envoi…</> : <>Recevoir le lien<ArrowRight /></>}
+          </button>
+        </form>
+      )}
+      <button type="button" className="admin-back-link admin-login-back" onClick={onBack}><ArrowLeft />Retour à la connexion</button>
+    </>
   );
 }

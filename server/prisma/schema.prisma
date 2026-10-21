@@ -901,12 +901,17 @@ model ContactRequest {
   privacyAcceptedAt       DateTime  @db.Timestamptz(3)
   personalDataRetainUntil DateTime  @db.Timestamptz(3)
   anonymizedAt            DateTime? @db.Timestamptz(3)
+  /// Set once the staff has answered; cleared when the request is reopened.
+  handledAt               DateTime? @db.Timestamptz(3)
+  handledByAdminUserId    String?   @db.Uuid
   createdAt               DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt               DateTime  @updatedAt @db.Timestamptz(3)
 
-  property Property @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  property  Property   @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  handledBy AdminUser? @relation(fields: [handledByAdminUserId], references: [id], onDelete: SetNull)
 
   @@index([propertyId, createdAt])
+  @@index([propertyId, handledAt, createdAt])
   @@index([personalDataRetainUntil, anonymizedAt])
   @@map("contact_requests")
 }
@@ -921,8 +926,9 @@ model AdminUser {
   createdAt   DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
 
-  memberships AdminMembership[]
-  auditLogs   AuditLog[]
+  memberships            AdminMembership[]
+  auditLogs              AuditLog[]
+  handledContactRequests ContactRequest[]
 
   @@map("admin_users")
 }

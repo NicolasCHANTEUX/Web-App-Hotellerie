@@ -2,12 +2,18 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { BookingStatus, RoomStatus } from "../../generated/prisma/client.js";
 import {
   authenticateAdmin,
+  bearerToken,
   loginWithPassword,
+  recordAdminSignIn,
   refreshAdminSession,
   requireAdminContext,
   resolveMembership,
   revokeAdminSession,
 } from "./admin.auth.js";
+import { getAdminDashboard, requireDashboardPermission } from "./admin.dashboard.service.js";
+import { parseNewPassword, requestPasswordReset, updateOwnPassword } from "./admin.password.js";
+import { parseAdminTeamInvitationBody, parseAdminTeamRoleBody, requireTeamPermission } from "./admin.team.js";
+import { inviteAdminTeamMember, listAdminTeam, removeAdminTeamMember, updateAdminTeamMemberRole } from "./admin.team.service.js";
 import { AdminApiError, sendAdminError } from "./admin.errors.js";
 import { parseRoomPeriodQuery } from "./admin.room-query.js";
 import {
@@ -40,9 +46,17 @@ import {
 } from "./admin.booking-update.js";
 import { parseAdminAvailabilityBlockBody } from "./admin.availability-block.js";
 import { requireCatalogPermission } from "./admin.catalog.js";
+import {
+  parseAdminContactRequestFilter,
+  parseAdminContactRequestHandlingBody,
+  requireContactRequestPermission,
+} from "./admin.contact.js";
+import { getAdminContactRequest, listAdminContactRequests, setAdminContactRequestHandled } from "./admin.contact.service.js";
 import { parseAdminExtraCreateBody, parseAdminExtraDeleteBody, parseAdminExtraUpdateBody } from "./admin.extra.js";
 import { createAdminExtra, deleteAdminExtra, listAdminExtras, updateAdminExtra } from "./admin.extra.service.js";
 import { parseAdminPropertyUpdateBody } from "./admin.property.js";
+import { parseAdminSeasonCreateBody, parseAdminSeasonDeleteBody, parseAdminSeasonUpdateBody } from "./admin.season.js";
+import { createAdminSeason, deleteAdminSeason, listAdminSeasons, updateAdminSeason } from "./admin.season.service.js";
 import { getAdminPropertySettings, updateAdminPropertySettings } from "./admin.property.service.js";
 import {
   parseAdminTouristTaxCreateBody,
@@ -137,6 +151,25 @@ type ExtraParams = {
 
 type TouristTaxParams = {
   id: string;
+};
+
+type SeasonParams = {
+  id: string;
+};
+
+type ContactRequestParams = {
+  id: string;
+};
+
+type TeamMemberParams = {
+  id: string;
+};
+
+type ContactRequestListQuery = {
+  page?: string;
+  pageSize?: string;
+  status?: string;
+  search?: string;
 };
 
 type RoomListQuery = {
@@ -326,6 +359,33 @@ export async function adminRoutes(app: FastifyInstance) {
         throw new AdminApiError(400, "INVALID_SESSION", "La session administrateur est invalide.");
       }
       return { data: await refreshAdminSession(refreshToken) };
+    });
+  });
+
+  app.post<{ Body: { email?: unknown } }>("/admin/auth/recover", {
+    config: { rateLimit: { max: 5, timeWindow: "15 minutes" } },
+  }, async (request, reply) => {
+    return handleAdminRoute(reply, async () => {
+      const email = typeof request.body?.email === "string" ? request.body.email.trim().toLowerCase() : "";
+      if (!emailPattern.test(email) || email.length > 320) {
+        throw new AdminApiError(400, "INVALID_EMAIL", "L'adresse e-mail est invalide.");
+      }
+      await requestPasswordReset(email);
+      return reply.code(202).send();
+    });
+  });
+
+  // Reached from the invitation or reset e-mail, whose link opens a session.
+  app.post<{ Body: { password?: unknown } }>("/admin/auth/password", {
+    preHandler: authenticateAdmin,
+    config: { rateLimit: { max: 10, timeWindow: "15 minutes" } },
+  }, async (request, reply) => {
+    return handleAdminRoute(reply, async () => {
+      const context = requireAdminContext(request);
+      const password = parseNewPassword(request.body?.password);
+      await updateOwnPassword(bearerToken(request), password);
+      await recordAdminSignIn(context.user.id);
+      return reply.code(204).send();
     });
   });
 
@@ -803,6 +863,143 @@ export async function adminRoutes(app: FastifyInstance) {
           membership,
           requireAdminContext(request).user.id,
           parseAdminPropertyUpdateBody(request.body),
+          request.ip,
+        ),
+      };
+    }),
+  );
+
+  app.get(
+    "/admin/seasons",
+    { preHandler: authenticateAdmin },
+    async (request, reply) => handleAdminRoute(reply, async () => ({
+      data: await listAdminSeasons(requireCatalogPermission(resolveMembership(request)).propertyId),
+    })),
+  );
+
+  app.post<{ Body: unknown }>(
+    "/admin/seasons",
+    { preHandler: authenticateAdmin, config: { rateLimit: { max: 30, timeWindow: "15 minutes" } } },
+    async (request, reply) => handleAdminRoute(reply, async () => {
+      const membership = requireCatalogPermission(resolveMembership(request));
+      const season = await createAdminSeason(membership, requireAdminContext(request).user.id, parseAdminSeasonCreateBody(request.body), request.ip);
+      return reply.code(201).send({ data: season });
+    }),
+  );
+
+  app.patch<{ Params: SeasonParams; Body: unknown }>(
+    "/admin/seasons/:id",
+    { preHandler: authenticateAdmin, config: { rateLimit: { max: 60, timeWindow: "15 minutes" } } },
+    async (request, reply) => handleAdminRoute(reply, async () => {
+      if (!uuidPattern.test(request.params.id)) throw new AdminApiError(400, "INVALID_SEASON_ID", "L'identifiant de la saison est invalide.");
+      const membership = requireCatalogPermission(resolveMembership(request));
+      return {
+        data: await updateAdminSeason(membership, requireAdminContext(request).user.id, request.params.id, parseAdminSeasonUpdateBody(request.body), request.ip),
+      };
+    }),
+  );
+
+  app.delete<{ Params: SeasonParams; Body: unknown }>(
+    "/admin/seasons/:id",
+    { preHandler: authenticateAdmin, config: { rateLimit: { max: 20, timeWindow: "15 minutes" } } },
+    async (request, reply) => handleAdminRoute(reply, async () => {
+      if (!uuidPattern.test(request.params.id)) throw new AdminApiError(400, "INVALID_SEASON_ID", "L'identifiant de la saison est invalide.");
+      const membership = requireCatalogPermission(resolveMembership(request));
+      return {
+        data: await deleteAdminSeason(membership, requireAdminContext(request).user.id, request.params.id, parseAdminSeasonDeleteBody(request.body), request.ip),
+      };
+    }),
+  );
+
+  app.get(
+    "/admin/dashboard",
+    { preHandler: authenticateAdmin },
+    async (request, reply) => handleAdminRoute(reply, async () => ({
+      data: await getAdminDashboard(requireDashboardPermission(resolveMembership(request))),
+    })),
+  );
+
+  app.get(
+    "/admin/team",
+    { preHandler: authenticateAdmin },
+    async (request, reply) => handleAdminRoute(reply, async () => ({
+      data: await listAdminTeam(requireTeamPermission(resolveMembership(request)), requireAdminContext(request).user.id),
+    })),
+  );
+
+  app.post<{ Body: unknown }>(
+    "/admin/team",
+    { preHandler: authenticateAdmin, config: { rateLimit: { max: 10, timeWindow: "1 hour" } } },
+    async (request, reply) => handleAdminRoute(reply, async () => {
+      const membership = requireTeamPermission(resolveMembership(request));
+      const result = await inviteAdminTeamMember(membership, requireAdminContext(request).user.id, parseAdminTeamInvitationBody(request.body), request.ip);
+      return reply.code(201).send({ data: result });
+    }),
+  );
+
+  app.patch<{ Params: TeamMemberParams; Body: unknown }>(
+    "/admin/team/:id",
+    { preHandler: authenticateAdmin, config: { rateLimit: { max: 30, timeWindow: "15 minutes" } } },
+    async (request, reply) => handleAdminRoute(reply, async () => {
+      if (!uuidPattern.test(request.params.id)) {
+        throw new AdminApiError(400, "INVALID_TEAM_MEMBER_ID", "L'identifiant du membre est invalide.");
+      }
+      const membership = requireTeamPermission(resolveMembership(request));
+      const { role } = parseAdminTeamRoleBody(request.body);
+      return { data: await updateAdminTeamMemberRole(membership, requireAdminContext(request).user.id, request.params.id, role, request.ip) };
+    }),
+  );
+
+  app.delete<{ Params: TeamMemberParams }>(
+    "/admin/team/:id",
+    { preHandler: authenticateAdmin, config: { rateLimit: { max: 20, timeWindow: "15 minutes" } } },
+    async (request, reply) => handleAdminRoute(reply, async () => {
+      if (!uuidPattern.test(request.params.id)) {
+        throw new AdminApiError(400, "INVALID_TEAM_MEMBER_ID", "L'identifiant du membre est invalide.");
+      }
+      const membership = requireTeamPermission(resolveMembership(request));
+      return { data: await removeAdminTeamMember(membership, requireAdminContext(request).user.id, request.params.id, request.ip) };
+    }),
+  );
+
+  app.get<{ Querystring: ContactRequestListQuery }>(
+    "/admin/contact-requests",
+    { preHandler: authenticateAdmin },
+    async (request, reply) => handleAdminRoute(reply, async () => ({
+      data: await listAdminContactRequests(requireContactRequestPermission(resolveMembership(request)), {
+        page: parsePositiveInteger(request.query.page, 1, "page", 1_000_000),
+        pageSize: parsePositiveInteger(request.query.pageSize, 20, "pageSize", 100),
+        status: parseAdminContactRequestFilter(request.query.status),
+        search: parseSearch(request.query.search),
+      }),
+    })),
+  );
+
+  app.get<{ Params: ContactRequestParams }>(
+    "/admin/contact-requests/:id",
+    { preHandler: authenticateAdmin },
+    async (request, reply) => handleAdminRoute(reply, async () => {
+      if (!uuidPattern.test(request.params.id)) {
+        throw new AdminApiError(400, "INVALID_CONTACT_REQUEST_ID", "L'identifiant de la demande est invalide.");
+      }
+      return { data: await getAdminContactRequest(requireContactRequestPermission(resolveMembership(request)), request.params.id) };
+    }),
+  );
+
+  app.patch<{ Params: ContactRequestParams; Body: unknown }>(
+    "/admin/contact-requests/:id",
+    { preHandler: authenticateAdmin, config: { rateLimit: { max: 60, timeWindow: "15 minutes" } } },
+    async (request, reply) => handleAdminRoute(reply, async () => {
+      if (!uuidPattern.test(request.params.id)) {
+        throw new AdminApiError(400, "INVALID_CONTACT_REQUEST_ID", "L'identifiant de la demande est invalide.");
+      }
+      const membership = requireContactRequestPermission(resolveMembership(request));
+      return {
+        data: await setAdminContactRequestHandled(
+          membership,
+          requireAdminContext(request).user.id,
+          request.params.id,
+          parseAdminContactRequestHandlingBody(request.body),
           request.ip,
         ),
       };

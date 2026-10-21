@@ -23,7 +23,7 @@ import {
   updateAdminBooking,
 } from "../../api/admin";
 import { useAdminAuth } from "../../admin/auth";
-import { formatMoney } from "../../admin/ui";
+import { formatMoney, nightDetailLabels } from "../../admin/ui";
 
 function nextDate(value: string, days = 1) {
   const date = new Date(`${value}T12:00:00`);
@@ -261,12 +261,12 @@ export function AdminBookingEditDialog({ booking, onClose, onSaved }: {
                   {currentRoomMissing && <label className={roomTypeId === initialRoomTypeId ? "selected" : ""}>
                     <input disabled={financialLocked} type="radio" name="edit-room-type" checked={roomTypeId === initialRoomTypeId} onChange={() => setRoomTypeId(initialRoomTypeId)} />
                     <span><strong>{booking.rooms[0]?.roomTypeName}</strong><small>Hébergement actuel · disponibilité revérifiée au devis</small></span>
-                    <strong>{formatMoney(booking.rooms[0]?.nightlyPrice ?? 0, booking.currency)}<small>/ nuit</small></strong>
+                    <strong>{formatMoney(booking.rooms[0]?.lineTotal ?? 0, booking.currency)}<small>le séjour actuel</small></strong>
                   </label>}
                   {options?.roomTypes.map((room) => <label key={room.id} className={roomTypeId === room.id ? "selected" : ""}>
                     <input disabled={financialLocked} type="radio" name="edit-room-type" value={room.id} checked={roomTypeId === room.id} onChange={() => setRoomTypeId(room.id)} />
                     <span><strong>{room.name}</strong><small>{room.availableUnits ?? 0} disponible(s) · jusqu’à {room.capacity} pers.</small></span>
-                    <strong>{formatMoney(room.price, room.currency)}<small>/ nuit</small></strong>
+                    <strong>{formatMoney(room.totalPrice ?? room.price, room.currency)}<small>{room.totalPrice === undefined ? "/ nuit" : room.variableRates ? "le séjour · prix selon les dates" : "le séjour"}</small></strong>
                   </label>)}
                 </div>
               </section>
@@ -300,6 +300,7 @@ export function AdminBookingEditDialog({ booking, onClose, onSaved }: {
                 {quoteLoading && <p className="admin-booking-create-muted">Actualisation du tarif…</p>}
                 {selectionChanged && quote && <dl>
                   <div><dt>{quote.room.name} · {quote.nights} nuit(s)</dt><dd>{formatMoney(quote.accommodationTotal, quote.currency)}</dd></div>
+                  {nightDetailLabels(quote.room.nights, quote.currency).map((label, index) => <div className="night-detail" key={index}><dt>{label}</dt></div>)}
                   {quote.extras.map((extra) => <div key={extra.id}><dt>{extra.name} × {extra.quantity}</dt><dd>{formatMoney(extra.total, quote.currency)}</dd></div>)}
                   <div><dt>dont TVA incluse</dt><dd>{formatMoney(quote.vatTotalIncluded, quote.currency)}</dd></div>
                   {quote.touristTaxTotal > 0 && <div><dt>Taxe de séjour</dt><dd>{formatMoney(quote.touristTaxTotal, quote.currency)}</dd></div>}

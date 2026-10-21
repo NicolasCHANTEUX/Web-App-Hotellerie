@@ -1,5 +1,6 @@
 import { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
+import { propertyScope } from "../../lib/property-scope.js";
 import { priceTaxRule, roundMoney, touristTaxPeriodFilter } from "../booking/booking.pricing.js";
 import { priceStayNights, staySeasonsSelection, stayPricingRelations } from "../booking/booking.stay-rates.js";
 import { serializeRoomType } from "../catalog/catalog.service.js";
@@ -18,7 +19,7 @@ export async function searchAvailability(input: AvailabilityInput, propertyId?: 
 
   const roomTypes = await prisma.roomType.findMany({
     where: {
-      ...(propertyId ? { propertyId } : {}),
+      ...propertyScope(propertyId),
       isPublished: true,
       archivedAt: null,
       maxGuests: { gte: totalGuests },
@@ -120,6 +121,7 @@ export async function searchAvailability(input: AvailabilityInput, propertyId?: 
       // Exact sums of the nights: `price` is only their average.
       totalPrice: Number(stayRates.total),
       ...(stayRates.promotion ? { originalTotalPrice: Number(stayRates.regularTotal) } : {}),
+      variableRates: stayRates.nights.some((night) => !night.price.equals(stayRates.nights[0]!.price)),
       touristTaxTotal: Number(touristTaxTotal),
     }];
   });

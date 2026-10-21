@@ -32,6 +32,8 @@ type AdminAuthContextValue = {
   accessToken: string | null;
   profile: AdminMe | null;
   login: (email: string, password: string) => Promise<void>;
+  /** Opens the session carried by an invitation or password reset link. */
+  startSession: (session: AdminLoginResult) => Promise<void>;
   logout: () => void;
   refreshProfile: () => Promise<void>;
 };
@@ -150,8 +152,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     return () => controller.abort();
   }, [endSession]);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const session = await loginAdmin(email, password);
+  const startSession = useCallback(async (session: AdminLoginResult) => {
     sessionRef.current = storeSession(session);
     try {
       const nextProfile = await getAdminMe(session.accessToken);
@@ -165,6 +166,10 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const login = useCallback(async (email: string, password: string) => {
+    await startSession(await loginAdmin(email, password));
+  }, [startSession]);
+
   // Reloads the property shown in the layout after its settings changed.
   const refreshProfile = useCallback(async () => {
     const session = sessionRef.current;
@@ -176,9 +181,10 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     accessToken,
     profile,
     login,
+    startSession,
     logout,
     refreshProfile,
-  }), [status, accessToken, profile, login, logout, refreshProfile]);
+  }), [status, accessToken, profile, login, startSession, logout, refreshProfile]);
 
   return <AdminAuthContext.Provider value={value}>{children}</AdminAuthContext.Provider>;
 }
@@ -220,7 +226,7 @@ export function RequireAdminAuth() {
 
 export function AdminIndexRedirect() {
   const { profile } = useAdminAuth();
-  return <Navigate to={canReadReservations(profile?.membership.role) ? "/admin/reservations" : "/admin/chambres"} replace />;
+  return <Navigate to={canReadReservations(profile?.membership.role) ? "/admin/tableau-de-bord" : "/admin/chambres"} replace />;
 }
 
 export function canReadReservations(role?: AdminRole) {
@@ -235,9 +241,19 @@ export function canManageCatalog(role?: AdminRole) {
   return role === "ADMIN";
 }
 
+export function canAnswerContactRequests(role?: AdminRole) {
+  return role === "ADMIN" || role === "RECEPTION";
+}
+
 export function RequireCatalogAccess({ children }: { children: ReactNode }) {
   const { profile } = useAdminAuth();
   if (!canManageCatalog(profile?.membership.role)) return <AdminIndexRedirect />;
+  return children;
+}
+
+export function RequireContactRequestAccess({ children }: { children: ReactNode }) {
+  const { profile } = useAdminAuth();
+  if (!canAnswerContactRequests(profile?.membership.role)) return <AdminIndexRedirect />;
   return children;
 }
 

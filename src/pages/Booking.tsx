@@ -5,6 +5,8 @@ import { createBooking, getAvailability, getBookingQuote, getExtras } from "../a
 import { BookingStepper } from "../components/BookingStepper";
 import { ResponsiveImage } from "../components/ResponsiveImage";
 import { useRemoteData } from "../hooks/useRemoteData";
+import { formatPrice } from "../money";
+import { groupNights, nightGroupLabel, showsNightDetail } from "../nightlyRates";
 import { legacyStorageKeys, storageKeys } from "../storageKeys";
 import { Accommodation, AvailabilityResult, BookingOption, BookingQuote } from "../types/hotel";
 
@@ -106,7 +108,7 @@ export function Booking() {
     ? JSON.stringify([room.id, arrival, departure, adults, children, [...selectedOptions].sort()])
     : "";
   const activeQuote = quoteKey === currentQuoteKey ? quote : null;
-  const roomSubtotal = activeQuote?.accommodationTotal ?? (room ? room.price * nights : 0);
+  const roomSubtotal = activeQuote?.accommodationTotal ?? (room ? room.totalPrice ?? room.price * nights : 0);
   const optionsSubtotal = activeQuote?.extrasTotal ?? chosenOptions.reduce((sum, item) => sum + optionAmount(item, nights, guests), 0);
   const vatTaxes = activeQuote?.vatTotalIncluded ?? 0;
   const touristTax = activeQuote?.touristTaxTotal ?? room?.touristTaxTotal ?? 0;
@@ -284,7 +286,9 @@ export function Booking() {
               <div className="booking-section-heading"><h2>Hébergements disponibles</h2><p>{nights} nuit{nights > 1 ? "s" : ""} · {guests} voyageur{guests > 1 ? "s" : ""}</p></div>
               {availabilityLoading && <div className="booking-room-list booking-room-skeletons" role="status" aria-label="Vérification des disponibilités"><span className="sr-only">Vérification des disponibilités...</span>{Array.from({ length: 4 }, (_, index) => <RoomChoiceSkeleton key={index} />)}</div>}
               {availabilityError && <div className="api-state api-state-error booking-api-state" role="alert"><p>{availabilityError}</p><button type="button" className="btn-secondary" onClick={() => setAvailabilityRetry((value) => value + 1)}>Réessayer</button></div>}
-              {!availabilityLoading && !availabilityError && availableRooms.length === 0 && <div className="booking-empty"><h3>Aucun hébergement disponible pour ces dates</h3><p>Modifiez votre séjour ou contactez-nous pour trouver la meilleure solution.</p><div><button type="button" className="btn-secondary" onClick={() => setStep(1)}>Modifier mes dates</button><Link className="btn-primary" to="/contact">Nous contacter</Link></div></div>}
+              {!availabilityLoading && !availabilityError && availableRooms.length === 0 && <div className="booking-empty">{availability?.minStay
+                ? <><h3>Séjour trop court pour ces dates</h3><p>Pendant la période « {availability.minStay.seasonLabel} », les séjours comptent au moins {availability.minStay.minNights} nuits. Allongez votre séjour ou contactez-nous.</p></>
+                : <><h3>Aucun hébergement disponible pour ces dates</h3><p>Modifiez votre séjour ou contactez-nous pour trouver la meilleure solution.</p></>}<div><button type="button" className="btn-secondary" onClick={() => setStep(1)}>Modifier mes dates</button><Link className="btn-primary" to="/contact">Nous contacter</Link></div></div>}
               {!availabilityLoading && !availabilityError && availableRooms.length > 0 && <div className="booking-room-list">
                 {availableRooms.map((item) => <RoomChoice key={item.id} room={item} nights={nights} selected={item.slug === roomSlug} onSelect={() => setRoomSlug(item.slug)} />)}
               </div>}
@@ -300,7 +304,7 @@ export function Booking() {
               {!optionsQuery.loading && !optionsQuery.error && <div className="booking-options">
                 {bookingOptions.map((option) => {
                   const checked = selectedOptions.includes(option.id);
-                  return <label className={`booking-option ${checked ? "selected" : ""}`} key={option.id}><input type="checkbox" checked={checked} onChange={() => toggleOption(option.id)} /><span className="fake-check">{checked && <Check />}</span><span className="option-copy"><strong>{option.name}</strong><small>{option.description}</small></span><span className="option-price"><strong>+{option.price} €</strong><small>{optionPriceLabel(option)}</small></span></label>;
+                  return <label className={`booking-option ${checked ? "selected" : ""}`} key={option.id}><input type="checkbox" checked={checked} onChange={() => toggleOption(option.id)} /><span className="fake-check">{checked && <Check />}</span><span className="option-copy"><strong>{option.name}</strong><small>{option.description}</small></span><span className="option-price"><strong>+{formatPrice(option.price, option.currency)}</strong><small>{optionPriceLabel(option)}</small></span></label>;
                 })}
               </div>}
               <div className="booking-nav"><button className="btn-secondary" type="button" onClick={() => setStep(2)}>← Retour</button><button className="btn-primary" type="button" onClick={() => setStep(4)}>Continuer →</button></div>
@@ -330,7 +334,7 @@ export function Booking() {
                 <strong>Vos dates et votre chambre sont prêtes à être enregistrées.</strong>
                 <p>Cette option sur la chambre sera maintenue pendant 24 h, dans l'attente de la confirmation de l'hôtel.</p>
               </div>
-              <div className="payment-total"><p><span>Montant du séjour</span><small>TTC · confirmation manuelle par l'hôtel</small></p><strong>{total} €</strong></div>
+              <div className="payment-total"><p><span>Montant du séjour</span><small>TTC · confirmation manuelle par l'hôtel</small></p><strong>{formatPrice(total, activeQuote?.currency ?? room?.currency)}</strong></div>
               <label className="privacy-check booking-terms-check">
                 <input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} required />
                 <span>J'accepte les <Link to="/mentions-legales#cgv" target="_blank" rel="noreferrer">conditions générales de vente</Link> et reconnais avoir consulté la <Link to="/mentions-legales#confidentialite" target="_blank" rel="noreferrer">notice de confidentialité</Link>.</span>
@@ -350,11 +354,16 @@ export function Booking() {
 }
 
 function RoomChoice({ room, nights, selected, onSelect }: { room: Accommodation; nights: number; selected: boolean; onSelect: () => void }) {
+  // The search returns the exact total of the stay; `price` is only its nightly average.
+  const total = room.totalPrice ?? room.price * nights;
+  const originalTotal = room.originalTotalPrice ?? (room.originalPrice ? room.originalPrice * nights : undefined);
+  const nightsLabel = `${nights} nuit${nights > 1 ? "s" : ""}`;
+  const price = (value: number) => formatPrice(value, room.currency);
   return (
-    <button type="button" className={`booking-room ${selected ? "selected" : ""}`} onClick={onSelect} aria-pressed={selected} aria-label={`${selected ? "Hébergement sélectionné" : "Sélectionner"} : ${room.name}, ${room.price * nights} euros pour le séjour`}>
+    <button type="button" className={`booking-room ${selected ? "selected" : ""}`} onClick={onSelect} aria-pressed={selected} aria-label={`${selected ? "Hébergement sélectionné" : "Sélectionner"} : ${room.name}, ${price(total)} pour le séjour`}>
       <ResponsiveImage src={room.hero} sizes="110px" width={220} height={160} alt="" />
       <span className="booking-room-copy"><strong>{room.name}</strong><small>{room.rooms} · {room.surface} · max {room.capacity} pers.</small><span>{room.amenities.slice(0, 3).map((item) => <em key={item}>{item}</em>)}</span>{selected && <span className="room-selection-status"><Check />Sélectionnée</span>}</span>
-      <span className="booking-room-price">{room.promotion && <em>-{room.promotion.discountPercent}% · {room.promotion.label}</em>}{room.originalPrice && <del>{room.originalPrice * nights} €</del>}<strong>{room.price * nights} € TTC</strong><small>{room.price} € TTC × {nights} nuit{nights > 1 ? "s" : ""}</small></span>
+      <span className="booking-room-price">{room.promotion && <em>-{room.promotion.discountPercent}% · {room.promotion.label}</em>}{originalTotal && <del>{price(originalTotal)}</del>}<strong>{price(total)} TTC</strong><small>{room.variableRates ? `${nightsLabel} · prix selon les dates` : `${price(room.price)} TTC × ${nightsLabel}`}</small></span>
     </button>
   );
 }
@@ -364,12 +373,15 @@ function RoomChoiceSkeleton() {
 }
 
 function BookingSummary({ room, arrival, departure, adults, children, nights, options, quote, quoteLoading, roomSubtotal, optionsSubtotal, vatTaxes, touristTax, total }: { room?: Accommodation; arrival: string; departure: string; adults: number; children: number; nights: number; options: BookingOption[]; quote: BookingQuote | null; quoteLoading: boolean; roomSubtotal: number; optionsSubtotal: number; vatTaxes: number; touristTax: number; total: number }) {
+  const quotedNights = groupNights(quote?.room.nights ?? []);
+  const nightGroups = showsNightDetail(quotedNights) ? quotedNights : [];
+  const price = (value: number) => formatPrice(value, quote?.currency ?? room?.currency);
   return (
     <aside className="booking-recap">
       <h2>Récapitulatif</h2>
       {!room ? <div className="recap-placeholder">Aucun hébergement sélectionné</div> : <><ResponsiveImage src={room.hero} sizes="290px" width={580} height={320} alt={room.name} /><h3>{room.name}</h3><p className="recap-room-meta">{room.rooms} · {room.surface}</p></>}
       <dl className="recap-details"><div><dt>Arrivée</dt><dd>{dateLabel(arrival)}</dd></div><div><dt>Départ</dt><dd>{dateLabel(departure)}</dd></div><div><dt>Durée</dt><dd>{nights} nuit{nights > 1 ? "s" : ""}</dd></div><div><dt>Voyageurs</dt><dd>{adults} adulte{adults > 1 ? "s" : ""}{children ? ` · ${children} enfant${children > 1 ? "s" : ""}` : ""}</dd></div></dl>
-      {room && <div className="recap-pricing"><p><span>{room.name} (TTC)</span><strong>{roomSubtotal} €</strong></p>{options.map((item) => <p key={item.id}><span>{item.name} (TTC)</span><strong>{quote?.extras.find((extra) => extra.id === item.id)?.total ?? optionAmount(item, nights, adults + children)} €</strong></p>)}{optionsSubtotal > 0 && <p className="sr-only">Options TTC : {optionsSubtotal} €</p>}<p><span>dont TVA incluse</span><strong>{vatTaxes} €</strong></p>{touristTax > 0 && <p><span>Taxe de séjour</span><strong>{touristTax} €</strong></p>}<p className="recap-total"><span>Total</span><strong>{total} €</strong></p>{quoteLoading && <p role="status"><small>Mise à jour du prix...</small></p>}</div>}
+      {room && <div className="recap-pricing"><p><span>{room.name} (TTC)</span><strong>{price(roomSubtotal)}</strong></p>{nightGroups.map((group, index) => <p className="recap-night-detail" key={index}><span>{nightGroupLabel(group, price)}</span></p>)}{options.map((item) => <p key={item.id}><span>{item.name} (TTC)</span><strong>{price(quote?.extras.find((extra) => extra.id === item.id)?.total ?? optionAmount(item, nights, adults + children))}</strong></p>)}{optionsSubtotal > 0 && <p className="sr-only">Options TTC : {price(optionsSubtotal)}</p>}<p><span>dont TVA incluse</span><strong>{price(vatTaxes)}</strong></p>{touristTax > 0 && <p><span>Taxe de séjour</span><strong>{price(touristTax)}</strong></p>}<p className="recap-total"><span>Total</span><strong>{price(total)}</strong></p>{quoteLoading && <p role="status"><small>Mise à jour du prix...</small></p>}</div>}
       <p className="recap-security"><LockKeyhole />Demande sécurisée · confirmation par l'hôtel</p>
     </aside>
   );

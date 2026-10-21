@@ -3,6 +3,10 @@ import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { prisma } from "../../src/lib/prisma.js";
 import { getAdminBookingUpdateQuote } from "../../src/modules/admin/admin.booking-update.js";
+import { AdminApiError } from "../../src/modules/admin/admin.errors.js";
+import { createAdminSeason, deleteAdminSeason, listAdminSeasons, updateAdminSeason } from "../../src/modules/admin/admin.season.service.js";
+import { confirmAdminBooking } from "../../src/modules/admin/admin.service.js";
+import { recordManualPayment } from "../../src/modules/billing/billing.service.js";
 import { searchAvailability } from "../../src/modules/availability/availability.service.js";
 import { BookingError } from "../../src/modules/booking/booking.errors.js";
 import { getBookingQuote } from "../../src/modules/booking/booking.quote.service.js";
@@ -12,6 +16,7 @@ import {
   NIGHTLY_PRICE,
   TOURIST_TAX_PER_ADULT_PER_NIGHT,
   bookingRequest,
+  createReceptionist,
   createSeason,
   createTestHotel,
   dateFromToday,
@@ -132,4 +137,60 @@ test("interdit en base deux saisons qui se chevauchent", async () => {
   await assert.rejects(() => createSeason(hotel, { label: "Fin d'été", firstNightInDays: 60, lastNightInDays: 70 }));
   await createSeason(hotel, { label: "Automne", firstNightInDays: 61, lastNightInDays: 90 });
   assert.equal(await prisma.season.count({ where: { propertyId: hotel.property.id } }), 2);
+});
+
+test("gère les saisons depuis l'administration et les applique aux nouveaux devis", async () => {
+  const hotel = await createTestHotel();
+  const { membership, adminUserId } = await createReceptionist(hotel);
+  const summer = {
+    label: "Été",
+    validFrom: dateFromToday(40),
+    validUntil: dateFromToday(60),
+    minNights: null,
+    rates: [{ roomTypeId: hotel.roomType.id, nightlyPrice: 190, weekendNightlyPrice: null }],
+  };
+  const input = await bookingRequest(hotel, { arrivalInDays: 45, nights: 2 });
+
+  const created = await createAdminSeason(membership, adminUserId, summer);
+  assert.equal((await getBookingQuote(input)).accommodationTotal, 2 * 190);
+  const listed = await listAdminSeasons(hotel.property.id);
+  assert.deepEqual(listed.roomTypes.map((roomType) => [roomType.name, roomType.basePrice]), [["Chambre test", NIGHTLY_PRICE]]);
+  assert.deepEqual(listed.seasons.map((season) => [season.label, season.rates[0]?.nightlyPrice]), [["Été", 190]]);
+
+  await assert.rejects(
+    () => createAdminSeason(membership, adminUserId, { ...summer, label: "Août", validFrom: dateFromToday(55), validUntil: dateFromToday(70) }),
+    (error: unknown) => error instanceof AdminApiError && error.code === "SEASON_OVERLAP" && error.message.includes("« Été »"),
+  );
+
+  const updated = await updateAdminSeason(membership, adminUserId, created.id, { ...summer, rates: [{ ...summer.rates[0]!, nightlyPrice: 210 }], updatedAt: new Date(created.updatedAt) });
+  assert.equal((await getBookingQuote(input)).accommodationTotal, 2 * 210);
+  await assert.rejects(
+    () => updateAdminSeason(membership, adminUserId, created.id, { ...summer, updatedAt: new Date(created.updatedAt) }),
+    (error: unknown) => error instanceof AdminApiError && error.code === "SEASON_VERSION_CONFLICT",
+  );
+
+  await deleteAdminSeason(membership, adminUserId, created.id, { updatedAt: new Date(updated.updatedAt) });
+  assert.equal((await getBookingQuote(input)).accommodationTotal, 2 * NIGHTLY_PRICE);
+  const audit = await prisma.auditLog.findMany({ where: { entityId: created.id }, orderBy: { createdAt: "asc" } });
+  assert.deepEqual(audit.map((item) => item.action), ["SEASON_CREATED", "SEASON_UPDATED", "SEASON_DELETED"]);
+});
+
+test("détaille la facture d'un séjour à cheval sur une saison sans écart de centime", async () => {
+  const hotel = await createTestHotel();
+  const reception = await createReceptionist(hotel);
+  await createSeason(hotel, { firstNightInDays: 40, lastNightInDays: 60, nightlyPrice: 185 });
+  const booking = await createBooking(await bookingRequest(hotel, { arrivalInDays: 38, nights: 4 }), randomUUID());
+  await confirmAdminBooking(reception.membership, reception.adminUserId, booking.id);
+
+  await recordManualPayment(reception.membership, reception.adminUserId, booking.id, `manual:${randomUUID()}`, { paymentMethodType: "Carte bancaire" });
+
+  const invoice = await prisma.invoice.findFirstOrThrow({ where: { bookingId: booking.id }, include: { lines: { orderBy: { sortOrder: "asc" } } } });
+  assert.deepEqual(invoice.lines.map((line) => [line.description.replace(/ - chambre \d+/, ""), Number(line.quantity), Number(line.lineTotal)]), [
+    ["Chambre test (2 nuits)", 2, 2 * NIGHTLY_PRICE],
+    ["Chambre test (2 nuits · Haute saison)", 2, 2 * 185],
+    ["Taxe de séjour", 8, 8 * TOURIST_TAX_PER_ADULT_PER_NIGHT],
+  ]);
+  const sum = (values: number[]) => Math.round(values.reduce((total, value) => total + value, 0) * 100) / 100;
+  assert.equal(sum(invoice.lines.map((line) => Number(line.lineTotal))), Number(invoice.total));
+  assert.equal(sum(invoice.lines.map((line) => Number(line.taxAmount))), Number(invoice.taxTotal));
 });

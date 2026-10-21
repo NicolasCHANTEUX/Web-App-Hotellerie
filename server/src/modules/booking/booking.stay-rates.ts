@@ -157,6 +157,21 @@ export function nightlyRatesSnapshot(nights: PricedNight[]) {
   }));
 }
 
+/**
+ * Reads back the night-by-night detail of a booking room; null for bookings
+ * made before it was recorded, or when it is unreadable.
+ */
+export function readNightlyRatesSnapshot(snapshot: Prisma.JsonValue | null | undefined) {
+  if (!Array.isArray(snapshot) || snapshot.length === 0) return null;
+  const nights: Array<{ date: string; season: string | null; price: string }> = [];
+  for (const night of snapshot) {
+    if (!night || typeof night !== "object" || Array.isArray(night)) return null;
+    if (typeof night.date !== "string" || typeof night.price !== "string") return null;
+    nights.push({ date: night.date, season: typeof night.season === "string" ? night.season : null, price: night.price });
+  }
+  return nights;
+}
+
 export function minStayMessage(minStay: { minNights: number; seasonLabel: string }) {
   return `Pendant la période « ${minStay.seasonLabel} », les séjours comptent au moins ${minStay.minNights} nuits.`;
 }

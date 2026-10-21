@@ -1,6 +1,7 @@
 import type { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import { env } from "../../config/env.js";
+import { propertyScope } from "../../lib/property-scope.js";
 import { priceStayNights, type StayPromotion, type StaySeason, type StaySeasonRate } from "../booking/booking.stay-rates.js";
 
 // "From" prices look at the nights of the coming year.
@@ -128,7 +129,7 @@ function serializeCatalogRoomType(roomType: CatalogRoomType) {
 
 export function findRoomTypes() {
   return prisma.roomType.findMany({
-    where: { property: { slug: env.publicPropertySlug }, isPublished: true, archivedAt: null },
+    where: { ...propertyScope(), isPublished: true, archivedAt: null },
     orderBy: { displayOrder: "asc" },
     include: catalogRoomTypeInclude(),
   });
@@ -227,7 +228,7 @@ export async function getPublicProperty() {
 
 export async function findRoomTypeBySlug(slug: string) {
   const roomType = await prisma.roomType.findFirst({
-    where: { property: { slug: env.publicPropertySlug }, slug, isPublished: true, archivedAt: null },
+    where: { ...propertyScope(), slug, isPublished: true, archivedAt: null },
     include: catalogRoomTypeInclude(),
   });
   return roomType ? serializeCatalogRoomType(roomType) : null;
@@ -236,7 +237,7 @@ export async function findRoomTypeBySlug(slug: string) {
 export async function listExtras(propertyId?: string) {
   const extras = await prisma.extra.findMany({
     where: {
-      ...(propertyId ? { propertyId } : { property: { slug: env.publicPropertySlug } }),
+      ...propertyScope(propertyId),
       isActive: true,
       priceTaxMode: "INCLUSIVE",
     },

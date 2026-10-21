@@ -316,7 +316,17 @@ test("loads authenticated admin bookings after the asynchronous request", async 
     cancelledAt: null,
     guest: { firstName: "Sophie", lastName: "Martin", email: "sophie@example.com", phone: "+33612345678" },
     guests: [{ firstName: "Sophie", lastName: "Martin", email: "sophie@example.com", phone: "+33612345678", isPrimary: true }],
-    rooms: [{ id: "booking-room-1", roomTypeId: "room-type-1", roomId: "room-201", roomTypeName: "Chambre Élégance", roomNumber: "201", nightlyPrice: 135, taxRate: 10, lineTotal: 270 }],
+    rooms: [{
+      id: "booking-room-1",
+      roomTypeId: "room-type-1",
+      roomId: "room-201",
+      roomTypeName: "Chambre Élégance",
+      roomNumber: "201",
+      nightlyPrice: 135,
+      nightlyRates: [{ date: "2026-09-12", season: "Fin d’été", price: 150 }, { date: "2026-09-13", season: null, price: 120 }],
+      taxRate: 10,
+      lineTotal: 270,
+    }],
     extras: [],
     payments: [],
     paymentStatus: "SUCCEEDED",
@@ -335,6 +345,8 @@ test("loads authenticated admin bookings after the asynchronous request", async 
   await expect(page.getByText("Site internet", { exact: true })).toBeVisible();
   await expect(page.getByText("Arrivée prévue vers 22h30.", { exact: true })).toBeVisible();
   await expect(page.getByText("Tarif flexible", { exact: true })).toBeVisible();
+  await expect(page.getByText(/^1 nuit × 150,00\s€ · Fin d’été$/)).toBeVisible();
+  await expect(page.getByText(/^1 nuit × 120,00\s€$/)).toBeVisible();
   await expect(page.getByText("Option terminée", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Options" })).toHaveCount(0);
   await page.getByRole("button", { name: "Copier la référence RVG-2026-001" }).click();
@@ -557,17 +569,75 @@ test("manages the stay options from the administration", async ({ page }) => {
   expect(writes[1]?.url).toMatch(/\/api\/admin\/extras\/extra-parking$/);
 });
 
+const emptyDashboard = {
+  date: "2026-10-22",
+  arrivals: [],
+  departures: [],
+  pendingOptions: [],
+  pendingOptionsTotal: 0,
+  occupancy: Array.from({ length: 7 }, (_, index) => ({ date: `2026-10-${22 + index}`, occupied: 0, blocked: 0, available: 18 })),
+  openContactRequests: 0,
+  finance: null,
+};
+
+async function mockDashboard(page: Page, dashboard: Record<string, unknown> = {}) {
+  await page.route("**/api/admin/dashboard", (route) => route.fulfill({ json: { data: { ...emptyDashboard, ...dashboard } } }));
+}
+
 test("hides the catalogue options from the reception", async ({ page }) => {
   await signInAs(page, "RECEPTION");
-  await page.route("**/api/admin/bookings?*", (route) => route.fulfill({ json: { data: {
-    items: [], page: 1, pageSize: 5, total: 0, totalPages: 1,
-    summary: { total: 0, byStatus: {}, arrivalsToday: 0, departuresToday: 0 },
-  } } }));
+  await mockDashboard(page);
 
   await page.goto("/admin/options");
 
-  await expect(page).toHaveURL(/\/admin\/reservations$/);
+  await expect(page).toHaveURL(/\/admin\/tableau-de-bord$/);
   await expect(page.getByRole("link", { name: "Options" })).toHaveCount(0);
+});
+
+test("summarises the day on the dashboard", async ({ page }) => {
+  await signInAs(page, "ADMIN");
+  const booking = (id: string, firstName: string, overrides: Record<string, unknown> = {}) => ({
+    id,
+    reference: `RVG-${id.toUpperCase()}`,
+    status: "CONFIRMED",
+    source: "WEBSITE",
+    checkIn: "2026-10-22",
+    checkOut: "2026-10-24",
+    adults: 2,
+    children: 0,
+    total: 270,
+    currency: "EUR",
+    createdAt: "2026-10-01T10:00:00Z",
+    guest: { firstName, lastName: "Martin", email: `${firstName.toLowerCase()}@example.com`, phone: null },
+    rooms: [{ id: `room-${id}`, roomTypeName: "Chambre Élégance", roomNumber: "201" }],
+    paymentStatus: null,
+    hold: null,
+    ...overrides,
+  });
+  await mockDashboard(page, {
+    arrivals: [booking("a1", "Sophie"), booking("a2", "Paul", { status: "CHECKED_IN" })],
+    departures: [booking("d1", "Claire", { checkIn: "2026-10-20", checkOut: "2026-10-22", status: "CHECKED_IN" })],
+    pendingOptions: [booking("o1", "Inès", { status: "PENDING_PAYMENT", checkIn: "2026-11-02", hold: { status: "ACTIVE", expiresAt: "2026-10-23T08:00:00Z", isActive: true } })],
+    pendingOptionsTotal: 1,
+    occupancy: [12, 9, 4, 4, 6, 15, 18].map((occupied, index) => ({ date: `2026-10-${22 + index}`, occupied, blocked: 0, available: 18 })),
+    openContactRequests: 2,
+    finance: { currency: "EUR", monthStart: "2026-10-01", collected: 4250.5, refunded: 120, net: 4130.5, bookingsCount: 14, bookingsTotal: 6120 },
+  });
+
+  await page.goto("/admin");
+
+  await expect(page).toHaveURL(/\/admin\/tableau-de-bord$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Tableau de bord" })).toBeVisible();
+  const metrics = page.getByRole("region", { name: "Synthèse du jour" });
+  await expect(metrics).toContainText("1 déjà arrivé");
+  await expect(metrics).toContainText("67 %");
+  await expect(metrics).toContainText("12 / 18 chambres");
+  await expect(page.getByRole("link", { name: "Ouvrir la réservation RVG-A1 de Sophie Martin" })).toHaveAttribute("href", "/admin/reservations?booking=a1");
+  await expect(page.getByRole("link", { name: /Ouvrir la réservation RVG-O1/ })).toContainText(/expire le/);
+  await expect(page.getByRole("link", { name: /2 demandes de contact à traiter/ })).toHaveAttribute("href", "/admin/demandes");
+  await expect(page.getByText(/4\s130,50\s€/)).toBeVisible();
+  await expect(page.getByText(/14 · 6\s120,00\s€/)).toBeVisible();
+  await expect(page.getByRole("list", { name: "Occupation des 7 prochaines nuits" }).getByRole("listitem")).toHaveCount(7);
 });
 
 test("manages the tourist tax rules and flags overlapping periods", async ({ page }) => {
@@ -710,4 +780,339 @@ test("lists the missing legal details until they are entered", async ({ page }) 
   await page.goto("/mentions-legales");
 
   await expect(page.getByText(/doivent encore être complétées par l'exploitant avant l'ouverture commerciale : le numéro SIRET, le directeur de la publication, l'hébergeur du site\./)).toBeVisible();
+});
+
+async function mockBookingSearch(page: Page, availability: Record<string, unknown>) {
+  await mockProperty(page);
+  await page.route("**/api/room-types", (route) => route.fulfill({ json: { data: [] } }));
+  await page.route("**/api/extras", (route) => route.fulfill({ json: { data: [] } }));
+  await page.route("**/api/availability?*", (route) => route.fulfill({ json: { data: {
+    query: { arrival: "2030-07-30", departure: "2030-08-02", adults: 2, children: 0 },
+    nights: 3,
+    roomTypes: [],
+    minStay: null,
+    ...availability,
+  } } }));
+}
+
+test("prices each night of a stay that enters a season", async ({ page }) => {
+  await mockBookingSearch(page, { roomTypes: [{ ...accommodation, price: 150, totalPrice: 450, variableRates: true, touristTaxTotal: 6.6 }] });
+  const night = (date: string, price: number, season: string | null = null) => ({ date, season, weekend: false, regularPrice: price, price });
+  await page.route("**/api/quotes", (route) => route.fulfill({ json: { data: {
+    priceTaxMode: "INCLUSIVE",
+    currency: "EUR",
+    nights: 3,
+    room: {
+      id: accommodation.id,
+      slug: accommodation.slug,
+      name: accommodation.name,
+      unitPrice: 150,
+      subtotal: 409.09,
+      taxAmount: 40.91,
+      total: 450,
+      regularTotal: 450,
+      nights: [night("2030-07-30", 120), night("2030-07-31", 120), night("2030-08-01", 210, "Haute saison")],
+      promotion: null,
+    },
+    extras: [],
+    accommodationTotal: 450,
+    extrasTotal: 0,
+    vatTotalIncluded: 40.91,
+    touristTaxTotal: 6.6,
+    total: 456.6,
+  } } }));
+
+  await page.goto("/reservation?arrival=2030-07-30&departure=2030-08-02&adults=2&children=0&step=2");
+
+  const choice = page.getByRole("button", { name: /Chambre Élégance, 450\s€ pour le séjour$/ });
+  await expect(choice).toContainText(/450\s€ TTC/);
+  await expect(choice).toContainText("3 nuits · prix selon les dates");
+  await choice.click();
+  const recap = page.locator(".booking-recap");
+  await expect(recap.getByText(/^2 nuits × 120\s€$/)).toBeVisible();
+  await expect(recap.getByText(/^1 nuit × 210\s€ · Haute saison$/)).toBeVisible();
+  await expect(recap).toContainText(/Taxe de séjour\s*6,60\s€/);
+  await expect(recap.locator(".recap-total")).toContainText(/456,60\s€/);
+});
+
+test("explains the minimum stay of a season instead of an empty search", async ({ page }) => {
+  await mockBookingSearch(page, { minStay: { minNights: 5, seasonLabel: "Haute saison" } });
+
+  await page.goto("/reservation?arrival=2030-07-30&departure=2030-08-02&adults=2&children=0&step=2");
+
+  await expect(page.getByRole("heading", { name: "Séjour trop court pour ces dates" })).toBeVisible();
+  await expect(page.getByText("Pendant la période « Haute saison », les séjours comptent au moins 5 nuits. Allongez votre séjour ou contactez-nous.")).toBeVisible();
+  await expect(page.getByText("Aucun hébergement disponible pour ces dates")).toHaveCount(0);
+});
+
+test("manages the seasons and their price grid", async ({ page }) => {
+  await signInAs(page, "ADMIN");
+  const elegance = "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed";
+  const suite = "6ec0bd7f-11c0-43da-975e-2a8ad9ebae0b";
+  const season = (id: string, overrides: Record<string, unknown>) => ({
+    id,
+    label: "Saison",
+    validFrom: "2035-07-01",
+    validUntil: "2035-08-31",
+    minNights: null,
+    rates: [],
+    updatedAt: "2026-10-21T08:00:00.000Z",
+    ...overrides,
+  });
+  let seasons = [
+    season("season-past", { label: "Pâques 2020", validFrom: "2020-04-04", validUntil: "2020-04-18" }),
+    season("season-summer", { label: "Haute saison 2035", minNights: 3, rates: [{ roomTypeId: elegance, nightlyPrice: 190, weekendNightlyPrice: 210 }] }),
+  ];
+  const writes: Array<{ method: string; url: string; body: unknown }> = [];
+  let overlapRefused = false;
+  await page.route("**/api/admin/seasons**", async (route) => {
+    const request = route.request();
+    if (request.method() === "GET") {
+      return route.fulfill({ json: { data: {
+        roomTypes: [
+          { id: elegance, name: "Chambre Élégance", basePrice: 135, currency: "EUR" },
+          { id: suite, name: "Suite Riviera", basePrice: 260, currency: "EUR" },
+        ],
+        seasons,
+      } } });
+    }
+    writes.push({ method: request.method(), url: request.url(), body: request.postDataJSON() });
+    if (request.method() === "POST" && !overlapRefused) {
+      overlapRefused = true;
+      return route.fulfill({ status: 409, json: { error: { code: "SEASON_OVERLAP", message: "Cette période chevauche la saison « Haute saison 2035 » (nuits du 2035-07-01 au 2035-08-31)." } } });
+    }
+    if (request.method() === "POST") {
+      const created = season("season-may", { label: "Pont de mai", validFrom: "2036-05-01", validUntil: "2036-05-03", minNights: 2, rates: [{ roomTypeId: suite, nightlyPrice: 300, weekendNightlyPrice: null }] });
+      seasons = [...seasons, created];
+      return route.fulfill({ status: 201, json: { data: created } });
+    }
+    seasons = seasons.filter((item) => !request.url().endsWith(item.id));
+    return route.fulfill({ json: { data: { id: "season-summer" } } });
+  });
+
+  await page.goto("/admin/tarifs");
+
+  await expect(page.getByRole("heading", { level: 1, name: "Tarifs" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Haute saison 2035", exact: true })).toBeVisible();
+  await expect(page.getByRole("row", { name: /Pâques 2020/ })).toContainText("Terminée");
+  await expect(page.getByRole("row", { name: /^Haute saison 2035/ })).toContainText("À venir");
+  const grid = page.locator("table.admin-season-grid");
+  await expect(grid.getByRole("columnheader", { name: /Haute saison 2035/ })).toBeVisible();
+  await expect(grid.getByRole("columnheader", { name: /Pâques 2020/ })).toHaveCount(0);
+  const eleganceRow = grid.getByRole("row", { name: /Chambre Élégance/ });
+  await expect(eleganceRow).toContainText(/190,00\s€/);
+  await expect(eleganceRow).toContainText(/ven\. et sam\. : 210,00\s€/);
+  await expect(grid.getByRole("row", { name: /Suite Riviera/ })).toContainText("Prix de base");
+
+  await page.getByRole("button", { name: "Nouvelle saison" }).click();
+  const editor = page.getByRole("dialog", { name: "Nouvelle saison" });
+  await editor.getByLabel("Nom de la saison").fill("Pont de mai");
+  await editor.getByLabel("Première nuit").fill("2036-05-01");
+  await editor.getByLabel("Dernière nuit").fill("2036-05-03");
+  await editor.getByLabel("Durée minimale (nuits)").fill("2");
+  await expect(editor.getByText(/^3 nuits, celle du 03 mai 2036 comprise/)).toBeVisible();
+  await editor.getByLabel("Prix du week-end de Chambre Élégance").fill("150");
+  await expect(editor.getByText("Indiquez aussi le prix par nuit de « Chambre Élégance » pour lui donner un prix du week-end.")).toBeVisible();
+  await expect(editor.getByRole("button", { name: "Enregistrer" })).toBeDisabled();
+  await editor.getByLabel("Prix du week-end de Chambre Élégance").fill("");
+  await editor.getByLabel("Prix par nuit de Suite Riviera").fill("300");
+
+  await editor.getByRole("button", { name: "Enregistrer" }).click();
+  await expect(editor.getByRole("alert")).toHaveText("Cette période chevauche la saison « Haute saison 2035 » (nuits du 2035-07-01 au 2035-08-31).");
+  await editor.getByRole("button", { name: "Enregistrer" }).click();
+  await expect(editor).toHaveCount(0);
+  expect(writes[1]).toMatchObject({
+    method: "POST",
+    body: { label: "Pont de mai", validFrom: "2036-05-01", validUntil: "2036-05-03", minNights: 2, rates: [{ roomTypeId: suite, nightlyPrice: 300, weekendNightlyPrice: null }] },
+  });
+  await expect(grid.getByRole("columnheader", { name: /Pont de mai/ })).toBeVisible();
+  await expect(grid.getByRole("row", { name: /Suite Riviera/ })).toContainText(/300,00\s€/);
+
+  await page.getByRole("button", { name: "Supprimer Haute saison 2035" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Supprimer la saison" }).click();
+  await expect(page.getByRole("cell", { name: "Haute saison 2035", exact: true })).toHaveCount(0);
+  expect(writes[2]).toMatchObject({ method: "DELETE", body: { updatedAt: "2026-10-21T08:00:00.000Z" } });
+  expect(writes[2]?.url).toMatch(/\/api\/admin\/seasons\/season-summer$/);
+});
+
+test("answers the contact requests from the reception", async ({ page }) => {
+  await signInAs(page, "RECEPTION");
+  const requestId = "5f0c2d4e-8b1a-4c7e-9f3a-2b6d8e1c4a90";
+  let contactRequest = {
+    id: requestId,
+    fullName: "Sophie Martin",
+    email: "sophie@example.com",
+    phone: "+33612345678",
+    subject: "Préparer mon arrivée",
+    message: "Bonjour,\nnous arriverons vers 23 heures. Est-ce possible ?",
+    anonymized: false,
+    createdAt: "2026-10-21T19:42:00.000Z",
+    handledAt: null as string | null,
+    handledBy: null as string | null,
+    updatedAt: "2026-10-21T19:42:00.000Z",
+  };
+  const listQueries: string[] = [];
+  const writes: unknown[] = [];
+  await page.route("**/api/admin/contact-requests?*", (route) => {
+    const url = new URL(route.request().url());
+    listQueries.push(url.search);
+    const handled = contactRequest.handledAt !== null;
+    const status = url.searchParams.get("status");
+    const items = status === "ALL" || (status === "HANDLED") === handled ? [contactRequest] : [];
+    return route.fulfill({ json: { data: {
+      items, page: 1, pageSize: 20, total: items.length, totalPages: 1,
+      summary: { open: handled ? 0 : 1, handled: handled ? 1 : 0 },
+    } } });
+  });
+  await page.route(`**/api/admin/contact-requests/${requestId}`, async (route) => {
+    if (route.request().method() === "PATCH") {
+      writes.push(route.request().postDataJSON());
+      contactRequest = { ...contactRequest, handledAt: "2026-10-22T08:15:00.000Z", handledBy: "Marie Dupont", updatedAt: "2026-10-22T08:15:00.000Z" };
+    }
+    return route.fulfill({ json: { data: contactRequest } });
+  });
+
+  await page.goto("/admin/demandes");
+
+  await expect(page.getByRole("heading", { level: 1, name: "Demandes" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Demandes" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /À traiter/ })).toHaveAttribute("aria-pressed", "true");
+  expect(listQueries[0]).toContain("status=OPEN");
+  await page.getByRole("button", { name: "Sophie Martin", exact: true }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Préparer mon arrivée" });
+  await expect(dialog.getByText(/nous arriverons vers 23 heures/)).toBeVisible();
+  await expect(dialog.getByRole("link", { name: "Répondre par e-mail" })).toHaveAttribute("href", "mailto:sophie@example.com?subject=Re%3A%20Pr%C3%A9parer%20mon%20arriv%C3%A9e");
+  await dialog.getByRole("button", { name: "Marquer comme traitée" }).click();
+  await expect(dialog.getByText(/^Traitée le .* par Marie Dupont$/)).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Rouvrir la demande" })).toBeVisible();
+  expect(writes).toEqual([{ handled: true, updatedAt: "2026-10-21T19:42:00.000Z" }]);
+  await dialog.getByRole("button", { name: "Fermer" }).first().click();
+  await expect(page.getByText("Aucune demande à traiter")).toBeVisible();
+
+  await page.getByRole("button", { name: /Traitées/ }).click();
+  await expect(page.getByRole("button", { name: "Sophie Martin", exact: true })).toBeVisible();
+
+  await page.goto(`/admin/demandes?demande=${requestId}`);
+  await expect(page.getByRole("dialog", { name: "Préparer mon arrivée" })).toBeVisible();
+});
+
+test("invites a team member, changes a role and withdraws an access", async ({ page }) => {
+  await signInAs(page, "ADMIN");
+  const member = (id: string, displayName: string, email: string, role: string, overrides: Record<string, unknown> = {}) => ({
+    id, displayName, email, role, isActive: true, pending: false, lastLoginAt: "2026-10-20T07:30:00.000Z", memberSince: "2026-01-05T09:00:00.000Z", isCurrentUser: false, ...overrides,
+  });
+  let team = [
+    member("user-admin", "Marie Dupont", "marie@rivage.fr", "ADMIN", { isCurrentUser: true }),
+    member("user-lea", "Léa Martin", "lea@rivage.fr", "RECEPTION", { pending: true, lastLoginAt: null }),
+  ];
+  const writes: Array<{ method: string; url: string; body: unknown }> = [];
+  await page.route("**/api/admin/team**", async (route) => {
+    const request = route.request();
+    if (request.method() === "GET") return route.fulfill({ json: { data: team } });
+    writes.push({ method: request.method(), url: request.url(), body: request.postDataJSON() });
+    if (request.method() === "POST") {
+      const created = member("user-paul", "Paul Durand", "paul@rivage.fr", "ACCOUNTING", { pending: true, lastLoginAt: null });
+      team = [...team, created];
+      return route.fulfill({ status: 201, json: { data: { member: created, invitationSent: true } } });
+    }
+    if (request.method() === "PATCH") {
+      team = team.map((item) => item.id === "user-lea" ? { ...item, role: "ADMIN" } : item);
+      return route.fulfill({ json: { data: team.find((item) => item.id === "user-lea") } });
+    }
+    team = team.filter((item) => !request.url().endsWith(item.id));
+    return route.fulfill({ json: { data: { id: "user-paul" } } });
+  });
+
+  await page.goto("/admin/equipe");
+
+  await expect(page.getByRole("heading", { level: 1, name: "Équipe" })).toBeVisible();
+  await expect(page.getByRole("row", { name: /Marie Dupont\s*Vous/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Retirer l’accès de Marie Dupont" })).toBeDisabled();
+  await expect(page.getByRole("row", { name: /Léa Martin/ })).toContainText("Jamais connecté");
+
+  await page.getByRole("button", { name: "Inviter un membre" }).click();
+  const invitation = page.getByRole("dialog", { name: "Inviter un membre" });
+  await invitation.getByLabel("Nom affiché").fill("Paul Durand");
+  await invitation.getByLabel("Adresse e-mail professionnelle").fill("paul@rivage.fr");
+  await invitation.getByRole("radio", { name: /Comptabilité/ }).check();
+  await invitation.getByRole("button", { name: "Envoyer l’invitation" }).click();
+  await expect(invitation).toHaveCount(0);
+  await expect(page.getByText(/^Invitation envoyée à paul@rivage.fr/)).toBeVisible();
+  expect(writes[0]).toMatchObject({ method: "POST", body: { email: "paul@rivage.fr", displayName: "Paul Durand", role: "ACCOUNTING" } });
+
+  await page.getByRole("button", { name: "Modifier le rôle de Léa Martin" }).click();
+  const roleDialog = page.getByRole("dialog", { name: "Rôle de Léa Martin" });
+  await expect(roleDialog.getByRole("button", { name: "Enregistrer" })).toBeDisabled();
+  await roleDialog.getByRole("radio", { name: /Administrateur/ }).check();
+  await roleDialog.getByRole("button", { name: "Enregistrer" }).click();
+  await expect(page.getByText("Léa Martin est désormais « Administrateur ».")).toBeVisible();
+  expect(writes[1]).toMatchObject({ method: "PATCH", body: { role: "ADMIN" } });
+
+  await page.getByRole("button", { name: "Retirer l’accès de Paul Durand" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Retirer l’accès" }).click();
+  await expect(page.getByRole("row", { name: /Paul Durand/ })).toHaveCount(0);
+  expect(writes[2]?.method).toBe("DELETE");
+  expect(writes[2]?.url).toMatch(/\/api\/admin\/team\/user-paul$/);
+});
+
+test("chooses a password from an invitation link and opens the administration", async ({ page }) => {
+  await mockProperty(page);
+  const passwordRequests: Array<{ authorization?: string; body: unknown }> = [];
+  await page.route("**/api/admin/auth/password", (route) => {
+    passwordRequests.push({ authorization: route.request().headers().authorization, body: route.request().postDataJSON() });
+    return route.fulfill({ status: 204 });
+  });
+  await page.route("**/api/admin/me", (route) => route.fulfill({ json: { data: {
+    user: { id: "user-lea", displayName: "Léa Martin", email: "lea@rivage.fr" },
+    membership: { propertyId: "property-rivage", role: "RECEPTION", property: { id: "property-rivage", name: "Hôtel Rivage", slug: "hotel-rivage", timezone: "Europe/Paris", currency: "EUR" } },
+  } } }));
+  await mockDashboard(page);
+
+  await page.goto("/admin/activation#access_token=link-token&refresh_token=link-refresh&expires_in=3600&token_type=bearer&type=invite");
+
+  await expect(page.getByRole("heading", { name: "Choisissez votre mot de passe" })).toBeVisible();
+  await expect(page).toHaveURL(/\/admin\/activation$/);
+  const submit = page.getByRole("button", { name: /Enregistrer et ouvrir/ });
+  await page.getByLabel("Mot de passe", { exact: true }).fill("court");
+  await expect(page.getByText("Encore 5 caractères.")).toBeVisible();
+  await page.getByLabel("Mot de passe", { exact: true }).fill("une phrase de passe");
+  await page.getByLabel("Confirmation").fill("une phrase de pass");
+  await expect(page.getByText("Les deux mots de passe sont différents.")).toBeVisible();
+  await expect(submit).toBeDisabled();
+  await page.getByLabel("Confirmation").fill("une phrase de passe");
+  await submit.click();
+
+  await expect(page).toHaveURL(/\/admin\/tableau-de-bord$/);
+  expect(passwordRequests).toEqual([{ authorization: "Bearer link-token", body: { password: "une phrase de passe" } }]);
+  expect(await page.evaluate(() => sessionStorage.getItem("hotel.admin.refreshToken"))).toBe("link-refresh");
+});
+
+test("explains an expired invitation link", async ({ page }) => {
+  await mockProperty(page);
+
+  await page.goto("/admin/activation#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired");
+
+  await expect(page.getByRole("heading", { name: "Ce lien a expiré ou a déjà servi." })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Aller à la connexion/ })).toHaveAttribute("href", "/admin/connexion");
+});
+
+test("sends a password reset link from the sign-in page", async ({ page }) => {
+  await mockProperty(page);
+  const recoveries: unknown[] = [];
+  await page.route("**/api/admin/auth/recover", (route) => {
+    recoveries.push(route.request().postDataJSON());
+    return route.fulfill({ status: 202 });
+  });
+
+  await page.goto("/admin/connexion");
+  await page.getByLabel("Adresse e-mail").fill("lea@rivage.fr");
+  await page.getByRole("button", { name: "Mot de passe oublié ?" }).click();
+  await expect(page.getByLabel("Adresse e-mail")).toHaveValue("lea@rivage.fr");
+  await page.getByRole("button", { name: /Recevoir le lien/ }).click();
+
+  await expect(page.getByRole("status")).toContainText("Vérifiez votre boîte de réception.");
+  expect(recoveries).toEqual([{ email: "lea@rivage.fr" }]);
+  await page.getByRole("button", { name: "Retour à la connexion" }).click();
+  await expect(page.getByRole("heading", { name: "Connexion à l’administration" })).toBeVisible();
 });

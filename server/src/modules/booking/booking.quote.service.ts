@@ -3,13 +3,14 @@ import { minStayMessage, priceStayNights, quotedStay, staySeasonsSelection, stay
 import { BookingError } from "./booking.errors.js";
 import type { BookingQuote, BookingSelectionInput } from "./booking.types.js";
 import { prisma } from "../../lib/prisma.js";
+import { propertyScope } from "../../lib/property-scope.js";
 
 export async function getBookingQuote(input: BookingSelectionInput, propertyId?: string): Promise<BookingQuote> {
   const now = new Date();
   const nights = Math.round((input.departure.getTime() - input.arrival.getTime()) / 86_400_000);
   const guests = input.adults + input.children;
   const roomType = await prisma.roomType.findFirst({
-    where: { id: input.roomTypeId, ...(propertyId ? { propertyId } : {}) },
+    where: { id: input.roomTypeId, ...propertyScope(propertyId) },
     include: {
       property: {
         select: {

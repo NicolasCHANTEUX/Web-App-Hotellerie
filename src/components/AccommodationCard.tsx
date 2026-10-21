@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { formatPrice } from "../money";
 import { Accommodation } from "../types/hotel";
 import { ResponsiveImage } from "./ResponsiveImage";
 
@@ -19,7 +20,7 @@ export function AccommodationCard({ accommodation }: { accommodation: Accommodat
         <p className="room-description">{accommodation.shortDescription}</p>
         <div className="room-tags">{accommodation.amenities.slice(0, 3).map((item) => <span key={item}>{item}</span>)}</div>
         <div className="room-bottom">
-          <p><span>À partir de · TTC</span>{accommodation.originalPrice && <del>{accommodation.originalPrice} €</del>}<strong>{accommodation.price} €</strong><small>/ nuit</small></p>
+          <p><span>À partir de · TTC</span>{accommodation.originalPrice && <del>{formatPrice(accommodation.originalPrice, accommodation.currency)}</del>}<strong>{formatPrice(accommodation.price, accommodation.currency)}</strong><small>/ nuit</small></p>
           <Link className="room-cta" to={`/hebergements/${accommodation.slug}`}>Découvrir</Link>
         </div>
       </div>

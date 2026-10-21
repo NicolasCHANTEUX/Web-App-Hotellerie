@@ -96,3 +96,40 @@ test("un dernier avoir reprend exactement les soldes fiscaux après un avoir par
     { subtotal: "30.00", tax: "6.00", total: "36.00" },
   ]);
 });
+
+test("détaille l'hébergement par niveau de prix sans écart de TVA", () => {
+  const night = (date: string, price: string, season: string | null) => ({ date, season, weekend: false, regularPrice: price, promotion: null, price });
+  const room = {
+    roomTypeNameSnapshot: "Chambre Deluxe",
+    roomNumberSnapshot: "201",
+    taxRateSnapshot: new Prisma.Decimal(10),
+    // VAT included in 600.00 at 10 %, computed on the whole stay.
+    taxAmountSnapshot: new Prisma.Decimal("54.55"),
+    lineTotal: new Prisma.Decimal("600.00"),
+    nightlyRatesSnapshot: [
+      night("2027-06-29", "120.00", null),
+      night("2027-06-30", "120.00", null),
+      night("2027-07-01", "180.00", "Haute saison"),
+      night("2027-07-02", "180.00", "Haute saison"),
+    ],
+  };
+  const stay = { checkIn: new Date("2027-06-29T00:00:00Z"), checkOut: new Date("2027-07-03T00:00:00Z"), extras: [], taxLines: [] };
+
+  const lines = buildInvoiceLines({ ...stay, rooms: [room] });
+
+  assert.deepEqual(
+    lines.map((line) => [line.description, line.quantity.toString(), line.lineTotal.toFixed(2), line.taxAmount.toFixed(2), line.sortOrder]),
+    [
+      ["Chambre Deluxe - chambre 201 (2 nuits)", "2", "240.00", "21.82", 0],
+      ["Chambre Deluxe - chambre 201 (2 nuits · Haute saison)", "2", "360.00", "32.73", 1],
+    ],
+  );
+  assert.equal(lines.reduce((sum, line) => sum.add(line.subtotal).add(line.taxAmount), new Prisma.Decimal(0)).toFixed(2), "600.00");
+
+  const uniform = buildInvoiceLines({ ...stay, rooms: [{ ...room, lineTotal: new Prisma.Decimal("480.00"), nightlyRatesSnapshot: room.nightlyRatesSnapshot.map((item) => ({ ...item, price: "120.00", season: null })) }] });
+  assert.deepEqual(uniform.map((line) => line.description), ["Chambre Deluxe - chambre 201 (4 nuits)"]);
+
+  const inconsistent = buildInvoiceLines({ ...stay, rooms: [{ ...room, lineTotal: new Prisma.Decimal("610.00") }] });
+  assert.equal(inconsistent.length, 1);
+  assert.equal(inconsistent[0]?.lineTotal.toFixed(2), "610.00");
+});

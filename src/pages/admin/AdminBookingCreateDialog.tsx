@@ -22,7 +22,7 @@ import {
 } from "../../api/admin";
 import type { BookingQuote } from "../../types/hotel";
 import { useAdminAuth } from "../../admin/auth";
-import { formatMoney } from "../../admin/ui";
+import { formatMoney, nightDetailLabels } from "../../admin/ui";
 
 type BookingSource = CreateAdminBookingInput["source"];
 
@@ -271,7 +271,7 @@ export function AdminBookingCreateDialog({ onClose, onCreated }: {
                   <label key={room.id} className={roomTypeId === room.id ? "selected" : ""}>
                     <input type="radio" name="room-type" value={room.id} checked={roomTypeId === room.id} onChange={() => setRoomTypeId(room.id)} />
                     <span><strong>{room.name}</strong><small>{room.availableUnits} chambre{room.availableUnits === 1 ? "" : "s"} disponible{room.availableUnits === 1 ? "" : "s"} · jusqu’à {room.capacity} pers.</small></span>
-                    <strong>{formatMoney(room.price, room.currency)}<small>/ nuit</small></strong>
+                    <strong>{formatMoney(room.totalPrice ?? room.price, room.currency)}<small>{room.totalPrice === undefined ? "/ nuit" : room.variableRates ? "le séjour · prix selon les dates" : "le séjour"}</small></strong>
                   </label>
                 ))}</div>}
               </section>
@@ -307,6 +307,7 @@ export function AdminBookingCreateDialog({ onClose, onCreated }: {
                 {!quoteLoading && !quote && <p className="admin-booking-create-muted">Sélectionnez un hébergement pour calculer le séjour.</p>}
                 {quote && <dl>
                   <div><dt>{quote.room.name} · {quote.nights} nuit(s)</dt><dd>{formatMoney(quote.accommodationTotal, quote.currency)}</dd></div>
+                  {nightDetailLabels(quote.room.nights, quote.currency).map((label, index) => <div className="night-detail" key={index}><dt>{label}</dt></div>)}
                   {quote.extras.map((extra) => <div key={extra.id}><dt>{extra.name} × {extra.quantity}</dt><dd>{formatMoney(extra.total, quote.currency)}</dd></div>)}
                   <div><dt>dont TVA incluse</dt><dd>{formatMoney(quote.vatTotalIncluded, quote.currency)}</dd></div>
                   {quote.touristTaxTotal > 0 && <div><dt>Taxe de séjour</dt><dd>{formatMoney(quote.touristTaxTotal, quote.currency)}</dd></div>}

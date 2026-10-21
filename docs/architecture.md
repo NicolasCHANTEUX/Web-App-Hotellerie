@@ -40,7 +40,9 @@ Le prix de l'hébergement est calculé nuit par nuit (`booking.stay-rates.ts`), 
 - les nuits du vendredi et du samedi prennent son prix de week-end, s'il est défini ;
 - à défaut de saison ou de prix pour ce type, le prix de base du tarif s'applique.
 
-Les saisons (`Season`) sont communes à l'établissement, et leurs bornes sont des nuits incluses. La base interdit leur chevauchement. Une saison peut imposer une durée minimale : la plus exigeante parmi les saisons touchées par le séjour s'applique, et la recherche indique cette contrainte au lieu de proposer des chambres.
+Les saisons (`Season`) sont communes à l'établissement, et leurs bornes sont des nuits incluses. La base interdit leur chevauchement. Une saison peut imposer une durée minimale : la plus exigeante parmi les saisons touchées par le séjour s'applique, et la recherche indique cette contrainte au lieu de proposer des chambres. `ADMIN` les gère depuis l'écran Tarifs, qui présente aussi la grille des prix par type de chambre. Les réservations déjà enregistrées ne sont pas touchées par une modification.
+
+Le site affiche le total exact du séjour et, dès que le prix varie ou vient d'une saison, le détail des nuits par niveau de prix. La facture reprend ce détail avec une ligne par niveau de prix et par saison. La TVA y est répartie ligne par ligne, et la dernière ligne absorbe l'arrondi pour retomber sur la TVA de la réservation.
 
 Les promotions sont rattachées aux types de chambres et retirent leur pourcentage de chaque nuit couverte, saison comprise. Leur date de fin reste exclue, comme dans la contrainte qui empêche leur chevauchement. Les réservations figent le détail de chaque nuit (`BookingRoom.nightlyRatesSnapshot`), avec son prix normal et son prix accepté. `nightlyPriceSnapshot` n'en est plus que la moyenne.
 
@@ -62,7 +64,7 @@ L'adresse de l'établissement reçoit chaque nouvelle demande de réservation du
 
 Les e-mails adressés au client contiennent un lien personnel vers sa réservation. Le jeton d'accès figure après le `#` de l'URL, que le navigateur ne transmet jamais aux serveurs. Ce lien est calculé au moment de l'envoi et n'est pas stocké. Il permet notamment de payer en ligne plus tard, depuis un autre appareil.
 
-Le formulaire public `POST /contact-requests` valide strictement les champs, exige le consentement, limite les tentatives, protège les reprises par clé d'idempotence et conserve chaque demande en base avant de notifier l'adresse de l'établissement.
+Le formulaire public `POST /contact-requests` valide strictement les champs, exige le consentement, limite les tentatives, protège les reprises par clé d'idempotence et conserve chaque demande en base avant de notifier l'adresse de l'établissement. L'e-mail contient un lien vers la demande dans l'écran Demandes de l'administration, ouvert à `ADMIN` et `RECEPTION`. L'équipe y répond par e-mail puis classe la demande. Le classement enregistre la date et l'auteur, et le journal d'audit le trace. Une fois anonymisée, une demande n'affiche plus d'adresse de réponse.
 
 ## Administration et sécurité
 
@@ -71,6 +73,10 @@ Les routes `/admin/*` exigent un jeton Supabase Auth et une `AdminMembership` ac
 Le planning croise les allocations de chambres sur quatorze jours avec les dossiers de réservation. `ADMIN` et `RECEPTION` peuvent ouvrir les séjours et exécuter les opérations quotidiennes. `HOUSEKEEPING` voit les occupations et blocages sans identité client. Le cycle opérationnel est explicite : `CONFIRMED` → `CHECKED_IN` le jour du séjour, puis `COMPLETED` à partir du départ ; les absences et annulations suivent des transitions contrôlées côté serveur.
 
 `ADMIN` gère le catalogue : types de chambres, chambres et options du séjour. Une option modifiée ne s'applique qu'aux nouvelles demandes, car chaque réservation garde le nom et le prix acceptés. Une option déjà réservée peut seulement être désactivée : elle disparaît alors du site et de la saisie à la réception.
+
+L'administration s'ouvre sur un tableau de bord, sauf pour `HOUSEKEEPING` qui arrive sur les chambres. Il présente les arrivées et les départs du jour, les options qui attendent une confirmation et l'occupation des sept prochaines nuits, chambres bloquées déduites. Chaque rôle n'y voit que ce qui le concerne : les demandes de contact à traiter pour `ADMIN` et `RECEPTION`, les encaissements du mois pour `ADMIN` et `ACCOUNTING`. Ces encaissements sont nets des remboursements et comptés depuis minuit, heure de l'établissement.
+
+`ADMIN` gère l'équipe. Une invitation crée le compte Supabase et envoie le lien pour choisir le mot de passe. Un compte existant est seulement rattaché. Le rôle peut être modifié, et le retrait supprime l'accès à l'établissement mais conserve le compte et son historique. Personne ne modifie son propre accès, et l'établissement garde toujours un administrateur actif. Chaque requête relit les droits en base : un retrait prend effet immédiatement, y compris pour une session ouverte.
 
 `ADMIN` gère aussi les paramètres de l'établissement : nom, coordonnées, horaires et mentions légales. L'API publique `/property` les expose, mise en cache une minute. La page Mentions légales liste ce qui manque encore. Les nouvelles factures recopient les mentions de l'émetteur, tandis que les factures déjà émises gardent leur en-tête figé. Le slug, le fuseau horaire et la devise ne se modifient pas depuis l'administration.
 

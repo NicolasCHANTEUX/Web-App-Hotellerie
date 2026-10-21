@@ -7,6 +7,7 @@ import { NotFound } from "./NotFound";
 import { ResponsiveImage } from "../components/ResponsiveImage";
 import { useProperty } from "../context/PropertyContext";
 import { useRemoteData } from "../hooks/useRemoteData";
+import { formatPrice } from "../money";
 
 export function AccommodationDetail() {
   const { slug } = useParams();
@@ -44,7 +45,7 @@ export function AccommodationDetail() {
 
       <section className="section two-col">
         <div>
-          <p className="eyebrow">À partir de {accommodation.originalPrice && <><del>{accommodation.originalPrice} EUR</del> </>}{accommodation.price} EUR TTC / nuit{accommodation.promotion ? ` · -${accommodation.promotion.discountPercent}% ${accommodation.promotion.label}` : ""}</p>
+          <p className="eyebrow">À partir de {accommodation.originalPrice && <><del>{formatPrice(accommodation.originalPrice, accommodation.currency)}</del> </>}{formatPrice(accommodation.price, accommodation.currency)} TTC / nuit{accommodation.promotion ? ` · -${accommodation.promotion.discountPercent}% ${accommodation.promotion.label}` : ""}</p>
           <h2>{accommodation.rooms}</h2>
           <p className="mt-5 leading-8 text-brown-650">{accommodation.description}</p>
           <Link className="btn-primary mt-8" to={`/reservation?room=${accommodation.slug}`}>

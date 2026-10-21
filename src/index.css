@@ -427,6 +427,7 @@ img { display: block; }
 .recap-pricing { display: grid; gap: 11px; border-top: 1px solid var(--line); padding-top: 18px; }
 .recap-pricing p { display: flex; justify-content: space-between; gap: 16px; margin: 0; color: var(--muted); font-size: 13px; }
 .recap-pricing strong { color: var(--ink); font-weight: 500; }
+.recap-pricing .recap-night-detail { margin-top: -6px; padding-left: 12px; font-size: 12px; }
 .recap-pricing .recap-total { margin-top: 2px; border-top: 1px solid var(--line); padding-top: 13px; color: var(--ink); font-size: 16px; font-weight: 600; }
 .recap-pricing .recap-total strong { font-size: 18px; font-weight: 600; }
 .recap-security { display: flex; align-items: center; justify-content: center; gap: 7px; margin: 2px 0 0; color: var(--muted); font-size: 11px; }

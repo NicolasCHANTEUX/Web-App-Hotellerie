@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Prisma, type BookingSource } from "../../generated/prisma/client.js";
 import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
+import { propertyScope } from "../../lib/property-scope.js";
 import { BookingError } from "./booking.errors.js";
 import { expireStaleBookingHolds } from "./booking.holds.js";
 import {
@@ -181,8 +182,8 @@ export async function createBooking(
 
         const nights = Math.round((input.departure.getTime() - input.arrival.getTime()) / 86_400_000);
         const guests = input.adults + input.children;
-        const roomType = await transaction.roomType.findUnique({
-          where: { id: input.roomTypeId },
+        const roomType = await transaction.roomType.findFirst({
+          where: { id: input.roomTypeId, ...propertyScope(options?.propertyId) },
           include: {
             property: {
               select: {
@@ -248,12 +249,7 @@ export async function createBooking(
           },
         });
 
-        if (
-          !roomType
-          || !roomType.isPublished
-          || roomType.archivedAt
-          || (options && roomType.propertyId !== options.propertyId)
-        ) {
+        if (!roomType || !roomType.isPublished || roomType.archivedAt) {
           throw new BookingError(404, "ROOM_TYPE_NOT_FOUND", "Ce type de chambre est introuvable.");
         }
         if (input.adults > roomType.maxAdults || input.children > roomType.maxChildren || guests > roomType.maxGuests) {

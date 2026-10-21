@@ -47,7 +47,7 @@ function isSupabaseUser(value: unknown): value is SupabaseUser {
   return typeof candidate.id === "string" && candidate.id.length > 0;
 }
 
-function bearerToken(request: FastifyRequest) {
+export function bearerToken(request: FastifyRequest) {
   const authorization = request.headers.authorization;
   if (!authorization) {
     throw new AdminApiError(401, "AUTH_REQUIRED", "Une connexion administrateur est requise.");
@@ -260,16 +260,20 @@ async function requestSupabaseSession(
   return { context, session };
 }
 
+export async function recordAdminSignIn(adminUserId: string) {
+  await prisma.adminUser.update({
+    where: { id: adminUserId },
+    data: { lastLoginAt: new Date() },
+  });
+}
+
 export async function loginWithPassword(email: string, password: string) {
   const { context, session } = await requestSupabaseSession(
     "password",
     { email, password },
     new AdminApiError(401, "INVALID_CREDENTIALS", "Adresse e-mail ou mot de passe incorrect."),
   );
-  await prisma.adminUser.update({
-    where: { id: context.user.id },
-    data: { lastLoginAt: new Date() },
-  });
+  await recordAdminSignIn(context.user.id);
   return session;
 }
 

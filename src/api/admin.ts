@@ -56,6 +56,11 @@ async function adminRequest<T>(
     const renewedToken = await sessionRenewal.renew(token);
     if (renewedToken) response = await sendAdminRequest(path, options, renewedToken);
   }
+  return readAdminResponse<T>(response);
+}
+
+async function readAdminResponse<T>(response: Response) {
+  if (response.status === 202 || response.status === 204) return undefined as T;
   const body = await response.json().catch(() => null) as ApiEnvelope<T> | ApiErrorBody | null;
 
   if (!response.ok) {
@@ -132,7 +137,9 @@ export type AdminBookingRoom = {
   roomId?: string | null;
   roomTypeName: string;
   roomNumber: string | null;
+  /** Average nightly price; nightlyRates details each night when recorded. */
   nightlyPrice?: number;
+  nightlyRates?: Array<{ date: string; season: string | null; price: number }> | null;
   taxRate?: number;
   lineTotal?: number;
 };
@@ -458,6 +465,48 @@ export async function revokeAdminSession(accessToken: string, refreshToken: stri
   }
 }
 
+/** Sends the e-mail to choose a new password; the answer never tells whether the account exists. */
+export function requestAdminPasswordReset(email: string, signal?: AbortSignal) {
+  return adminRequest<void>("/admin/auth/recover", { method: "POST", body: JSON.stringify({ email }), signal });
+}
+
+/**
+ * Chooses the password from an invitation or reset link. The link's own token
+ * is sent as is, whatever session this tab may already hold.
+ */
+export async function setAdminPassword(password: string, linkAccessToken: string) {
+  return readAdminResponse<void>(await sendAdminRequest("/admin/auth/password", { method: "POST", body: JSON.stringify({ password }) }, linkAccessToken));
+}
+
+export type AdminTeamMember = {
+  id: string;
+  displayName: string;
+  email: string;
+  role: AdminRole;
+  isActive: boolean;
+  /** Never signed in yet, typically an invitation not yet accepted. */
+  pending: boolean;
+  lastLoginAt: string | null;
+  memberSince: string;
+  isCurrentUser: boolean;
+};
+
+export function getAdminTeam(accessToken: string, signal?: AbortSignal) {
+  return adminRequest<AdminTeamMember[]>("/admin/team", { signal }, accessToken);
+}
+
+export function inviteAdminTeamMember(input: { email: string; displayName: string; role: AdminRole }, accessToken: string, signal?: AbortSignal) {
+  return adminRequest<{ member: AdminTeamMember; invitationSent: boolean }>("/admin/team", { method: "POST", body: JSON.stringify(input), signal }, accessToken);
+}
+
+export function updateAdminTeamMemberRole(id: string, role: AdminRole, accessToken: string, signal?: AbortSignal) {
+  return adminRequest<AdminTeamMember>(`/admin/team/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ role }), signal }, accessToken);
+}
+
+export function removeAdminTeamMember(id: string, accessToken: string, signal?: AbortSignal) {
+  return adminRequest<{ id: string }>(`/admin/team/${encodeURIComponent(id)}`, { method: "DELETE", signal }, accessToken);
+}
+
 export function getAdminMe(accessToken: string, signal?: AbortSignal) {
   return adminRequest<AdminMe>("/admin/me", { signal }, accessToken);
 }
@@ -775,6 +824,123 @@ export function updateAdminTouristTax(id: string, input: AdminTouristTaxInput & 
 export function deleteAdminTouristTax(id: string, updatedAt: string, accessToken: string, signal?: AbortSignal) {
   return adminRequest<{ id: string }>(
     `/admin/tourist-taxes/${encodeURIComponent(id)}`,
+    { method: "DELETE", body: JSON.stringify({ updatedAt }), signal },
+    accessToken,
+  );
+}
+
+export type AdminDashboard = {
+  /** Today at the property, as YYYY-MM-DD. */
+  date: string;
+  arrivals: AdminBooking[];
+  departures: AdminBooking[];
+  pendingOptions: AdminBooking[];
+  pendingOptionsTotal: number;
+  occupancy: Array<{ date: string; occupied: number; blocked: number; available: number }>;
+  /** Null for the roles that do not answer contact requests. */
+  openContactRequests: number | null;
+  /** Null for the roles that do not handle money. */
+  finance: {
+    currency: string;
+    monthStart: string;
+    collected: number;
+    refunded: number;
+    net: number;
+    bookingsCount: number;
+    bookingsTotal: number;
+  } | null;
+};
+
+export function getAdminDashboard(accessToken: string, signal?: AbortSignal) {
+  return adminRequest<AdminDashboard>("/admin/dashboard", { signal }, accessToken);
+}
+
+export type AdminContactRequestFilter = "OPEN" | "HANDLED" | "ALL";
+
+export type AdminContactRequest = {
+  id: string;
+  fullName: string;
+  /** Null once the request has been anonymized. */
+  email: string | null;
+  phone: string | null;
+  subject: string;
+  message: string;
+  anonymized: boolean;
+  createdAt: string;
+  handledAt: string | null;
+  handledBy: string | null;
+  updatedAt: string;
+};
+
+export type AdminContactRequestSummary = { open: number; handled: number };
+
+export function getAdminContactRequests(
+  filters: { page: number; pageSize: number; status: AdminContactRequestFilter; search?: string },
+  accessToken: string,
+  signal?: AbortSignal,
+) {
+  return adminRequest<PaginatedAdminResult<AdminContactRequest, AdminContactRequestSummary>>(
+    `/admin/contact-requests${queryString(filters)}`,
+    { signal },
+    accessToken,
+  );
+}
+
+export function getAdminContactRequest(id: string, accessToken: string, signal?: AbortSignal) {
+  return adminRequest<AdminContactRequest>(`/admin/contact-requests/${encodeURIComponent(id)}`, { signal }, accessToken);
+}
+
+export function setAdminContactRequestHandled(id: string, handled: boolean, updatedAt: string, accessToken: string, signal?: AbortSignal) {
+  return adminRequest<AdminContactRequest>(
+    `/admin/contact-requests/${encodeURIComponent(id)}`,
+    { method: "PATCH", body: JSON.stringify({ handled, updatedAt }), signal },
+    accessToken,
+  );
+}
+
+export type AdminSeasonRate = {
+  roomTypeId: string;
+  nightlyPrice: number;
+  weekendNightlyPrice: number | null;
+};
+
+/** validFrom and validUntil are the first and last nights of the season, both included. */
+export type AdminSeason = {
+  id: string;
+  label: string;
+  validFrom: string;
+  validUntil: string;
+  minNights: number | null;
+  rates: AdminSeasonRate[];
+  updatedAt: string;
+};
+
+export type AdminSeasonGrid = {
+  roomTypes: Array<{ id: string; name: string; basePrice: number | null; currency: string }>;
+  seasons: AdminSeason[];
+};
+
+export type AdminSeasonInput = Omit<AdminSeason, "id" | "updatedAt">;
+
+export function getAdminSeasons(accessToken: string, signal?: AbortSignal) {
+  return adminRequest<AdminSeasonGrid>("/admin/seasons", { signal }, accessToken);
+}
+
+export function createAdminSeason(input: AdminSeasonInput, accessToken: string, signal?: AbortSignal) {
+  return adminRequest<AdminSeason>("/admin/seasons", { method: "POST", body: JSON.stringify(input), signal }, accessToken);
+}
+
+export function updateAdminSeason(id: string, input: AdminSeasonInput & { updatedAt: string }, accessToken: string, signal?: AbortSignal) {
+  return adminRequest<AdminSeason>(
+    `/admin/seasons/${encodeURIComponent(id)}`,
+    { method: "PATCH", body: JSON.stringify(input), signal },
+    accessToken,
+  );
+}
+
+export function deleteAdminSeason(id: string, updatedAt: string, accessToken: string, signal?: AbortSignal) {
+  return adminRequest<{ id: string }>(
+    `/admin/seasons/${encodeURIComponent(id)}`,
     { method: "DELETE", body: JSON.stringify({ updatedAt }), signal },
     accessToken,
   );

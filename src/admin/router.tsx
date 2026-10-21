@@ -6,6 +6,7 @@ import {
   AdminRoot,
   RequireAdminAuth,
   RequireCatalogAccess,
+  RequireContactRequestAccess,
   RequirePlanningAccess,
   RequireReservationAccess,
 } from "./auth";
@@ -18,6 +19,7 @@ export function createAdminRouter() {
     errorElement: <AdminRouteError />,
     children: [
       { path: "connexion", lazy: async () => ({ Component: (await import("../pages/admin/AdminLogin")).AdminLogin }) },
+      { path: "activation", lazy: async () => ({ Component: (await import("../pages/admin/AdminActivation")).AdminActivation }) },
       {
         element: <RequireAdminAuth />,
         children: [
@@ -25,6 +27,13 @@ export function createAdminRouter() {
             element: <AdminLayout />,
             children: [
               { index: true, element: <AdminIndexRedirect /> },
+              {
+                path: "tableau-de-bord",
+                lazy: async () => {
+                  const { AdminDashboard } = await import("../pages/admin/AdminDashboard");
+                  return { Component: () => <RequireReservationAccess><AdminDashboard /></RequireReservationAccess> };
+                },
+              },
               {
                 path: "reservations",
                 lazy: async () => {
@@ -39,7 +48,28 @@ export function createAdminRouter() {
                   return { Component: () => <RequirePlanningAccess><AdminPlanning /></RequirePlanningAccess> };
                 },
               },
+              {
+                path: "equipe",
+                lazy: async () => {
+                  const { AdminTeam } = await import("../pages/admin/AdminTeam");
+                  return { Component: () => <RequireCatalogAccess><AdminTeam /></RequireCatalogAccess> };
+                },
+              },
+              {
+                path: "demandes",
+                lazy: async () => {
+                  const { AdminContactRequests } = await import("../pages/admin/AdminContactRequests");
+                  return { Component: () => <RequireContactRequestAccess><AdminContactRequests /></RequireContactRequestAccess> };
+                },
+              },
               { path: "chambres", lazy: async () => ({ Component: (await import("../pages/admin/AdminRooms")).AdminRooms }) },
+              {
+                path: "tarifs",
+                lazy: async () => {
+                  const { AdminSeasons } = await import("../pages/admin/AdminSeasons");
+                  return { Component: () => <RequireCatalogAccess><AdminSeasons /></RequireCatalogAccess> };
+                },
+              },
               {
                 path: "options",
                 lazy: async () => {

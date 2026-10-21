@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { prisma } from "../../src/lib/prisma.js";
 import { BookingError } from "../../src/modules/booking/booking.errors.js";
+import { searchAvailability } from "../../src/modules/availability/availability.service.js";
+import { getBookingQuote } from "../../src/modules/booking/booking.quote.service.js";
 import { createBooking } from "../../src/modules/booking/booking.service.js";
 import {
   NIGHTLY_PRICE,
@@ -52,6 +54,21 @@ test("enregistre une demande optionnée au prix du devis, taxe de séjour compri
     ["BOOKING_OPTIONED", input.guest.email],
     ["BOOKING_REQUEST_RECEIVED", hotel.property.email],
   ]);
+});
+
+test("limite la recherche, le devis et la réservation publics à l'établissement du site", async () => {
+  const site = await createTestHotel();
+  const other = await createTestHotel({ publicSite: false });
+  const request = await bookingRequest(site);
+  const otherRequest = { ...request, roomTypeId: other.roomType.id };
+
+  const availability = await searchAvailability({ arrival: request.arrival, departure: request.departure, adults: 2, children: 0 });
+
+  assert.deepEqual(availability.roomTypes.map((roomType) => roomType.id), [site.roomType.id]);
+  await assert.rejects(() => getBookingQuote(otherRequest), bookingError("ROOM_TYPE_NOT_FOUND"));
+  await assert.rejects(() => createBooking(otherRequest, randomUUID()), bookingError("ROOM_TYPE_NOT_FOUND"));
+  // The staff of the other property still reaches its own rooms.
+  assert.equal((await getBookingQuote(otherRequest, other.property.id)).room.id, other.roomType.id);
 });
 
 test("attribue la dernière chambre à une seule de deux demandes simultanées", async () => {

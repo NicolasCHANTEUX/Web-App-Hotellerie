@@ -7,6 +7,7 @@ import {
 } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import { expireStaleBookingHolds } from "../booking/booking.holds.js";
+import { readNightlyRatesSnapshot } from "../booking/booking.stay-rates.js";
 import type { AdminMembershipContext } from "./admin.auth.js";
 import { AdminApiError } from "./admin.errors.js";
 import { protectRoomOccupancyIdentity } from "./admin.privacy.js";
@@ -49,7 +50,7 @@ function isForeignKeyConstraintViolation(error: unknown) {
     (error as { code?: unknown }).code === "P2003";
 }
 
-const bookingListInclude = {
+export const bookingListInclude = {
   guests: {
     orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
     take: 1,
@@ -69,7 +70,7 @@ const bookingListInclude = {
   hold: { select: { status: true, expiresAt: true, room: { select: { number: true } } } },
 } satisfies Prisma.BookingInclude;
 
-function expirePropertyHolds(propertyId: string) {
+export function expirePropertyHolds(propertyId: string) {
   return prisma.$transaction((transaction) =>
     expireStaleBookingHolds(transaction, new Date(), propertyId));
 }
@@ -304,7 +305,7 @@ function fetchBookingPage(where: Prisma.BookingWhereInput, input: BookingListInp
 
 type BookingListRecord = Awaited<ReturnType<typeof fetchBookingPage>>[number];
 
-function serializeBookingListItem(booking: BookingListRecord, includeContactDetails: boolean) {
+export function serializeBookingListItem(booking: BookingListRecord, includeContactDetails: boolean) {
   return {
     id: booking.id,
     reference: booking.reference,
@@ -461,6 +462,8 @@ export async function getAdminBooking(propertyId: string, bookingId: string, inc
       roomTypeName: bookingRoom.roomTypeNameSnapshot,
       roomNumber: bookingRoom.room?.number ?? bookingRoom.roomNumberSnapshot ?? (index === 0 ? booking.hold?.room.number : null),
       nightlyPrice: Number(bookingRoom.nightlyPriceSnapshot),
+      nightlyRates: readNightlyRatesSnapshot(bookingRoom.nightlyRatesSnapshot)
+        ?.map((night) => ({ ...night, price: Number(night.price) })) ?? null,
       taxRate: Number(bookingRoom.taxRateSnapshot),
       lineTotal: Number(bookingRoom.lineTotal),
     })),

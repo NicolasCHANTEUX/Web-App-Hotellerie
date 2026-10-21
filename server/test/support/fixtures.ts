@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import type Stripe from "stripe";
+import { env } from "../../src/config/env.js";
 import type { AdminMembershipContext } from "../../src/modules/admin/admin.auth.js";
 import { prisma } from "../../src/lib/prisma.js";
 import { getBookingQuote } from "../../src/modules/booking/booking.quote.service.js";
@@ -20,9 +21,11 @@ export type TestHotel = Awaited<ReturnType<typeof createTestHotel>>;
 
 /**
  * A complete establishment of its own, so that each test owns its rooms and
- * availability whatever else the database contains.
+ * availability whatever else the database contains. It becomes the property
+ * of the public site, as PUBLIC_PROPERTY_SLUG makes it in production, unless
+ * `publicSite` is false.
  */
-export async function createTestHotel({ rooms = 2, touristTax = true }: { rooms?: number; touristTax?: boolean } = {}) {
+export async function createTestHotel({ rooms = 2, touristTax = true, publicSite = true }: { rooms?: number; touristTax?: boolean; publicSite?: boolean } = {}) {
   const suffix = randomUUID().slice(0, 8);
   const property = await prisma.property.create({
     data: {
@@ -34,6 +37,7 @@ export async function createTestHotel({ rooms = 2, touristTax = true }: { rooms?
       city: "Nantes",
     },
   });
+  if (publicSite) env.publicPropertySlug = property.slug;
   const termsBody = "Conditions de réservation de test.";
   await prisma.contractTermsVersion.create({
     data: {

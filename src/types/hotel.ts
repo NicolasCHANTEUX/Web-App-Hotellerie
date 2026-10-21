@@ -25,8 +25,20 @@ export type Accommodation = {
   gallery: string[];
   amenities: string[];
   availableUnits?: number;
+  /** Exact price of the searched stay; `price` is then its nightly average. */
   totalPrice?: number;
+  originalTotalPrice?: number;
+  /** True when the nights of the searched stay do not all cost the same. */
+  variableRates?: boolean;
   touristTaxTotal?: number;
+};
+
+export type QuotedNight = {
+  date: string;
+  season: string | null;
+  weekend: boolean;
+  regularPrice: number;
+  price: number;
 };
 
 export type PricingUnit = "PER_PERSON_PER_NIGHT" | "PER_NIGHT" | "ONE_TIME";
@@ -51,6 +63,8 @@ export type AvailabilityResult = {
   };
   nights: number;
   roomTypes: Accommodation[];
+  /** Set when a season requires a longer stay than the one searched. */
+  minStay?: { minNights: number; seasonLabel: string } | null;
 };
 
 export type BookingSelectionInput = {
@@ -74,6 +88,8 @@ export type BookingQuote = {
     subtotal: number;
     taxAmount: number;
     total: number;
+    regularTotal?: number;
+    nights?: QuotedNight[];
     promotion: {
       id: string;
       label: string;

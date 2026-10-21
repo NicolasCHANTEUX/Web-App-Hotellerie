@@ -14,6 +14,16 @@ Avant de préparer une nouvelle installation, compléter la [fiche d'onboarding 
 
 Node.js 22 est la version de référence pour le développement local, la CI et l'image Docker. Le transport WebSocket explicite du SDK Supabase reste utilisé par le backend.
 
+## Projet Vercel avec services
+
+Choisir le framework **Services** dans les reglages du projet Vercel. Le fichier `vercel.json` declare `app` (Vite, racine du depot) et `server` (Fastify, `server/Dockerfile.vercel`). Les routes publiques `/api/*` vont au serveur ; toutes les autres vont au site. La regle interne du service Vite renvoie les routes de l'application React vers `index.html`.
+
+Le navigateur appelle l'API publique sur le meme domaine avec `/api`. Laisser `VITE_API_URL` absente dans Vercel, ou lui donner `/api`. Aucun binding entre services n'est necessaire actuellement : il n'existe pas d'appel serveur-vers-serveur. Le generateur SEO s'execute pendant le build, avant la disponibilite des bindings ; fournir `VITE_PUBLIC_SITE_URL`, `VITE_PUBLIC_PROPERTY_NAME` et, si necessaire, `VITE_PUBLIC_ROOM_SLUGS` pour ses metadonnees et son sitemap.
+
+Configurer les variables de production du backend indiquees ci-dessous dans Vercel, notamment `DATABASE_URL`, les cles Supabase, `BOOKING_ACCESS_TOKEN_SECRET`, `BOOKING_REFERENCE_PREFIX` et `TRUST_PROXY`. Donner a `FRONTEND_URL` et `CORS_ORIGIN` l'origine HTTPS publique du site (ajouter les origines de preview si elles doivent fonctionner). Ne pas definir manuellement `PORT`, `HOST`, `NODE_ENV` ou `BACKGROUND_WORKER_MODE` : l'image Vercel les definit. Le backend en conteneur ecoute sur le port 80 et desactive son worker integre, car Vercel peut demarrer plusieurs instances et les arreter entre les requetes.
+
+Appliquer les migrations Prisma avant le deploiement avec la cible `migrate` du Dockerfile habituel. Si les notifications ou la purge des images sont utilisees, executer le worker `start:notifications` sur un hebergement de processus permanent. Apres deploiement, verifier `/api/health/live`, `/api/health`, `/api/property`, les routes React en acces direct et le webhook Stripe sur `/api/payments/stripe/webhook` si Stripe est active.
+
 ## Ordre d'une mise en ligne
 
 1. Sauvegarder la base Supabase.
@@ -43,11 +53,13 @@ La migration et le démarrage de l'API sont séparés volontairement : plusieurs
 - `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` et `SUPABASE_SECRET_KEY` ;
 - `SUPABASE_STORAGE_BUCKET` ;
 - `CORS_ORIGIN` et `FRONTEND_URL` avec les domaines HTTPS réels ;
-- `PUBLIC_PROPERTY_SLUG`, correspondant à l'établissement affiché par le site public ;
+- `PUBLIC_PROPERTY_SLUG`, correspondant à l'établissement affiché par le site public : le catalogue, la recherche, les devis et les réservations du site ne portent que sur lui ;
 - `BOOKING_REFERENCE_PREFIX`, composé de 2 à 8 lettres majuscules ou chiffres et choisi avec l'établissement ;
 - `BACKGROUND_WORKER_MODE=embedded` pour une seule instance, ou `standalone` lorsque les traitements sont exécutés par un processus dédié ;
 - `NODE_ENV=production` et `HOST=0.0.0.0` ;
 - `TRUST_PROXY`, obligatoire en production : `false` si les clients atteignent directement l'API, sinon le nombre de proxies placés devant elle (`1` sur la plupart des hébergeurs) ou leurs adresses. Sans ce réglage derrière un proxy, tous les visiteurs partagent les mêmes limites de tentatives.
+
+Dans Supabase, `Authentication > URL Configuration` doit indiquer l'origine publique comme `Site URL` et autoriser `https://<domaine>/admin/activation` dans `Redirect URLs` : c'est la page des liens d'invitation et de réinitialisation du mot de passe. Supabase envoie ces e-mails lui-même. Son serveur d'envoi intégré n'accepte que quelques messages par heure : configurer un SMTP (`Authentication > Emails > SMTP Settings`, par exemple celui de Resend) et traduire en français les modèles « Invite user » et « Reset password ».
 
 L'adresse e-mail de l'établissement (`Property.email`) reçoit les messages du formulaire de contact, chaque nouvelle demande de réservation du site et les paiements en ligne qui n'ont pas pu confirmer automatiquement un séjour. Elle doit donc être relevée chaque jour.
 
