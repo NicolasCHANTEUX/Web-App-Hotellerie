@@ -19,6 +19,7 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { AdminRole } from "../api/admin";
 import { canAnswerContactRequests, canManageCatalog, canReadReservations, canUsePlanning, useAdminAuth } from "./auth";
+import { useOpenContactRequests } from "./openContactRequests";
 
 const navigation = [
   { to: "/admin/tableau-de-bord", label: "Tableau de bord", icon: LayoutDashboard },
@@ -58,6 +59,8 @@ export function AdminLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const openRequests = useOpenContactRequests(canAnswerContactRequests(profile?.membership.role));
+  const openRequestsLabel = openRequests ? `${openRequests} demande${openRequests > 1 ? "s" : ""} à traiter` : null;
   const visibleNavigation = navigation.filter((item) => {
     if (item.to === "/admin/reservations" || item.to === "/admin/tableau-de-bord") return canReadReservations(profile?.membership.role);
     if (item.to === "/admin/planning") return canUsePlanning(profile?.membership.role);
@@ -100,7 +103,13 @@ export function AdminLayout() {
           {visibleNavigation.map(({ to, label, icon: Icon }) => (
             <NavLink key={to} to={to} className={({ isActive }) => isActive ? "active" : ""}>
               <Icon />
-              <span>{label}</span>
+              <span>
+                {label}
+                {to === "/admin/demandes" && openRequests ? <>
+                  <span className="admin-nav-badge" aria-hidden="true">{openRequests > 99 ? "99+" : openRequests}</span>
+                  <span className="sr-only">, {openRequestsLabel}</span>
+                </> : null}
+              </span>
               <ChevronRight className="admin-nav-chevron" />
             </NavLink>
           ))}
@@ -115,7 +124,7 @@ export function AdminLayout() {
 
       <div className="admin-workspace">
         <header className="admin-topbar">
-          <button ref={menuButtonRef} type="button" className="admin-menu-toggle" aria-label="Ouvrir le menu" aria-controls="admin-navigation" aria-expanded={mobileOpen} onClick={() => setMobileOpen(true)}><Menu /></button>
+          <button ref={menuButtonRef} type="button" className="admin-menu-toggle" aria-label={openRequestsLabel ? `Ouvrir le menu, ${openRequestsLabel}` : "Ouvrir le menu"} aria-controls="admin-navigation" aria-expanded={mobileOpen} onClick={() => setMobileOpen(true)}><Menu />{openRequestsLabel && <span className="admin-menu-dot" aria-hidden="true" />}</button>
           <div>
             <span className="admin-topbar-property">{propertyName}</span>
             <span className="admin-topbar-separator" />

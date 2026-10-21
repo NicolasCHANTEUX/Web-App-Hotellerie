@@ -972,10 +972,17 @@ test("answers the contact requests from the reception", async ({ page }) => {
     return route.fulfill({ json: { data: contactRequest } });
   });
 
+  await page.route("**/api/admin/contact-requests/summary", (route) => route.fulfill({ json: { data: {
+    open: contactRequest.handledAt ? 0 : 1,
+    handled: contactRequest.handledAt ? 1 : 0,
+  } } }));
+
   await page.goto("/admin/demandes");
 
   await expect(page.getByRole("heading", { level: 1, name: "Demandes" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Demandes" })).toBeVisible();
+  const navigation = page.locator(".admin-nav");
+  await expect(navigation.getByRole("link", { name: /^Demandes\W*1 demande à traiter$/ })).toBeVisible();
+  await expect(page.locator(".admin-menu-toggle")).toHaveAttribute("aria-label", "Ouvrir le menu, 1 demande à traiter");
   await expect(page.getByRole("button", { name: /À traiter/ })).toHaveAttribute("aria-pressed", "true");
   expect(listQueries[0]).toContain("status=OPEN");
   await page.getByRole("button", { name: "Sophie Martin", exact: true }).click();
@@ -989,6 +996,8 @@ test("answers the contact requests from the reception", async ({ page }) => {
   expect(writes).toEqual([{ handled: true, updatedAt: "2026-10-21T19:42:00.000Z" }]);
   await dialog.getByRole("button", { name: "Fermer" }).first().click();
   await expect(page.getByText("Aucune demande à traiter")).toBeVisible();
+  await expect(navigation.getByRole("link", { name: "Demandes", exact: true })).toBeVisible();
+  await expect(page.locator(".admin-menu-toggle")).toHaveAttribute("aria-label", "Ouvrir le menu");
 
   await page.getByRole("button", { name: /Traitées/ }).click();
   await expect(page.getByRole("button", { name: "Sophie Martin", exact: true })).toBeVisible();

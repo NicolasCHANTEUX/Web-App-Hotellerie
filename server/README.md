@@ -102,7 +102,7 @@ Routes disponibles :
 - `GET /admin/extras`, `POST /admin/extras`, `PATCH /admin/extras/:id`, `DELETE /admin/extras/:id` (`ADMIN` uniquement ; une option déjà réservée se désactive mais ne se supprime pas)
 - `GET /admin/property`, `PATCH /admin/property` (`ADMIN` uniquement ; coordonnées, horaires et mentions légales, avec la version `updatedAt`)
 - `GET /admin/tourist-taxes`, `POST /admin/tourist-taxes`, `PATCH /admin/tourist-taxes/:id`, `DELETE /admin/tourist-taxes/:id` (`ADMIN` uniquement ; une règle déjà facturée se termine ou se désactive mais ne se supprime pas)
-- `GET /admin/contact-requests?status=OPEN|HANDLED|ALL&search=...&page=1&pageSize=20`, `GET /admin/contact-requests/:id`, `PATCH /admin/contact-requests/:id` (`ADMIN` et `RECEPTION` ; corps `{ "handled": true, "updatedAt": "..." }` pour classer ou rouvrir une demande)
+- `GET /admin/contact-requests?status=OPEN|HANDLED|ALL&search=...&page=1&pageSize=20`, `GET /admin/contact-requests/summary` (nombre de demandes à traiter et traitées, pour le compteur du menu), `GET /admin/contact-requests/:id`, `PATCH /admin/contact-requests/:id` (`ADMIN` et `RECEPTION` ; corps `{ "handled": true, "updatedAt": "..." }` pour classer ou rouvrir une demande)
 - `GET /admin/seasons`, `POST /admin/seasons`, `PATCH /admin/seasons/:id`, `DELETE /admin/seasons/:id` (`ADMIN` uniquement ; saisons et grille des prix par type de chambre, sans chevauchement de périodes, avec la version `updatedAt`)
 - `POST /admin/rooms` (`ADMIN` uniquement)
 - `PATCH /admin/rooms/:id` (`ADMIN` uniquement)

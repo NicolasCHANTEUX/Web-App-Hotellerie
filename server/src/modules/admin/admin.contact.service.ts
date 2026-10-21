@@ -45,10 +45,19 @@ function listWhere(propertyId: string, input: AdminContactRequestListInput): Pri
   };
 }
 
+/** How many requests are still to answer, for the menu badge. */
+export async function countAdminContactRequests(membership: AdminMembershipContext) {
+  const [open, handled] = await Promise.all([
+    prisma.contactRequest.count({ where: { propertyId: membership.propertyId, handledAt: null } }),
+    prisma.contactRequest.count({ where: { propertyId: membership.propertyId, handledAt: { not: null } } }),
+  ]);
+  return { open, handled };
+}
+
 /** Messages received from the site, newest first, with the count still to answer. */
 export async function listAdminContactRequests(membership: AdminMembershipContext, input: AdminContactRequestListInput) {
   const where = listWhere(membership.propertyId, input);
-  const [requests, total, open, handled] = await Promise.all([
+  const [requests, total, summary] = await Promise.all([
     prisma.contactRequest.findMany({
       where,
       include: contactRequestInclude,
@@ -57,8 +66,7 @@ export async function listAdminContactRequests(membership: AdminMembershipContex
       take: input.pageSize,
     }),
     prisma.contactRequest.count({ where }),
-    prisma.contactRequest.count({ where: { propertyId: membership.propertyId, handledAt: null } }),
-    prisma.contactRequest.count({ where: { propertyId: membership.propertyId, handledAt: { not: null } } }),
+    countAdminContactRequests(membership),
   ]);
   return {
     items: requests.map(serializeContactRequest),
@@ -66,7 +74,7 @@ export async function listAdminContactRequests(membership: AdminMembershipContex
     pageSize: input.pageSize,
     total,
     totalPages: Math.ceil(total / input.pageSize),
-    summary: { open, handled },
+    summary,
   };
 }
 

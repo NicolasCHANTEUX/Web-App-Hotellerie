@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { AdminApiError, AdminBooking, AdminDashboard as Dashboard, getAdminDashboard } from "../../api/admin";
 import { useAdminAuth } from "../../admin/auth";
+import { publishOpenContactRequests } from "../../admin/openContactRequests";
 import { AdminErrorState, AdminTableSkeleton, MetricCard, PageHeading, StatusBadge, formatDate, formatDateTime, formatMoney, stayNights } from "../../admin/ui";
 
 function guestName(booking: AdminBooking) {
@@ -80,7 +81,10 @@ export function AdminDashboard() {
     const controller = new AbortController();
     setError(null);
     getAdminDashboard(accessToken, controller.signal)
-      .then(setDashboard)
+      .then((data) => {
+        setDashboard(data);
+        if (data.openContactRequests !== null) publishOpenContactRequests(data.openContactRequests);
+      })
       .catch((nextError: unknown) => {
         if (controller.signal.aborted) return;
         if (nextError instanceof AdminApiError && nextError.status === 401) return logout();

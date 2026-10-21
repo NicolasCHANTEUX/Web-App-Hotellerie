@@ -886,6 +886,10 @@ export function getAdminContactRequests(
   );
 }
 
+export function getAdminContactRequestSummary(accessToken: string, signal?: AbortSignal) {
+  return adminRequest<AdminContactRequestSummary>("/admin/contact-requests/summary", { signal }, accessToken);
+}
+
 export function getAdminContactRequest(id: string, accessToken: string, signal?: AbortSignal) {
   return adminRequest<AdminContactRequest>(`/admin/contact-requests/${encodeURIComponent(id)}`, { signal }, accessToken);
 }

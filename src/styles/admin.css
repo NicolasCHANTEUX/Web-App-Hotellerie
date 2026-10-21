@@ -77,6 +77,9 @@ button.admin-back-link { border: 0; background: transparent; padding: 0; cursor:
 .admin-nav a:hover { background: rgb(255 255 255 / 5%); color: white; }
 .admin-nav a.active { background: rgb(169 130 86 / 18%); color: #e0c19e; }
 .admin-nav a > svg { width: 18px; height: 18px; stroke-width: 1.8; }
+.admin-nav-badge { display: inline-block; min-width: 20px; margin-left: 8px; border-radius: 999px; background: var(--gold); padding: 1px 6px; color: #231d17; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; vertical-align: 1px; }
+.admin-menu-toggle { position: relative; }
+.admin-menu-dot { position: absolute; top: 6px; right: 6px; width: 9px; height: 9px; border: 2px solid white; border-radius: 50%; background: var(--gold-dark); }
 .admin-nav-chevron { justify-self: end; opacity: 0; transform: translateX(-4px); transition: opacity 160ms ease, transform 160ms ease; }
 .admin-nav a.active .admin-nav-chevron { opacity: .7; transform: translateX(0); }
 .admin-sidebar-account { display: grid; grid-template-columns: 38px 1fr 32px; align-items: center; gap: 11px; margin-top: auto; border-top: 1px solid rgb(255 255 255 / 7%); padding: 20px 17px; }

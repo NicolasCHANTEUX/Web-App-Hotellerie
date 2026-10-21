@@ -13,6 +13,7 @@ import {
 } from "../../api/admin";
 import { AdminModal } from "../../admin/AdminModal";
 import { useAdminAuth } from "../../admin/auth";
+import { publishOpenContactRequests } from "../../admin/openContactRequests";
 import { AdminEmptyState, AdminErrorState, AdminPagination, AdminTableSkeleton, PageHeading, formatDateTime } from "../../admin/ui";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 
@@ -68,6 +69,7 @@ export function AdminContactRequests() {
     getAdminContactRequests({ page, pageSize: PAGE_SIZE, status, search: deferredSearch.trim() || undefined }, accessToken, controller.signal)
       .then((data) => {
         setResult(data);
+        publishOpenContactRequests(data.summary.open);
         setLoading(false);
       })
       .catch((nextError: unknown) => {

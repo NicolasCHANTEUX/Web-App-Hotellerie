@@ -51,7 +51,12 @@ import {
   parseAdminContactRequestHandlingBody,
   requireContactRequestPermission,
 } from "./admin.contact.js";
-import { getAdminContactRequest, listAdminContactRequests, setAdminContactRequestHandled } from "./admin.contact.service.js";
+import {
+  countAdminContactRequests,
+  getAdminContactRequest,
+  listAdminContactRequests,
+  setAdminContactRequestHandled,
+} from "./admin.contact.service.js";
 import { parseAdminExtraCreateBody, parseAdminExtraDeleteBody, parseAdminExtraUpdateBody } from "./admin.extra.js";
 import { createAdminExtra, deleteAdminExtra, listAdminExtras, updateAdminExtra } from "./admin.extra.service.js";
 import { parseAdminPropertyUpdateBody } from "./admin.property.js";
@@ -972,6 +977,14 @@ export async function adminRoutes(app: FastifyInstance) {
         status: parseAdminContactRequestFilter(request.query.status),
         search: parseSearch(request.query.search),
       }),
+    })),
+  );
+
+  app.get(
+    "/admin/contact-requests/summary",
+    { preHandler: authenticateAdmin },
+    async (request, reply) => handleAdminRoute(reply, async () => ({
+      data: await countAdminContactRequests(requireContactRequestPermission(resolveMembership(request))),
     })),
   );
 

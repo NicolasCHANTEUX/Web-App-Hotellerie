@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { prisma } from "../../src/lib/prisma.js";
-import { getAdminContactRequest, listAdminContactRequests, setAdminContactRequestHandled } from "../../src/modules/admin/admin.contact.service.js";
+import {
+  countAdminContactRequests,
+  getAdminContactRequest,
+  listAdminContactRequests,
+  setAdminContactRequestHandled,
+} from "../../src/modules/admin/admin.contact.service.js";
 import { AdminApiError } from "../../src/modules/admin/admin.errors.js";
 import { createContactRequest } from "../../src/modules/contact/contact.service.js";
 import type { ContactRequestInput } from "../../src/modules/contact/contact.types.js";
@@ -58,6 +63,7 @@ test("suit une demande du site jusqu'à sa réponse, avec un lien direct dans l'
   const afterHandling = await listAdminContactRequests(reception.membership, { ...firstPage, status: "OPEN" });
   assert.deepEqual(afterHandling.items.map((item) => item.fullName), ["Paul Durand"]);
   assert.deepEqual(afterHandling.summary, { open: 1, handled: 1 });
+  assert.deepEqual(await countAdminContactRequests(reception.membership), { open: 1, handled: 1 });
   assert.deepEqual((await listAdminContactRequests(reception.membership, { ...firstPage, status: "HANDLED" })).items.map((item) => item.id), [received.id]);
 
   const reopened = await setAdminContactRequestHandled(reception.membership, reception.adminUserId, received.id, { handled: false, updatedAt: new Date(handled.updatedAt) });
@@ -82,6 +88,7 @@ test("isole les demandes de chaque établissement et masque l'adresse d'une dema
     adminError("CONTACT_REQUEST_NOT_FOUND"),
   );
   assert.equal((await listAdminContactRequests(otherReception.membership, { ...firstPage, status: "ALL" })).total, 0);
+  assert.deepEqual(await countAdminContactRequests(otherReception.membership), { open: 0, handled: 0 });
 
   await prisma.contactRequest.update({ where: { id: received.id }, data: { personalDataRetainUntil: new Date(Date.now() - 1_000) } });
   await anonymizeExpiredContactRequests();
