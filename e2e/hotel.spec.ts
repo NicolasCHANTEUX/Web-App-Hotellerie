@@ -569,3 +569,145 @@ test("hides the catalogue options from the reception", async ({ page }) => {
   await expect(page).toHaveURL(/\/admin\/reservations$/);
   await expect(page.getByRole("link", { name: "Options" })).toHaveCount(0);
 });
+
+test("manages the tourist tax rules and flags overlapping periods", async ({ page }) => {
+  await signInAs(page, "ADMIN");
+  const rule = (id: string, overrides: Record<string, unknown>) => ({
+    id,
+    code: id.toUpperCase(),
+    label: "Taxe de séjour",
+    calculationMode: "PER_ADULT_PER_NIGHT",
+    amount: 1.5,
+    rate: null,
+    currency: "EUR",
+    validFrom: null,
+    validUntil: null,
+    isActive: true,
+    usageCount: 0,
+    canDelete: true,
+    updatedAt: "2026-10-21T08:00:00.000Z",
+    ...overrides,
+  });
+  let rules = [rule("ts-current", { label: "Taxe de séjour 2026", usageCount: 12, canDelete: false })];
+  const writes: Array<{ method: string; body: unknown }> = [];
+  await page.route("**/api/admin/tourist-taxes**", async (route) => {
+    const request = route.request();
+    if (request.method() === "GET") return route.fulfill({ json: { data: rules } });
+    writes.push({ method: request.method(), body: request.postDataJSON() });
+    const created = rule("ts-next", { label: "Taxe de séjour 2030", amount: 2.1, validFrom: "2030-01-01" });
+    rules = [...rules, created];
+    return route.fulfill({ status: 201, json: { data: created } });
+  });
+
+  await page.goto("/admin/taxe-de-sejour");
+
+  await expect(page.getByRole("heading", { level: 1, name: "Taxe de séjour" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Sans limite de date", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Supprimer Taxe de séjour 2026" })).toBeDisabled();
+  await expect(page.getByText(/s’additionnent/)).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Nouvelle règle" }).click();
+  const editor = page.getByRole("dialog", { name: "Nouvelle règle" });
+  await editor.getByLabel("Libellé sur la facture").fill("Taxe de séjour 2030");
+  await editor.getByLabel("Montant (EUR)").fill("2.1");
+  await expect(editor.getByText("Exemple : 2 adultes et 1 enfant pendant 3 nuits : 12,60 € de taxe.")).toBeVisible();
+  await editor.getByLabel("Calcul").selectOption("PERCENTAGE");
+  await expect(editor.getByLabel("Taux (%)")).toHaveValue("2.1");
+  await editor.getByLabel("Calcul").selectOption("PER_ADULT_PER_NIGHT");
+  await editor.getByLabel("Première nuit").fill("2030-01-01");
+  await editor.getByRole("button", { name: "Enregistrer" }).click();
+  await expect(editor).toHaveCount(0);
+
+  expect(writes).toEqual([{
+    method: "POST",
+    body: { label: "Taxe de séjour 2030", calculationMode: "PER_ADULT_PER_NIGHT", amount: 2.1, rate: null, validFrom: "2030-01-01", validUntil: null, isActive: true },
+  }]);
+  await expect(page.getByRole("cell", { name: "Taxe de séjour 2030", exact: true })).toBeVisible();
+  await expect(page.getByText("« Taxe de séjour 2026 » et « Taxe de séjour 2030 » s’additionnent : à partir de la nuit du 01 janv. 2030.")).toBeVisible();
+});
+
+test("edits the property settings and refreshes the administration header", async ({ page }) => {
+  let propertyName = "Hôtel Rivage";
+  await page.addInitScript(() => {
+    sessionStorage.setItem("hotel.admin.accessToken", "e2e-token");
+    sessionStorage.setItem("hotel.admin.expiresAt", String(Date.now() + 600_000));
+  });
+  await page.route("**/api/admin/me", (route) => route.fulfill({ json: { data: {
+    user: { id: "user-admin", displayName: "Marie Dupont", email: "marie@rivage.fr" },
+    membership: {
+      propertyId: "property-rivage",
+      role: "ADMIN",
+      property: { id: "property-rivage", name: propertyName, slug: "hotel-rivage", timezone: "Europe/Paris", currency: "EUR" },
+    },
+  } } }));
+  const settings = {
+    id: "property-rivage", slug: "hotel-rivage", timezone: "Europe/Paris", currency: "EUR", updatedAt: "2026-10-21T08:00:00.000Z",
+    name: "Hôtel Rivage", legalName: null, email: "contact@hotel-rivage.fr", phone: "+33 4 93 00 12 34",
+    addressLine1: "26 avenue des Pins", addressLine2: null, postalCode: "06400", city: "Cannes", countryCode: "FR",
+    checkInTime: "15:00", checkOutTime: "11:00",
+    legalForm: null, shareCapital: null, siret: null, registrationCity: null, vatNumber: null,
+    publicationDirector: null, hostingProvider: null, mediator: null,
+  };
+  const patches: unknown[] = [];
+  await page.route("**/api/admin/property", async (route) => {
+    if (route.request().method() === "GET") return route.fulfill({ json: { data: settings } });
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    patches.push(body);
+    propertyName = String(body.name);
+    return route.fulfill({ json: { data: { ...settings, ...body, updatedAt: "2026-10-21T09:00:00.000Z" } } });
+  });
+
+  await page.goto("/admin/etablissement");
+
+  await expect(page.getByRole("heading", { level: 1, name: "Établissement" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Enregistrer" })).toBeDisabled();
+  await page.getByLabel("Nom de l’établissement").fill("Hôtel Rivage & Spa");
+  await page.getByLabel("SIRET").fill("812 345 678 0001");
+  await expect(page.getByText("Le SIRET doit contenir 14 chiffres.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Enregistrer" })).toBeDisabled();
+  await page.getByLabel("SIRET").fill("812 345 678 00012");
+  await page.getByLabel("Forme juridique").fill("SAS");
+  await page.getByLabel("Directeur de la publication").fill("Claire Martin");
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+
+  await expect(page.getByText("Modifications enregistrées.")).toBeVisible();
+  expect(patches).toEqual([expect.objectContaining({
+    name: "Hôtel Rivage & Spa",
+    siret: "812 345 678 00012",
+    legalForm: "SAS",
+    publicationDirector: "Claire Martin",
+    legalName: null,
+    updatedAt: "2026-10-21T08:00:00.000Z",
+  })]);
+  await expect(page.locator(".admin-brand strong")).toHaveText("Hôtel Rivage & Spa");
+});
+
+test("publishes the legal notice entered by the property", async ({ page }) => {
+  await page.route("**/api/property", (route) => route.fulfill({ json: { data: { ...property, legal: {
+    legalName: "Rivage Hôtellerie",
+    legalForm: "SAS",
+    shareCapital: "10 000 €",
+    siret: "81234567800012",
+    registrationCity: "Cannes",
+    vatNumber: "FR12812345678",
+    publicationDirector: "Claire Martin",
+    hostingProvider: "Hébergeur SAS, 1 rue du Serveur, 75000 Paris",
+    mediator: "Médiateur du tourisme, BP 80303, 75823 Paris Cedex 17",
+  } } } }));
+
+  await page.goto("/mentions-legales");
+
+  await expect(page.getByText(/édité par Rivage Hôtellerie \(Hôtel Rivage\)/)).toBeVisible();
+  await expect(page.getByText("SAS au capital de 10 000 € · SIRET 812 345 678 00012 · RCS Cannes · TVA intracommunautaire FR12812345678.")).toBeVisible();
+  await expect(page.getByText("Directeur de la publication : Claire Martin.")).toBeVisible();
+  await expect(page.getByText(/Médiateur du tourisme/)).toBeVisible();
+  await expect(page.getByText(/doivent encore être complétées/)).toHaveCount(0);
+});
+
+test("lists the missing legal details until they are entered", async ({ page }) => {
+  await mockProperty(page);
+
+  await page.goto("/mentions-legales");
+
+  await expect(page.getByText(/doivent encore être complétées par l'exploitant avant l'ouverture commerciale : le numéro SIRET, le directeur de la publication, l'hébergeur du site\./)).toBeVisible();
+});

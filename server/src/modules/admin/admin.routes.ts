@@ -39,13 +39,22 @@ import {
   updateAdminBooking,
 } from "./admin.booking-update.js";
 import { parseAdminAvailabilityBlockBody } from "./admin.availability-block.js";
-import {
-  parseAdminExtraCreateBody,
-  parseAdminExtraDeleteBody,
-  parseAdminExtraUpdateBody,
-  requireCatalogPermission,
-} from "./admin.extra.js";
+import { requireCatalogPermission } from "./admin.catalog.js";
+import { parseAdminExtraCreateBody, parseAdminExtraDeleteBody, parseAdminExtraUpdateBody } from "./admin.extra.js";
 import { createAdminExtra, deleteAdminExtra, listAdminExtras, updateAdminExtra } from "./admin.extra.service.js";
+import { parseAdminPropertyUpdateBody } from "./admin.property.js";
+import { getAdminPropertySettings, updateAdminPropertySettings } from "./admin.property.service.js";
+import {
+  parseAdminTouristTaxCreateBody,
+  parseAdminTouristTaxDeleteBody,
+  parseAdminTouristTaxUpdateBody,
+} from "./admin.tourist-tax.js";
+import {
+  createAdminTouristTax,
+  deleteAdminTouristTax,
+  listAdminTouristTaxes,
+  updateAdminTouristTax,
+} from "./admin.tourist-tax.service.js";
 import { parseIdempotencyKey, parseManualPaymentBody, parseRefundBody } from "../billing/billing.validation.js";
 import { recordManualPayment, refundPayment } from "../billing/billing.service.js";
 import { getInvoiceForProperty, listBookingInvoices, renderInvoicePdf } from "../billing/invoice.service.js";
@@ -123,6 +132,10 @@ type InvoiceParams = {
 };
 
 type ExtraParams = {
+  id: string;
+};
+
+type TouristTaxParams = {
   id: string;
 };
 
@@ -766,6 +779,93 @@ export async function adminRoutes(app: FastifyInstance) {
           requireAdminContext(request).user.id,
           request.params.id,
           parseAdminExtraDeleteBody(request.body),
+          request.ip,
+        ),
+      };
+    }),
+  );
+
+  app.get(
+    "/admin/property",
+    { preHandler: authenticateAdmin },
+    async (request, reply) => handleAdminRoute(reply, async () => ({
+      data: await getAdminPropertySettings(requireCatalogPermission(resolveMembership(request)).propertyId),
+    })),
+  );
+
+  app.patch<{ Body: unknown }>(
+    "/admin/property",
+    { preHandler: authenticateAdmin, config: { rateLimit: { max: 30, timeWindow: "15 minutes" } } },
+    async (request, reply) => handleAdminRoute(reply, async () => {
+      const membership = requireCatalogPermission(resolveMembership(request));
+      return {
+        data: await updateAdminPropertySettings(
+          membership,
+          requireAdminContext(request).user.id,
+          parseAdminPropertyUpdateBody(request.body),
+          request.ip,
+        ),
+      };
+    }),
+  );
+
+  app.get(
+    "/admin/tourist-taxes",
+    { preHandler: authenticateAdmin },
+    async (request, reply) => handleAdminRoute(reply, async () => ({
+      data: await listAdminTouristTaxes(requireCatalogPermission(resolveMembership(request)).propertyId),
+    })),
+  );
+
+  app.post<{ Body: unknown }>(
+    "/admin/tourist-taxes",
+    { preHandler: authenticateAdmin, config: { rateLimit: { max: 30, timeWindow: "15 minutes" } } },
+    async (request, reply) => handleAdminRoute(reply, async () => {
+      const membership = requireCatalogPermission(resolveMembership(request));
+      const rule = await createAdminTouristTax(
+        membership,
+        requireAdminContext(request).user.id,
+        parseAdminTouristTaxCreateBody(request.body),
+        request.ip,
+      );
+      return reply.code(201).send({ data: rule });
+    }),
+  );
+
+  app.patch<{ Params: TouristTaxParams; Body: unknown }>(
+    "/admin/tourist-taxes/:id",
+    { preHandler: authenticateAdmin, config: { rateLimit: { max: 60, timeWindow: "15 minutes" } } },
+    async (request, reply) => handleAdminRoute(reply, async () => {
+      if (!uuidPattern.test(request.params.id)) {
+        throw new AdminApiError(400, "INVALID_TOURIST_TAX_ID", "L'identifiant de la taxe est invalide.");
+      }
+      const membership = requireCatalogPermission(resolveMembership(request));
+      return {
+        data: await updateAdminTouristTax(
+          membership,
+          requireAdminContext(request).user.id,
+          request.params.id,
+          parseAdminTouristTaxUpdateBody(request.body),
+          request.ip,
+        ),
+      };
+    }),
+  );
+
+  app.delete<{ Params: TouristTaxParams; Body: unknown }>(
+    "/admin/tourist-taxes/:id",
+    { preHandler: authenticateAdmin, config: { rateLimit: { max: 20, timeWindow: "15 minutes" } } },
+    async (request, reply) => handleAdminRoute(reply, async () => {
+      if (!uuidPattern.test(request.params.id)) {
+        throw new AdminApiError(400, "INVALID_TOURIST_TAX_ID", "L'identifiant de la taxe est invalide.");
+      }
+      const membership = requireCatalogPermission(resolveMembership(request));
+      return {
+        data: await deleteAdminTouristTax(
+          membership,
+          requireAdminContext(request).user.id,
+          request.params.id,
+          parseAdminTouristTaxDeleteBody(request.body),
           request.ip,
         ),
       };

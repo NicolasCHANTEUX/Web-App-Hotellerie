@@ -1,6 +1,6 @@
 import { Pencil, Plus, Save, Trash2, X } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
-import type { FormEvent, ReactNode } from "react";
+import { useEffect, useId, useState } from "react";
+import type { FormEvent } from "react";
 import {
   AdminApiError,
   AdminExtra,
@@ -11,6 +11,7 @@ import {
   getAdminExtras,
   updateAdminExtra,
 } from "../../api/admin";
+import { AdminModal } from "../../admin/AdminModal";
 import { useAdminAuth } from "../../admin/auth";
 import { AdminEmptyState, AdminErrorState, AdminTableSkeleton, PageHeading, formatMoney } from "../../admin/ui";
 
@@ -90,54 +91,6 @@ function ExtraActions({ extra, compact = false, onEdit, onDelete }: {
       <button type="button" className="danger" aria-label={`Supprimer ${extra.name}`} title={deleteHint} disabled={!extra.canDelete} onClick={onDelete}>
         <Trash2 />{!compact && "Supprimer"}
       </button>
-    </div>
-  );
-}
-
-/** Modal layer shared by the editor and the deletion confirmation. */
-function ExtraDialog({ titleId, busy, onClose, children, className = "" }: {
-  titleId: string;
-  busy: boolean;
-  onClose: () => void;
-  children: ReactNode;
-  className?: string;
-}) {
-  const dialogRef = useRef<HTMLElement>(null);
-  const closeRef = useRef({ busy, onClose });
-
-  useEffect(() => {
-    closeRef.current = { busy, onClose };
-  });
-
-  // Runs once per opening: re-running it would move the focus while typing.
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    document.body.style.overflow = "hidden";
-    const focusFrame = window.requestAnimationFrame(() => {
-      const dialog = dialogRef.current;
-      (dialog?.querySelector<HTMLElement>("input, select, textarea") ?? dialog?.querySelector<HTMLElement>("button:not(:disabled)"))?.focus();
-    });
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || closeRef.current.busy) return;
-      event.preventDefault();
-      closeRef.current.onClose();
-    };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => {
-      window.cancelAnimationFrame(focusFrame);
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", closeOnEscape);
-      previousFocus?.focus();
-    };
-  }, []);
-
-  return (
-    <div className="admin-room-dialog-layer">
-      <button type="button" className="admin-room-dialog-backdrop" aria-label="Fermer" disabled={busy} onClick={onClose} />
-      <section ref={dialogRef} className={className} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-busy={busy}>
-        {children}
-      </section>
     </div>
   );
 }
@@ -271,7 +224,7 @@ export function AdminExtras() {
       )}
 
       {deleteTarget && (
-        <ExtraDialog titleId={deleteTitleId} busy={deleting} onClose={() => setDeleteTarget(null)} className="admin-room-delete-layer">
+        <AdminModal titleId={deleteTitleId} busy={deleting} onClose={() => setDeleteTarget(null)} className="admin-room-delete-layer">
           <div className="admin-room-delete-dialog">
             <span className="admin-room-delete-icon" aria-hidden="true"><Trash2 /></span>
             <div className="admin-room-delete-copy">
@@ -284,7 +237,7 @@ export function AdminExtras() {
               <button type="button" className="danger" disabled={deleting} onClick={confirmDelete}>{deleting ? <span className="admin-spinner light" /> : <Trash2 />}{deleting ? "Suppression…" : "Supprimer définitivement"}</button>
             </div>
           </div>
-        </ExtraDialog>
+        </AdminModal>
       )}
     </>
   );
@@ -325,7 +278,7 @@ function ExtraEditor({ extra, displayOrder, onClose, onSaved }: {
   }
 
   return (
-    <ExtraDialog titleId={titleId} busy={saving} onClose={onClose} className="admin-room-dialog admin-extras-dialog">
+    <AdminModal titleId={titleId} busy={saving} onClose={onClose} className="admin-room-dialog admin-extras-dialog">
       <header className="admin-room-dialog-head">
         <div>
           <p>Catalogue</p>
@@ -366,6 +319,6 @@ function ExtraEditor({ extra, displayOrder, onClose, onSaved }: {
           </footer>
         </form>
       </div>
-    </ExtraDialog>
+    </AdminModal>
   );
 }

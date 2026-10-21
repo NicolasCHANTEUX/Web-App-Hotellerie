@@ -96,6 +96,8 @@ Routes disponibles :
 - `PATCH /admin/room-types/:id` (`ADMIN` uniquement)
 - `DELETE /admin/room-types/:id` (`ADMIN` uniquement)
 - `GET /admin/extras`, `POST /admin/extras`, `PATCH /admin/extras/:id`, `DELETE /admin/extras/:id` (`ADMIN` uniquement ; une option déjà réservée se désactive mais ne se supprime pas)
+- `GET /admin/property`, `PATCH /admin/property` (`ADMIN` uniquement ; coordonnées, horaires et mentions légales, avec la version `updatedAt`)
+- `GET /admin/tourist-taxes`, `POST /admin/tourist-taxes`, `PATCH /admin/tourist-taxes/:id`, `DELETE /admin/tourist-taxes/:id` (`ADMIN` uniquement ; une règle déjà facturée se termine ou se désactive mais ne se supprime pas)
 - `POST /admin/rooms` (`ADMIN` uniquement)
 - `PATCH /admin/rooms/:id` (`ADMIN` uniquement)
 - `DELETE /admin/rooms/:id` (`ADMIN` uniquement)

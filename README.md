@@ -91,4 +91,8 @@ Les détails de la base sont documentés dans `server/README.md`, la procédure 
 
 ## État de livraison
 
-Le dépôt constitue une V1 fonctionnelle de démonstration. Les mentions légales, CGV, coordonnées d'hébergement et politiques commerciales doivent être complétées et validées pour chaque exploitant avant une ouverture commerciale.
+Le dépôt constitue une V1 fonctionnelle de démonstration. Avant une ouverture commerciale, chaque exploitant doit valider :
+
+- les mentions légales et coordonnées, à saisir dans l'écran « Établissement » de l'administration ;
+- les CGV et la politique de confidentialité, dont le texte reste dans `src/pages/Legal.tsx` ;
+- ses politiques commerciales.

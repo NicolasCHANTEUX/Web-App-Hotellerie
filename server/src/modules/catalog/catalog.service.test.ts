@@ -16,6 +16,15 @@ test("serializes only public property fields and the active room count", () => {
     timezone: "Europe/Paris",
     checkInTime: "15:00",
     checkOutTime: "11:00",
+    legalName: "Rivage Hôtellerie",
+    legalForm: "SAS",
+    shareCapital: "10 000 €",
+    siret: "81234567800012",
+    registrationCity: "Cannes",
+    vatNumber: "FR12812345678",
+    publicationDirector: "Claire Martin",
+    hostingProvider: "Hébergeur SAS, 1 rue du Serveur, 75000 Paris",
+    mediator: null,
     _count: { rooms: 18 },
   });
 
@@ -33,5 +42,16 @@ test("serializes only public property fields and the active room count", () => {
     checkInTime: "15:00",
     checkOutTime: "11:00",
     roomCount: 18,
+    legal: {
+      legalName: "Rivage Hôtellerie",
+      legalForm: "SAS",
+      shareCapital: "10 000 €",
+      siret: "81234567800012",
+      registrationCity: "Cannes",
+      vatNumber: "FR12812345678",
+      publicationDirector: "Claire Martin",
+      hostingProvider: "Hébergeur SAS, 1 rue du Serveur, 75000 Paris",
+      mediator: null,
+    },
   });
 });

@@ -1,6 +1,6 @@
 import { Prisma, BookingStatus, type BookingSource } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
-import { assertExpectedTotal, buildTaxInclusivePrice, moneyToCents } from "../booking/booking.pricing.js";
+import { assertExpectedTotal, buildTaxInclusivePrice, moneyToCents, touristTaxPeriodFilter } from "../booking/booking.pricing.js";
 import { parseCreateBookingBody } from "../booking/booking.validation.js";
 import { BookingError } from "../booking/booking.errors.js";
 import { bookingAccessTokenExpiresAt } from "../booking/booking.access.js";
@@ -135,10 +135,7 @@ async function resolveUpdatedPricing(
             where: {
               isActive: true,
               kind: "TOURIST_TAX",
-              AND: [
-                { OR: [{ validFrom: null }, { validFrom: { lte: input.arrival } }] },
-                { OR: [{ validUntil: null }, { validUntil: { gte: input.departure } }] },
-              ],
+              ...touristTaxPeriodFilter(input.arrival, input.departure),
             },
             orderBy: [{ priority: "asc" }, { code: "asc" }],
           },
@@ -227,6 +224,7 @@ async function resolveUpdatedPricing(
   const price = buildTaxInclusivePrice({
     nightlyPrice,
     accommodationTaxRate: ratePlan.taxRate,
+    arrival: input.arrival,
     nights,
     adults: input.adults,
     children: input.children,
@@ -243,6 +241,8 @@ async function resolveUpdatedPricing(
         calculationMode: rule.calculationMode,
         rate: rule.rate,
         amount: rule.amount,
+        validFrom: rule.validFrom,
+        validUntil: rule.validUntil,
       })),
   });
   const pricedExtras = price.extras.map(({ item, ...values }) => ({ extra: item, ...values }));

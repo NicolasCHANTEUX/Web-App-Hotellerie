@@ -22,7 +22,7 @@ export type TestHotel = Awaited<ReturnType<typeof createTestHotel>>;
  * A complete establishment of its own, so that each test owns its rooms and
  * availability whatever else the database contains.
  */
-export async function createTestHotel({ rooms = 2 }: { rooms?: number } = {}) {
+export async function createTestHotel({ rooms = 2, touristTax = true }: { rooms?: number; touristTax?: boolean } = {}) {
   const suffix = randomUUID().slice(0, 8);
   const property = await prisma.property.create({
     data: {
@@ -46,17 +46,19 @@ export async function createTestHotel({ rooms = 2 }: { rooms?: number } = {}) {
       effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
     },
   });
-  await prisma.taxRule.create({
-    data: {
-      propertyId: property.id,
-      code: "TOURIST_TAX",
-      label: "Taxe de séjour",
-      kind: "TOURIST_TAX",
-      calculationMode: "PER_ADULT_PER_NIGHT",
-      amount: TOURIST_TAX_PER_ADULT_PER_NIGHT,
-      currency: "EUR",
-    },
-  });
+  if (touristTax) {
+    await prisma.taxRule.create({
+      data: {
+        propertyId: property.id,
+        code: "TOURIST_TAX",
+        label: "Taxe de séjour",
+        kind: "TOURIST_TAX",
+        calculationMode: "PER_ADULT_PER_NIGHT",
+        amount: TOURIST_TAX_PER_ADULT_PER_NIGHT,
+        currency: "EUR",
+      },
+    });
+  }
   const roomType = await prisma.roomType.create({
     data: {
       propertyId: property.id,

@@ -496,6 +496,7 @@ img { display: block; }
 .prose-page article { scroll-margin-top: 110px; }
 .prose-page h2 { margin-top: 32px; font-family: var(--font-serif); font-size: 32px; }
 .prose-page p { margin-top: 16px; color: var(--muted); line-height: 1.8; }
+.prose-page .prose-multiline { white-space: pre-line; }
 
 .page-api-state { display: grid; min-height: 62vh; place-items: center; padding: 80px 24px; background: var(--paper); }
 .api-state { display: flex; min-height: 180px; align-items: center; justify-content: center; gap: 14px; border: 1px solid var(--line); border-radius: var(--radius-md); background: rgb(255 255 255 / 70%); padding: 34px; color: var(--muted); text-align: center; }

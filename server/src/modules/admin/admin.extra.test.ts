@@ -1,14 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { AdminApiError } from "./admin.errors.js";
-import {
-  extraCodeFromName,
-  parseAdminExtraCreateBody,
-  parseAdminExtraDeleteBody,
-  parseAdminExtraUpdateBody,
-  requireCatalogPermission,
-} from "./admin.extra.js";
-import type { AdminMembershipContext } from "./admin.auth.js";
+import { parseAdminExtraCreateBody, parseAdminExtraDeleteBody, parseAdminExtraUpdateBody } from "./admin.extra.js";
 
 const validExtra = {
   name: "  Petit-déjeuner  ",
@@ -62,21 +55,4 @@ test("exige une version canonique pour modifier ou supprimer", () => {
   assertInvalid(() => parseAdminExtraUpdateBody(validExtra), /version/i);
   assertInvalid(() => parseAdminExtraDeleteBody({ updatedAt: "2026-10-20" }), /version/i);
   assertInvalid(() => parseAdminExtraDeleteBody({ updatedAt, name: "Parking" }), /name/);
-});
-
-test("dérive un code technique stable depuis le nom", () => {
-  assert.equal(extraCodeFromName("Petit-déjeuner continental"), "PETIT_DEJEUNER_CONTINENTAL");
-  assert.equal(extraCodeFromName("  Lit bébé (0-3 ans) "), "LIT_BEBE_0_3_ANS");
-  assert.equal(extraCodeFromName("!!!"), "");
-});
-
-test("réserve la gestion du catalogue aux administrateurs", () => {
-  const membership = (role: AdminMembershipContext["role"]) => ({ role }) as AdminMembershipContext;
-  assert.equal(requireCatalogPermission(membership("ADMIN")).role, "ADMIN");
-  for (const role of ["RECEPTION", "ACCOUNTING", "HOUSEKEEPING"] as const) {
-    assert.throws(
-      () => requireCatalogPermission(membership(role)),
-      (error) => error instanceof AdminApiError && error.statusCode === 403,
-    );
-  }
 });

@@ -411,6 +411,13 @@
 .admin-extra-actions button svg { width: 13px; }
 .admin-extra-actions.compact button { width: 34px; padding: 0; }
 .admin-extras-table td > small { max-width: 320px; white-space: normal; }
+.admin-tax-example { grid-column: 1 / -1; margin: 0; border-radius: 6px; background: #f6f1eb; padding: 10px 12px; color: #6f5a42; font-size: 11px; line-height: 1.5; }
+.admin-main > .admin-hold-notice { margin: 0 0 16px; }
+.admin-settings-form { display: grid; max-width: 980px; gap: 24px; }
+.admin-settings-section { display: grid; gap: 10px; }
+.admin-settings-section > header h2 { margin: 0; font-family: var(--font-serif); font-size: 19px; font-weight: 600; }
+.admin-settings-section > header p { margin: 4px 0 0; color: #8b8177; font-size: 11px; line-height: 1.5; }
+.admin-settings-actions { position: sticky; z-index: 5; bottom: 16px; margin-top: 0; box-shadow: 0 12px 34px rgb(49 40 31 / 12%); }
 .admin-room-type-promotion-field { display: grid; gap: 14px; border: 1px solid #e0d4c7; border-radius: 9px; background: #fbf7f1; padding: 16px 18px; }
 .admin-room-type-promotion-toggle { display: flex; align-items: center; gap: 10px; color: #50473f; cursor: pointer; }
 .admin-room-type-promotion-toggle > input { width: 16px; height: 16px; accent-color: var(--gold-dark); }
@@ -927,3 +934,9 @@ button.admin-planning-slot { font: inherit; }
   .admin-drawer-head h2 { font-size: 22px; }
 }
 
+
+@media (max-width: 720px) {
+  .admin-settings-actions.admin-room-dialog-actions { bottom: 8px; gap: 8px; padding: 10px 12px; }
+  .admin-settings-actions.admin-room-dialog-actions > div { grid-template-columns: 1fr 1.4fr; }
+  .admin-settings-actions.admin-room-dialog-actions button { min-height: 38px; }
+}

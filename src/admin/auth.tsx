@@ -33,6 +33,7 @@ type AdminAuthContextValue = {
   profile: AdminMe | null;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
+  refreshProfile: () => Promise<void>;
 };
 
 type StoredSession = {
@@ -164,13 +165,20 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Reloads the property shown in the layout after its settings changed.
+  const refreshProfile = useCallback(async () => {
+    const session = sessionRef.current;
+    if (session) setProfile(await getAdminMe(session.accessToken));
+  }, []);
+
   const value = useMemo<AdminAuthContextValue>(() => ({
     status,
     accessToken,
     profile,
     login,
     logout,
-  }), [status, accessToken, profile, login, logout]);
+    refreshProfile,
+  }), [status, accessToken, profile, login, logout, refreshProfile]);
 
   return <AdminAuthContext.Provider value={value}>{children}</AdminAuthContext.Provider>;
 }

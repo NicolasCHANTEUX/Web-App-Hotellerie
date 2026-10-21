@@ -32,6 +32,8 @@ Les noms, tarifs, taxes, conditions et options sont figés dans des instantanés
 
 Le navigateur affiche le devis retourné par le serveur et ne calcule pas le montant contractuel. Les chambres et options sont configurées en prix TTC. La TVA incluse est ventilée par ligne ; les taxes additionnelles, notamment la taxe de séjour, sont détaillées puis incluses dans le total avant validation.
 
+La taxe de séjour est calculée nuit par nuit. Les dates d'une règle désignent sa première et sa dernière nuit, toutes deux incluses : un séjour à cheval sur un changement de tarif paie chaque nuit au tarif alors en vigueur, avec une ligne par règle. Un montant forfaitaire par séjour suit la règle en vigueur la nuit d'arrivée. Plusieurs règles actives sur les mêmes nuits s'additionnent, par exemple une taxe additionnelle. L'administration signale ces chevauchements, car ils viennent souvent d'un ancien tarif qu'on a oublié de terminer.
+
 Les promotions sont rattachées aux types de chambres, bornées dans le temps et évaluées pour toute la période du séjour. Les réservations conservent le prix de référence, la réduction et le prix effectivement accepté.
 
 ## Paiements et facturation
@@ -59,6 +61,8 @@ Les routes `/admin/*` exigent un jeton Supabase Auth et une `AdminMembership` ac
 Le planning croise les allocations de chambres sur quatorze jours avec les dossiers de réservation. `ADMIN` et `RECEPTION` peuvent ouvrir les séjours et exécuter les opérations quotidiennes. `HOUSEKEEPING` voit les occupations et blocages sans identité client. Le cycle opérationnel est explicite : `CONFIRMED` → `CHECKED_IN` le jour du séjour, puis `COMPLETED` à partir du départ ; les absences et annulations suivent des transitions contrôlées côté serveur.
 
 `ADMIN` gère le catalogue : types de chambres, chambres et options du séjour. Une option modifiée ne s'applique qu'aux nouvelles demandes, car chaque réservation garde le nom et le prix acceptés. Une option déjà réservée peut seulement être désactivée : elle disparaît alors du site et de la saisie à la réception.
+
+`ADMIN` gère aussi les paramètres de l'établissement : nom, coordonnées, horaires et mentions légales. L'API publique `/property` les expose, mise en cache une minute. La page Mentions légales liste ce qui manque encore. Les nouvelles factures recopient les mentions de l'émetteur, tandis que les factures déjà émises gardent leur en-tête figé. Le slug, le fuseau horaire et la devise ne se modifient pas depuis l'administration.
 
 Les tables applicatives ont RLS activée sans politique publique. Les secrets, jetons et mots de passe sont masqués dans les logs. Une erreur inattendue est journalisée côté serveur, mais le client ne reçoit qu'un message générique `INTERNAL_ERROR`, sans détail technique. Les requêtes venant d'une origine absente de `CORS_ORIGIN` sont refusées en 403. Le rate limiting protège les créations de réservation, les connexions et les demandes de contact ; une limite atteinte renvoie 429 `RATE_LIMITED`.
 

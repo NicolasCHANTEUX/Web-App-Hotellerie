@@ -19,7 +19,7 @@ Cette fiche sépare les données réelles à obtenir du client des fixtures et e
 - [ ] Photos de l'hôtel et des chambres avec droits d'utilisation
 - [ ] Tarifs, devise, TVA, minimum de séjour et politiques de remboursement
 - [ ] Options, prix, TVA et unités de facturation
-- [ ] Taxe de séjour, exemptions, dates d'application et priorités
+- [ ] Taxe de séjour : tarif communiqué par la commune, mode de calcul, exemptions et dates d'application, à saisir dans l'écran « Taxe de séjour » de l'administration
 - [ ] Durée des options de réservation et durée d'accès public après le séjour
 - [ ] Politique de confirmation, annulation, no-show, acompte et remboursement
 
@@ -33,7 +33,9 @@ Cette fiche sépare les données réelles à obtenir du client des fixtures et e
 
 ## Juridique et comptabilité
 
-- [ ] Forme juridique, immatriculation, TVA et capital social
+Les coordonnées, horaires et mentions légales ci-dessous se saisissent dans l'écran « Établissement » de l'administration. Ils alimentent la page Mentions légales du site et le pied des nouvelles factures.
+
+- [ ] Forme juridique, SIRET, ville du RCS, TVA intracommunautaire et capital social
 - [ ] Directeur de publication
 - [ ] Hébergeur et coordonnées légales
 - [ ] Médiateur de la consommation et droit applicable

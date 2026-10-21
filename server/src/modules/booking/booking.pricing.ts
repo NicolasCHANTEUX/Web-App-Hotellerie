@@ -43,27 +43,77 @@ export function fixedTaxQuantity(
   return 1;
 }
 
+const DAY_MS = 86_400_000;
+
+type TaxRulePeriod = {
+  validFrom?: Date | null;
+  validUntil?: Date | null;
+};
+
+type TaxedStay = {
+  arrival: Date;
+  nights: number;
+  nightlyPrice: Prisma.Decimal;
+  adults: number;
+  children: number;
+};
+
+/**
+ * Tourist tax rules sharing at least one night with the stay [arrival,
+ * departure). Both bounds of a rule are nights, included.
+ */
+export function touristTaxPeriodFilter(arrival: Date, departure: Date): Prisma.TaxRuleWhereInput {
+  const lastNight = new Date(departure.getTime() - DAY_MS);
+  return {
+    AND: [
+      { OR: [{ validFrom: null }, { validFrom: { lte: lastNight } }] },
+      { OR: [{ validUntil: null }, { validUntil: { gte: arrival } }] },
+    ],
+  };
+}
+
+/** Nights of the stay on which a rule is in force. */
+export function nightsCoveredByTaxRule(period: TaxRulePeriod, arrival: Date, nights: number) {
+  let covered = 0;
+  let coversArrival = false;
+  for (let index = 0; index < nights; index += 1) {
+    const night = new Date(arrival.getTime() + index * DAY_MS);
+    if ((!period.validFrom || period.validFrom <= night) && (!period.validUntil || period.validUntil >= night)) {
+      covered += 1;
+      if (index === 0) coversArrival = true;
+    }
+  }
+  return { covered, coversArrival };
+}
+
+/**
+ * Prices a tourist tax rule night by night, so that a stay crossing a change
+ * of rate pays each night at the rate then in force. A per-stay amount follows
+ * the rule in force on the arrival night.
+ */
 export function priceTaxRule(
-  rule: {
+  rule: TaxRulePeriod & {
     calculationMode: TaxCalculationMode;
     rate: Prisma.Decimal | null;
     amount: Prisma.Decimal | null;
   },
-  taxableBase: Prisma.Decimal,
-  nights: number,
-  adults: number,
-  children: number,
+  stay: TaxedStay,
 ) {
+  const { covered, coversArrival } = nightsCoveredByTaxRule(rule, stay.arrival, stay.nights);
   if (rule.calculationMode === "PERCENTAGE") {
+    const taxableBase = roundMoney(stay.nightlyPrice.mul(covered));
     return {
+      applies: covered > 0,
       quantity: new Prisma.Decimal(1),
       taxableBase,
       amount: percentageTax(taxableBase, rule.rate ?? new Prisma.Decimal(0)),
     };
   }
 
-  const quantity = fixedTaxQuantity(rule.calculationMode, nights, adults, children);
+  const applies = rule.calculationMode === "PER_STAY" ? coversArrival : covered > 0;
+  const quantity = applies ? fixedTaxQuantity(rule.calculationMode, covered, stay.adults, stay.children) : 0;
   return {
+    applies,
     quantity: new Prisma.Decimal(quantity),
     taxableBase: new Prisma.Decimal(0),
     amount: roundMoney((rule.amount ?? new Prisma.Decimal(0)).mul(quantity)),
@@ -79,6 +129,7 @@ function quantityForPricingUnit(unit: PricingUnit, nights: number, guests: numbe
 export function buildTaxInclusivePrice<TExtra, TTaxRule>(input: {
   nightlyPrice: Prisma.Decimal;
   accommodationTaxRate: Prisma.Decimal;
+  arrival: Date;
   nights: number;
   adults: number;
   children: number;
@@ -88,7 +139,7 @@ export function buildTaxInclusivePrice<TExtra, TTaxRule>(input: {
     pricingUnit: PricingUnit;
     taxRate: Prisma.Decimal | null;
   }>;
-  taxRules: Array<{
+  taxRules: Array<TaxRulePeriod & {
     rule: TTaxRule;
     calculationMode: TaxCalculationMode;
     rate: Prisma.Decimal | null;
@@ -126,10 +177,11 @@ export function buildTaxInclusivePrice<TExtra, TTaxRule>(input: {
     extras.reduce((total, item) => total.add(item.taxAmount), new Prisma.Decimal(0)),
   );
 
-  const touristTaxes = input.taxRules.map(({ rule, ...taxRule }) => ({
-    rule,
-    ...priceTaxRule(taxRule, accommodationTotal, input.nights, input.adults, input.children),
-  }));
+  const stay = { arrival: input.arrival, nights: input.nights, nightlyPrice: input.nightlyPrice, adults: input.adults, children: input.children };
+  const touristTaxes = input.taxRules.flatMap(({ rule, ...taxRule }) => {
+    const { applies, ...priced } = priceTaxRule(taxRule, stay);
+    return applies ? [{ rule, ...priced }] : [];
+  });
   const touristTaxTotal = roundMoney(
     touristTaxes.reduce((total, item) => total.add(item.amount), new Prisma.Decimal(0)),
   );

@@ -47,6 +47,20 @@ export function createAdminRouter() {
                   return { Component: () => <RequireCatalogAccess><AdminExtras /></RequireCatalogAccess> };
                 },
               },
+              {
+                path: "taxe-de-sejour",
+                lazy: async () => {
+                  const { AdminTouristTaxes } = await import("../pages/admin/AdminTouristTaxes");
+                  return { Component: () => <RequireCatalogAccess><AdminTouristTaxes /></RequireCatalogAccess> };
+                },
+              },
+              {
+                path: "etablissement",
+                lazy: async () => {
+                  const { AdminProperty } = await import("../pages/admin/AdminProperty");
+                  return { Component: () => <RequireCatalogAccess><AdminProperty /></RequireCatalogAccess> };
+                },
+              },
             ],
           },
         ],

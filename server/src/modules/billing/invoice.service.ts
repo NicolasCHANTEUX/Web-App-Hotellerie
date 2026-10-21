@@ -171,6 +171,11 @@ export async function issuePaidInvoice(transaction: BillingTransaction, bookingI
         postalCode: booking.property.postalCode,
         city: booking.property.city,
         countryCode: booking.property.countryCode,
+        legalForm: booking.property.legalForm,
+        shareCapital: booking.property.shareCapital,
+        siret: booking.property.siret,
+        registrationCity: booking.property.registrationCity,
+        vatNumber: booking.property.vatNumber,
       },
       customerSnapshot: {
         firstName: customer.firstName,
@@ -401,6 +406,26 @@ function formatDate(value: Date | null) {
   return value ? new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(value) : "-";
 }
 
+/**
+ * Mandatory company mentions of the issuer, e.g. "SAS au capital de
+ * 10 000 € · SIRET 812 345 678 00012 · RCS Cannes · TVA FR12812345678".
+ * Invoices issued before these details existed simply have none.
+ */
+export function issuerLegalNotice(issuer: Record<string, unknown>) {
+  const legalForm = stringValue(issuer.legalForm);
+  const shareCapital = stringValue(issuer.shareCapital);
+  const siret = stringValue(issuer.siret);
+  const registrationCity = stringValue(issuer.registrationCity);
+  const vatNumber = stringValue(issuer.vatNumber);
+  const company = legalForm && shareCapital ? `${legalForm} au capital de ${shareCapital}` : legalForm ?? (shareCapital ? `Capital de ${shareCapital}` : null);
+  return [
+    company,
+    siret ? `SIRET ${siret.replace(/^(\d{3})(\d{3})(\d{3})(\d{5})$/, "$1 $2 $3 $4")}` : null,
+    registrationCity ? `RCS ${registrationCity}` : null,
+    vatNumber ? `TVA ${vatNumber}` : null,
+  ].filter(Boolean).join(" · ");
+}
+
 export async function renderInvoicePdf(invoice: NonNullable<Awaited<ReturnType<typeof getInvoiceForProperty>>>) {
   const issuer = snapshot(invoice.issuerSnapshot);
   const customer = snapshot(invoice.customerSnapshot);
@@ -480,6 +505,8 @@ export async function renderInvoicePdf(invoice: NonNullable<Awaited<ReturnType<t
   if (invoice.creditReason) {
     document.fillColor(muted).font("Helvetica").fontSize(8.5).text(`Motif de l'avoir : ${invoice.creditReason}`, 48, y + 104, { width: 499 });
   }
+  const legalNotice = issuerLegalNotice(issuer);
+  if (legalNotice) document.fillColor(muted).font("Helvetica").fontSize(7.5).text(legalNotice, 48, 740, { width: 499, align: "center" });
   document.fillColor(muted).fontSize(8).text(`Devise : ${invoice.currency}. Taxes incluses dans les montants TTC.`, 48, 760, { width: 499, align: "center" });
   document.end();
   return finished;

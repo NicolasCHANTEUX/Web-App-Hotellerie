@@ -1,10 +1,45 @@
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { formatHotelTime, propertyAddress, useProperty } from "../context/PropertyContext";
+import type { PublicLegalNotice } from "../types/hotel";
+
+const emptyLegalNotice: PublicLegalNotice = {
+  legalName: null,
+  legalForm: null,
+  shareCapital: null,
+  siret: null,
+  registrationCity: null,
+  vatNumber: null,
+  publicationDirector: null,
+  hostingProvider: null,
+  mediator: null,
+};
+
+function formatSiret(value: string) {
+  return value.replace(/^(\d{3})(\d{3})(\d{3})(\d{5})$/, "$1 $2 $3 $4");
+}
 
 export function Legal() {
   const { hash } = useLocation();
   const property = useProperty();
+  const legal = property.legal ?? emptyLegalNotice;
+  const publisher = legal.legalName && legal.legalName !== property.name
+    ? `${legal.legalName} (${property.name})`
+    : property.name;
+  const company = legal.legalForm && legal.shareCapital
+    ? `${legal.legalForm} au capital de ${legal.shareCapital}`
+    : legal.legalForm;
+  const identity = [
+    company,
+    legal.siret && `SIRET ${formatSiret(legal.siret)}`,
+    legal.registrationCity && `RCS ${legal.registrationCity}`,
+    legal.vatNumber && `TVA intracommunautaire ${legal.vatNumber}`,
+  ].filter((item): item is string => Boolean(item));
+  const missing = [
+    !legal.siret && "le numéro SIRET",
+    !legal.publicationDirector && "le directeur de la publication",
+    !legal.hostingProvider && "l'hébergeur du site",
+  ].filter((item): item is string => Boolean(item));
 
   useEffect(() => {
     if (!hash) return;
@@ -19,14 +54,18 @@ export function Legal() {
       <article id="mentions">
         <h2>Mentions légales</h2>
         <p>
-          Le site est édité par {property.name}, {propertyAddress(property)}.
+          Le site est édité par {publisher}, {propertyAddress(property)}.
           Contact : {property.email}{property.phone ? ` · ${property.phone}` : ""}.
         </p>
-        <p>
-          Les informations d'immatriculation, la forme juridique, le capital social, le numéro
-          de TVA intracommunautaire, le directeur de publication et les coordonnées définitives
-          de l'hébergeur doivent être complétés par l'exploitant avant l'ouverture commerciale.
-        </p>
+        {identity.length > 0 && <p>{identity.join(" · ")}.</p>}
+        {legal.publicationDirector && <p>Directeur de la publication : {legal.publicationDirector}.</p>}
+        {legal.hostingProvider && <p className="prose-multiline">Hébergement du site : {legal.hostingProvider}</p>}
+        {missing.length > 0 && (
+          <p>
+            Les informations suivantes doivent encore être complétées par l'exploitant avant
+            l'ouverture commerciale : {missing.join(", ")}.
+          </p>
+        )}
       </article>
 
       <article id="confidentialite">
@@ -87,10 +126,17 @@ export function Legal() {
           Toute modification, annulation, arrivée tardive ou demande d'accessibilité doit être adressée
           à l'hôtel avec la référence de réservation.
         </p>
+        {legal.mediator && (
+          <p className="prose-multiline">
+            Médiation de la consommation : en cas de litige non résolu directement avec l'hôtel, le
+            client peut recourir gratuitement au médiateur suivant : {legal.mediator}
+          </p>
+        )}
         <p>
-          Cette trame doit être relue et complétée par l'exploitant — notamment pour la médiation de la
-          consommation, le droit applicable, les garanties, les conditions tarifaires et les moyens de
-          paiement acceptés — avant toute mise en production commerciale.
+          Cette trame doit être relue et complétée par l'exploitant — notamment pour
+          {legal.mediator ? "" : " la médiation de la consommation,"} le droit applicable, les
+          garanties, les conditions tarifaires et les moyens de paiement acceptés — avant toute mise
+          en production commerciale.
         </p>
       </article>
     </section>

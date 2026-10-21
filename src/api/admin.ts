@@ -690,6 +690,96 @@ export function deleteAdminExtra(id: string, updatedAt: string, accessToken: str
   );
 }
 
+export type AdminPropertyEditableSettings = {
+  name: string;
+  legalName: string | null;
+  email: string;
+  phone: string | null;
+  addressLine1: string;
+  addressLine2: string | null;
+  postalCode: string;
+  city: string;
+  countryCode: string;
+  checkInTime: string;
+  checkOutTime: string;
+  legalForm: string | null;
+  shareCapital: string | null;
+  siret: string | null;
+  registrationCity: string | null;
+  vatNumber: string | null;
+  publicationDirector: string | null;
+  hostingProvider: string | null;
+  mediator: string | null;
+};
+
+export type AdminPropertySettings = AdminPropertyEditableSettings & {
+  id: string;
+  slug: string;
+  timezone: string;
+  currency: string;
+  updatedAt: string;
+};
+
+export function getAdminPropertySettings(accessToken: string, signal?: AbortSignal) {
+  return adminRequest<AdminPropertySettings>("/admin/property", { signal }, accessToken);
+}
+
+export function updateAdminPropertySettings(input: AdminPropertyEditableSettings & { updatedAt: string }, accessToken: string, signal?: AbortSignal) {
+  return adminRequest<AdminPropertySettings>("/admin/property", { method: "PATCH", body: JSON.stringify(input), signal }, accessToken);
+}
+
+export type AdminTaxCalculationMode = "PER_ADULT_PER_NIGHT" | "PER_PERSON_PER_NIGHT" | "PER_NIGHT" | "PER_STAY" | "PERCENTAGE";
+
+export type AdminTouristTax = {
+  id: string;
+  code: string;
+  label: string;
+  calculationMode: AdminTaxCalculationMode;
+  amount: number | null;
+  rate: number | null;
+  currency: string | null;
+  validFrom: string | null;
+  validUntil: string | null;
+  isActive: boolean;
+  usageCount: number;
+  canDelete: boolean;
+  updatedAt: string;
+};
+
+export type AdminTouristTaxInput = {
+  label: string;
+  calculationMode: AdminTaxCalculationMode;
+  amount: number | null;
+  rate: number | null;
+  validFrom: string | null;
+  validUntil: string | null;
+  isActive: boolean;
+};
+
+export function getAdminTouristTaxes(accessToken: string, signal?: AbortSignal) {
+  return adminRequest<AdminTouristTax[]>("/admin/tourist-taxes", { signal }, accessToken);
+}
+
+export function createAdminTouristTax(input: AdminTouristTaxInput, accessToken: string, signal?: AbortSignal) {
+  return adminRequest<AdminTouristTax>("/admin/tourist-taxes", { method: "POST", body: JSON.stringify(input), signal }, accessToken);
+}
+
+export function updateAdminTouristTax(id: string, input: AdminTouristTaxInput & { updatedAt: string }, accessToken: string, signal?: AbortSignal) {
+  return adminRequest<AdminTouristTax>(
+    `/admin/tourist-taxes/${encodeURIComponent(id)}`,
+    { method: "PATCH", body: JSON.stringify(input), signal },
+    accessToken,
+  );
+}
+
+export function deleteAdminTouristTax(id: string, updatedAt: string, accessToken: string, signal?: AbortSignal) {
+  return adminRequest<{ id: string }>(
+    `/admin/tourist-taxes/${encodeURIComponent(id)}`,
+    { method: "DELETE", body: JSON.stringify({ updatedAt }), signal },
+    accessToken,
+  );
+}
+
 export function updateAdminRoom(id: string, input: UpdateAdminRoomInput, accessToken: string, signal?: AbortSignal) {
   return adminRequest<AdminRoomEditable>(
     `/admin/rooms/${encodeURIComponent(id)}`,

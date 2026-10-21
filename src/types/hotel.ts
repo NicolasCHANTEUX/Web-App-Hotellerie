@@ -145,4 +145,17 @@ export type PublicProperty = {
   checkInTime: string;
   checkOutTime: string;
   roomCount: number;
+  legal?: PublicLegalNotice;
+};
+
+export type PublicLegalNotice = {
+  legalName: string | null;
+  legalForm: string | null;
+  shareCapital: string | null;
+  siret: string | null;
+  registrationCity: string | null;
+  vatNumber: string | null;
+  publicationDirector: string | null;
+  hostingProvider: string | null;
+  mediator: string | null;
 };

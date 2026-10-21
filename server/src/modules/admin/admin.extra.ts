@@ -1,5 +1,4 @@
 import { PricingUnit } from "../../generated/prisma/client.js";
-import type { AdminMembershipContext } from "./admin.auth.js";
 import { AdminApiError } from "./admin.errors.js";
 
 const editableFields = ["name", "description", "price", "pricingUnit", "taxRate", "isActive", "displayOrder"] as const;
@@ -79,27 +78,6 @@ function parseFields(candidate: Record<string, unknown>): AdminExtraFields {
     isActive: candidate.isActive,
     displayOrder,
   };
-}
-
-/**
- * Stable identifier stored with the option, derived from its first name. It
- * never changes afterwards, so that renaming an option keeps its history.
- */
-export function extraCodeFromName(name: string) {
-  return name
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, 40);
-}
-
-export function requireCatalogPermission(membership: AdminMembershipContext) {
-  if (membership.role !== "ADMIN") {
-    throw new AdminApiError(403, "ROLE_ACCESS_DENIED", "Votre rôle ne permet pas de gérer le catalogue.");
-  }
-  return membership;
 }
 
 export function parseAdminExtraCreateBody(body: unknown) {

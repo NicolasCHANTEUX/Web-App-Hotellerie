@@ -1,4 +1,4 @@
-import { buildTaxInclusivePrice } from "./booking.pricing.js";
+import { buildTaxInclusivePrice, touristTaxPeriodFilter } from "./booking.pricing.js";
 import { BookingError } from "./booking.errors.js";
 import type { BookingQuote, BookingSelectionInput } from "./booking.types.js";
 import { prisma } from "../../lib/prisma.js";
@@ -17,10 +17,7 @@ export async function getBookingQuote(input: BookingSelectionInput, propertyId?:
             where: {
               isActive: true,
               kind: "TOURIST_TAX",
-              AND: [
-                { OR: [{ validFrom: null }, { validFrom: { lte: input.arrival } }] },
-                { OR: [{ validUntil: null }, { validUntil: { gte: input.departure } }] },
-              ],
+              ...touristTaxPeriodFilter(input.arrival, input.departure),
             },
             orderBy: [{ priority: "asc" }, { code: "asc" }],
           },
@@ -107,6 +104,7 @@ export async function getBookingQuote(input: BookingSelectionInput, propertyId?:
   const price = buildTaxInclusivePrice({
     nightlyPrice,
     accommodationTaxRate: ratePlan.taxRate,
+    arrival: input.arrival,
     nights,
     adults: input.adults,
     children: input.children,
@@ -123,6 +121,8 @@ export async function getBookingQuote(input: BookingSelectionInput, propertyId?:
         calculationMode: rule.calculationMode,
         rate: rule.rate,
         amount: rule.amount,
+        validFrom: rule.validFrom,
+        validUntil: rule.validUntil,
       })),
   });
 

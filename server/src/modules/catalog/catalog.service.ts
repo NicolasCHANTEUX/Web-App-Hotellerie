@@ -93,6 +93,15 @@ type PublicPropertyRecord = {
   timezone: string;
   checkInTime: string;
   checkOutTime: string;
+  legalName: string | null;
+  legalForm: string | null;
+  shareCapital: string | null;
+  siret: string | null;
+  registrationCity: string | null;
+  vatNumber: string | null;
+  publicationDirector: string | null;
+  hostingProvider: string | null;
+  mediator: string | null;
   _count: { rooms: number };
 };
 
@@ -111,6 +120,18 @@ export function serializePublicProperty(property: PublicPropertyRecord) {
     checkInTime: property.checkInTime,
     checkOutTime: property.checkOutTime,
     roomCount: property._count.rooms,
+    // Legal notice of the operating company, public by nature.
+    legal: {
+      legalName: property.legalName,
+      legalForm: property.legalForm,
+      shareCapital: property.shareCapital,
+      siret: property.siret,
+      registrationCity: property.registrationCity,
+      vatNumber: property.vatNumber,
+      publicationDirector: property.publicationDirector,
+      hostingProvider: property.hostingProvider,
+      mediator: property.mediator,
+    },
   };
 }
 
@@ -130,6 +151,15 @@ export async function getPublicProperty() {
       timezone: true,
       checkInTime: true,
       checkOutTime: true,
+      legalName: true,
+      legalForm: true,
+      shareCapital: true,
+      siret: true,
+      registrationCity: true,
+      vatNumber: true,
+      publicationDirector: true,
+      hostingProvider: true,
+      mediator: true,
       _count: { select: { rooms: { where: { status: "ACTIVE" } } } },
     },
   });

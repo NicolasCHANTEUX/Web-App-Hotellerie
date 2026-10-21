@@ -168,23 +168,32 @@ enum AdminRole {
 }
 
 model Property {
-  id           String   @id @default(uuid()) @db.Uuid
-  slug         String   @unique
-  name         String
-  legalName    String?
-  email        String
-  phone        String?
-  addressLine1 String
-  addressLine2 String?
-  postalCode   String
-  city         String
-  countryCode  String   @default("FR") @db.Char(2)
-  timezone     String   @default("Europe/Paris")
-  currency     String   @default("EUR") @db.Char(3)
-  checkInTime  String   @default("15:00")
-  checkOutTime String   @default("11:00")
-  createdAt    DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+  id                  String   @id @default(uuid()) @db.Uuid
+  slug                String   @unique
+  name                String
+  legalName           String?
+  email               String
+  phone               String?
+  addressLine1        String
+  addressLine2        String?
+  postalCode          String
+  city                String
+  countryCode         String   @default("FR") @db.Char(2)
+  timezone            String   @default("Europe/Paris")
+  currency            String   @default("EUR") @db.Char(3)
+  checkInTime         String   @default("15:00")
+  checkOutTime        String   @default("11:00")
+  // Legal notice of the operating company, shown on the website and invoices.
+  legalForm           String?
+  shareCapital        String?
+  siret               String?
+  registrationCity    String?
+  vatNumber           String?
+  publicationDirector String?
+  hostingProvider     String?
+  mediator            String?
+  createdAt           DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime @updatedAt @db.Timestamptz(3)
 
   roomTypes          RoomType[]
   rooms              Room[]

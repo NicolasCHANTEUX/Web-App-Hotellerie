@@ -1,9 +1,9 @@
 import { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import type { AdminMembershipContext } from "./admin.auth.js";
+import { catalogCodeFromName, nextAvailableCode } from "./admin.catalog.js";
 import { AdminApiError } from "./admin.errors.js";
 import {
-  extraCodeFromName,
   type AdminExtraDeleteInput,
   type AdminExtraFields,
   type AdminExtraUpdateInput,
@@ -60,17 +60,13 @@ async function assertNameAvailable(transaction: Prisma.TransactionClient, proper
 }
 
 async function availableCode(transaction: Prisma.TransactionClient, propertyId: string, name: string) {
-  const base = extraCodeFromName(name);
+  const base = catalogCodeFromName(name);
   if (!base) throw new AdminApiError(400, "INVALID_EXTRA", "Le nom doit contenir au moins une lettre ou un chiffre.");
-  const taken = new Set((await transaction.extra.findMany({
+  const taken = await transaction.extra.findMany({
     where: { propertyId, code: { startsWith: base } },
     select: { code: true },
-  })).map((extra) => extra.code));
-  if (!taken.has(base)) return base;
-  for (let suffix = 2; ; suffix += 1) {
-    const candidate = `${base}_${suffix}`;
-    if (!taken.has(candidate)) return candidate;
-  }
+  });
+  return nextAvailableCode(base, new Set(taken.map((extra) => extra.code)));
 }
 
 async function findExtra(transaction: Prisma.TransactionClient, propertyId: string, extraId: string, updatedAt: Date) {

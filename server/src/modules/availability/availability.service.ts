@@ -1,6 +1,6 @@
 import { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
-import { priceTaxRule, roundMoney } from "../booking/booking.pricing.js";
+import { priceTaxRule, roundMoney, touristTaxPeriodFilter } from "../booking/booking.pricing.js";
 import { serializeRoomType } from "../catalog/catalog.service.js";
 
 export type AvailabilityInput = {
@@ -33,10 +33,7 @@ export async function searchAvailability(input: AvailabilityInput, propertyId?: 
             where: {
               isActive: true,
               kind: "TOURIST_TAX",
-              AND: [
-                { OR: [{ validFrom: null }, { validFrom: { lte: input.arrival } }] },
-                { OR: [{ validUntil: null }, { validUntil: { gte: input.departure } }] },
-              ],
+              ...touristTaxPeriodFilter(input.arrival, input.departure),
             },
             orderBy: [{ priority: "asc" }, { code: "asc" }],
           },
@@ -93,16 +90,17 @@ export async function searchAvailability(input: AvailabilityInput, propertyId?: 
     if (!roomType._count.rooms) return [];
     const serialized = serializeRoomType(roomType, { arrival: input.arrival, departure: input.departure });
     if (!serialized) return [];
-    const accommodationSubtotal = new Prisma.Decimal(serialized.price).mul(nights);
+    const stay = {
+      arrival: input.arrival,
+      nights,
+      nightlyPrice: new Prisma.Decimal(serialized.price),
+      adults: input.adults,
+      children: input.children,
+    };
     const touristTaxTotal = roundMoney(
       roomType.property.taxRules
         .filter((rule) => rule.currency === null || rule.currency === roomType.property.currency)
-        .reduce(
-          (total, rule) => total.add(
-            priceTaxRule(rule, accommodationSubtotal, nights, input.adults, input.children).amount,
-          ),
-          new Prisma.Decimal(0),
-        ),
+        .reduce((total, rule) => total.add(priceTaxRule(rule, stay).amount), new Prisma.Decimal(0)),
     );
     return [{
       ...serialized,

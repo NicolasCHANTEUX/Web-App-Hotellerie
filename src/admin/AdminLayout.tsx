@@ -1,10 +1,12 @@
 import {
   BedDouble,
+  Building2,
   CalendarClock,
   CalendarRange,
   ChevronRight,
   ConciergeBell,
   Hotel,
+  Landmark,
   LogOut,
   Menu,
   X,
@@ -19,7 +21,11 @@ const navigation = [
   { to: "/admin/planning", label: "Planning", icon: CalendarClock },
   { to: "/admin/chambres", label: "Chambres", icon: BedDouble },
   { to: "/admin/options", label: "Options", icon: ConciergeBell },
+  { to: "/admin/taxe-de-sejour", label: "Taxe de séjour", icon: Landmark },
+  { to: "/admin/etablissement", label: "Établissement", icon: Building2 },
 ];
+
+const catalogPaths = new Set(["/admin/options", "/admin/taxe-de-sejour", "/admin/etablissement"]);
 
 const roleLabels: Record<AdminRole, string> = {
   ADMIN: "Administrateur",
@@ -47,7 +53,7 @@ export function AdminLayout() {
   const visibleNavigation = navigation.filter((item) => {
     if (item.to === "/admin/reservations") return canReadReservations(profile?.membership.role);
     if (item.to === "/admin/planning") return canUsePlanning(profile?.membership.role);
-    if (item.to === "/admin/options") return canManageCatalog(profile?.membership.role);
+    if (catalogPaths.has(item.to)) return canManageCatalog(profile?.membership.role);
     return true;
   });
 

@@ -9,7 +9,7 @@ import {
   bookingRequestHash,
   generateBookingReference,
 } from "./booking.idempotency.js";
-import { assertExpectedTotal, buildTaxInclusivePrice } from "./booking.pricing.js";
+import { assertExpectedTotal, buildTaxInclusivePrice, touristTaxPeriodFilter } from "./booking.pricing.js";
 import type { BookingConfirmation, CreateBookingInput } from "./booking.types.js";
 import { adminBookingUrl, enqueueBookingNotification } from "../notifications/notification.service.js";
 import { retentionDeadlineFrom } from "../privacy/retention.service.js";
@@ -186,10 +186,7 @@ export async function createBooking(
                   where: {
                     isActive: true,
                     kind: "TOURIST_TAX",
-                    AND: [
-                      { OR: [{ validFrom: null }, { validFrom: { lte: input.arrival } }] },
-                      { OR: [{ validUntil: null }, { validUntil: { gte: input.departure } }] },
-                    ],
+                    ...touristTaxPeriodFilter(input.arrival, input.departure),
                   },
                   orderBy: [{ priority: "asc" }, { code: "asc" }],
                 },
@@ -295,6 +292,7 @@ export async function createBooking(
         const price = buildTaxInclusivePrice({
           nightlyPrice,
           accommodationTaxRate: ratePlan.taxRate,
+          arrival: input.arrival,
           nights,
           adults: input.adults,
           children: input.children,
@@ -311,6 +309,8 @@ export async function createBooking(
               calculationMode: rule.calculationMode,
               rate: rule.rate,
               amount: rule.amount,
+              validFrom: rule.validFrom,
+              validUntil: rule.validUntil,
             })),
         });
         const pricedExtras = price.extras.map(({ item, ...pricedExtra }) => ({
