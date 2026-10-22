@@ -786,6 +786,7 @@ model Invoice {
 
   @@unique([propertyId, number])
   @@index([bookingId, createdAt])
+  @@index([propertyId, issuedAt])
   @@index([originalInvoiceId])
   @@map("invoices")
 }

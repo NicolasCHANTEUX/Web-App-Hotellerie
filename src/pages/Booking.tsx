@@ -64,6 +64,24 @@ function numberOfNights(arrival: string, departure: string) {
   return Number.isFinite(duration) && duration > 0 ? Math.round(duration) : 1;
 }
 
+function validSearchParams(params: URLSearchParams) {
+  const arrival = params.get("arrival") ?? "";
+  const departure = params.get("departure") ?? "";
+  const adults = Number(params.get("adults") ?? 2);
+  const children = Number(params.get("children") ?? 0);
+  const nights = (Date.parse(departure) - Date.parse(arrival)) / 86_400_000;
+  const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value)
+    && !Number.isNaN(Date.parse(value))
+    && new Date(value).toISOString().slice(0, 10) === value;
+  return params.get("step") === "2"
+    && validDate(arrival)
+    && validDate(departure)
+    && arrival >= dateInputValue(0)
+    && Number.isInteger(nights) && nights >= 1 && nights <= 365
+    && Number.isInteger(adults) && adults >= 1 && adults <= 10
+    && Number.isInteger(children) && children >= 0 && children <= 10;
+}
+
 function optionAmount(option: BookingOption, nights: number, guests: number) {
   if (option.unit === "PER_PERSON_PER_NIGHT") return option.price * nights * guests;
   if (option.unit === "PER_NIGHT") return option.price * nights;
@@ -73,12 +91,12 @@ function optionAmount(option: BookingOption, nights: number, guests: number) {
 export function Booking() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
-  const hasSearch = Boolean(params.get("arrival") && params.get("departure") && params.get("step") === "2");
+  const hasSearch = validSearchParams(params);
   const [step, setStep] = useState(hasSearch ? 2 : 1);
-  const [arrival, setArrival] = useState(params.get("arrival") ?? dateInputValue(1));
-  const [departure, setDeparture] = useState(params.get("departure") ?? dateInputValue(2));
-  const [adults, setAdults] = useState(Number(params.get("adults") ?? 2));
-  const [children, setChildren] = useState(Number(params.get("children") ?? 0));
+  const [arrival, setArrival] = useState(hasSearch ? params.get("arrival")! : dateInputValue(1));
+  const [departure, setDeparture] = useState(hasSearch ? params.get("departure")! : dateInputValue(2));
+  const [adults, setAdults] = useState(hasSearch ? Number(params.get("adults") ?? 2) : 2);
+  const [children, setChildren] = useState(hasSearch ? Number(params.get("children") ?? 0) : 0);
   const [roomSlug, setRoomSlug] = useState(params.get("room") ?? "");
   const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
   const [customer, setCustomer] = useState<Customer>(emptyCustomer);
@@ -176,8 +194,9 @@ export function Booking() {
       setDateError("La date d'arrivée ne peut pas être dans le passé.");
       return;
     }
-    if (Date.parse(departure) <= Date.parse(arrival)) {
-      setDateError("Le départ doit avoir lieu au moins un jour après l'arrivée.");
+    const nights = (Date.parse(departure) - Date.parse(arrival)) / 86_400_000;
+    if (!Number.isInteger(nights) || nights < 1 || nights > 365) {
+      setDateError("Le séjour doit durer entre 1 et 365 nuits.");
       return;
     }
     setDateError(null);

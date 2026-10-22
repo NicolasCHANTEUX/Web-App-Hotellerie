@@ -9,7 +9,7 @@ Application hoteliere React 19 + Vite + TypeScript, reliee a une API Node/Fastif
 - Recherche de disponibilite selon les dates, la capacite et les chambres physiques occupees.
 - Etats de chargement, erreur, relance et absence de resultat.
 - Tunnel de reservation en cinq etapes avec devis TTC serveur, acceptation explicite des CGV et option de chambre temporaire.
-- Paiement manuel complet et paiement Stripe optionnel, factures et avoirs PDF.
+- Paiement manuel complet et paiement Stripe optionnel, factures et avoirs PDF. L'administration rassemble les documents émis d'un mois dans un dossier PDF avec récapitulatif.
 - Espace administrateur protégé avec création et suivi des réservations, planning opérationnel sur 14 jours, cartes de chambres et gestion du catalogue, des promotions et des images.
 - Navigation responsive, formulaires, galerie et lightbox.
 

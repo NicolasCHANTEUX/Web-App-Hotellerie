@@ -241,6 +241,16 @@ export function canManageCatalog(role?: AdminRole) {
   return role === "ADMIN";
 }
 
+export function canViewAccounting(role?: AdminRole) {
+  return role === "ADMIN" || role === "ACCOUNTING";
+}
+
+export function RequireAccountingAccess({ children }: { children: ReactNode }) {
+  const { profile } = useAdminAuth();
+  if (!canViewAccounting(profile?.membership.role)) return <AdminIndexRedirect />;
+  return children;
+}
+
 export function canAnswerContactRequests(role?: AdminRole) {
   return role === "ADMIN" || role === "RECEPTION";
 }

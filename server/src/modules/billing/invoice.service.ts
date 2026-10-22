@@ -5,6 +5,7 @@ import { AdminApiError } from "../admin/admin.errors.js";
 import { includedPercentageTax } from "../booking/booking.pricing.js";
 import { readNightlyRatesSnapshot } from "../booking/booking.stay-rates.js";
 import { retentionDeadlineFrom } from "../privacy/retention.service.js";
+import { startOfPropertyDay } from "../../lib/property-time.js";
 
 type BillingTransaction = Prisma.TransactionClient;
 
@@ -442,6 +443,69 @@ export async function getInvoiceForProperty(propertyId: string, invoiceId: strin
   });
 }
 
+export function monthlyInvoicePeriod(month: string, timeZone: string) {
+  if (typeof month !== "string" || !/^(20\d\d)-(0[1-9]|1[0-2])$/.test(month)) {
+    throw new AdminApiError(400, "INVALID_MONTH", "Le mois doit être au format AAAA-MM.");
+  }
+  const year = Number(month.slice(0, 4));
+  const monthNumber = Number(month.slice(5));
+  const nextMonth = monthNumber === 12 ? `${year + 1}-01` : `${year}-${String(monthNumber + 1).padStart(2, "0")}`;
+  return {
+    from: startOfPropertyDay(`${month}-01`, timeZone),
+    until: startOfPropertyDay(`${nextMonth}-01`, timeZone),
+  };
+}
+
+const MONTHLY_DOCUMENT_LIMIT = 1_000;
+
+export async function getMonthlyInvoiceDocuments(propertyId: string, month: string, timeZone: string) {
+  const { from, until } = monthlyInvoicePeriod(month, timeZone);
+  const documents = await prisma.invoice.findMany({
+    where: { propertyId, issuedAt: { gte: from, lt: until }, status: { in: [InvoiceStatus.ISSUED, InvoiceStatus.PAID] } },
+    orderBy: [{ issuedAt: "asc" }, { number: "asc" }],
+    take: MONTHLY_DOCUMENT_LIMIT + 1,
+    include: {
+      booking: { select: { reference: true, checkIn: true, checkOut: true } },
+      originalInvoice: { select: { number: true } },
+      lines: { orderBy: { sortOrder: "asc" } },
+    },
+  });
+  if (documents.length > MONTHLY_DOCUMENT_LIMIT) {
+    throw new AdminApiError(413, "MONTH_TOO_LARGE", "Ce mois contient trop de documents pour un seul PDF.");
+  }
+  return documents;
+}
+
+export function monthlyInvoiceSummary(documents: Awaited<ReturnType<typeof getMonthlyInvoiceDocuments>>, fallbackCurrency = "EUR") {
+  const currency = documents[0]?.currency ?? fallbackCurrency;
+  if (documents.some((document) => document.currency !== currency)) {
+    throw new AdminApiError(409, "MIXED_CURRENCIES", "Les documents du mois utilisent plusieurs devises.");
+  }
+  const invoices = documents.filter((document) => document.documentType === InvoiceDocumentType.INVOICE);
+  const credits = documents.filter((document) => document.documentType === InvoiceDocumentType.CREDIT_NOTE);
+  const sum = (items: typeof documents) => items.reduce((total, item) => total.add(item.total), new Prisma.Decimal(0));
+  const invoicedTotal = sum(invoices);
+  const creditedTotal = sum(credits);
+  return {
+    currency,
+    invoiceCount: invoices.length,
+    creditNoteCount: credits.length,
+    invoicedTotal: Number(invoicedTotal),
+    creditedTotal: Number(creditedTotal),
+    netTotal: Number(invoicedTotal.minus(creditedTotal)),
+    documents: documents.map((document) => ({
+      id: document.id,
+      bookingId: document.bookingId,
+      number: document.number,
+      documentType: document.documentType,
+      issuedAt: document.issuedAt!.toISOString(),
+      total: Number(document.total),
+      bookingReference: document.booking.reference,
+      originalInvoiceNumber: document.originalInvoice?.number ?? null,
+    })),
+  };
+}
+
 function snapshot(value: Prisma.JsonValue) {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
@@ -478,16 +542,20 @@ export function issuerLegalNotice(issuer: Record<string, unknown>) {
   ].filter(Boolean).join(" · ");
 }
 
-export async function renderInvoicePdf(invoice: NonNullable<Awaited<ReturnType<typeof getInvoiceForProperty>>>) {
-  const issuer = snapshot(invoice.issuerSnapshot);
-  const customer = snapshot(invoice.customerSnapshot);
-  const document = new PDFDocument({ size: "A4", margin: 48, info: { Title: invoice.number, Author: stringValue(issuer.legalName) ?? stringValue(issuer.name) ?? "Établissement" } });
+type InvoiceWithDetails = NonNullable<Awaited<ReturnType<typeof getInvoiceForProperty>>>;
+
+function collectPdf(document: PDFKit.PDFDocument) {
   const chunks: Buffer[] = [];
   document.on("data", (chunk: Buffer) => chunks.push(chunk));
-  const finished = new Promise<Buffer>((resolve, reject) => {
+  return new Promise<Buffer>((resolve, reject) => {
     document.on("end", () => resolve(Buffer.concat(chunks)));
     document.on("error", reject);
   });
+}
+
+function drawInvoice(document: PDFKit.PDFDocument, invoice: InvoiceWithDetails) {
+  const issuer = snapshot(invoice.issuerSnapshot);
+  const customer = snapshot(invoice.customerSnapshot);
 
   const gold = "#9a7345";
   const dark = "#28231e";
@@ -560,6 +628,50 @@ export async function renderInvoicePdf(invoice: NonNullable<Awaited<ReturnType<t
   const legalNotice = issuerLegalNotice(issuer);
   if (legalNotice) document.fillColor(muted).font("Helvetica").fontSize(7.5).text(legalNotice, 48, 740, { width: 499, align: "center" });
   document.fillColor(muted).fontSize(8).text(`Devise : ${invoice.currency}. Taxes incluses dans les montants TTC.`, 48, 760, { width: 499, align: "center" });
+}
+
+export async function renderInvoicePdf(invoice: InvoiceWithDetails) {
+  const issuer = snapshot(invoice.issuerSnapshot);
+  const document = new PDFDocument({ size: "A4", margin: 48, info: { Title: invoice.number, Author: stringValue(issuer.legalName) ?? stringValue(issuer.name) ?? "Établissement" } });
+  const finished = collectPdf(document);
+  drawInvoice(document, invoice);
+  document.end();
+  return finished;
+}
+
+export async function renderMonthlyInvoicePdf(month: string, documents: Awaited<ReturnType<typeof getMonthlyInvoiceDocuments>>, timeZone: string, fallbackCurrency = "EUR") {
+  const summary = monthlyInvoiceSummary(documents, fallbackCurrency);
+  const document = new PDFDocument({ size: "A4", margin: 48, info: { Title: `Dossier comptable ${month}` } });
+  const finished = collectPdf(document);
+  const monthLabel = new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${month}-01T12:00:00Z`));
+  document.fillColor("#9a7345").font("Helvetica-Bold").fontSize(11).text("DOSSIER COMPTABLE", 48, 48);
+  document.fillColor("#28231e").font("Times-Roman").fontSize(30).text(monthLabel, 48, 78);
+  document.font("Helvetica").fontSize(10).text("Documents classés par date d'émission dans le fuseau horaire de l'établissement.", 48, 130);
+  document.moveTo(48, 159).lineTo(547, 159).strokeColor("#ded4c8").stroke();
+  document.font("Helvetica-Bold").fontSize(11).text(`${summary.invoiceCount} facture(s)`, 48, 178);
+  document.text(formatMoney(new Prisma.Decimal(summary.invoicedTotal), summary.currency), 350, 178, { width: 197, align: "right" });
+  document.text(`${summary.creditNoteCount} avoir(s)`, 48, 202);
+  document.text(formatMoney(new Prisma.Decimal(summary.creditedTotal), summary.currency), 350, 202, { width: 197, align: "right" });
+  document.moveTo(48, 232).lineTo(547, 232).strokeColor("#ded4c8").stroke();
+  document.text("Total net", 48, 244);
+  document.text(formatMoney(new Prisma.Decimal(summary.netTotal), summary.currency), 350, 244, { width: 197, align: "right" });
+
+  let y = 292;
+  document.font("Helvetica-Bold").fontSize(10).text("Documents inclus", 48, y);
+  y += 23;
+  for (const item of summary.documents) {
+    if (y > 744) { document.addPage(); y = 60; }
+  document.font("Helvetica").fontSize(8.5).fillColor("#28231e");
+    document.text(`${item.documentType === "INVOICE" ? "Facture" : "Avoir"} ${item.number}`, 48, y, { width: 190 });
+    document.text(new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone }).format(new Date(item.issuedAt)), 242, y, { width: 78 });
+    document.text(item.bookingReference, 327, y, { width: 95 });
+    document.text(formatMoney(new Prisma.Decimal(item.total), summary.currency), 427, y, { width: 120, align: "right" });
+    y += 20;
+  }
+  for (const invoice of documents) {
+    document.addPage();
+    drawInvoice(document, invoice);
+  }
   document.end();
   return finished;
 }

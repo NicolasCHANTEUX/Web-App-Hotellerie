@@ -217,6 +217,25 @@ export type AdminInvoice = {
   originalInvoiceId: string | null;
 };
 
+export type MonthlyInvoiceReport = {
+  currency: string;
+  invoiceCount: number;
+  creditNoteCount: number;
+  invoicedTotal: number;
+  creditedTotal: number;
+  netTotal: number;
+  documents: Array<{
+    id: string;
+    bookingId: string;
+    number: string;
+    documentType: "INVOICE" | "CREDIT_NOTE";
+    issuedAt: string;
+    total: number;
+    bookingReference: string;
+    originalInvoiceNumber: string | null;
+  }>;
+};
+
 export type RoomStatus = "ACTIVE" | "OUT_OF_SERVICE" | "ARCHIVED";
 
 export type AdminRoomOccupancy = {
@@ -623,10 +642,16 @@ export function getAdminBookingInvoices(id: string, accessToken: string, signal?
   return adminRequest<AdminInvoice[]>(`/admin/bookings/${encodeURIComponent(id)}/invoices`, { signal }, accessToken);
 }
 
-export async function downloadAdminInvoice(id: string, accessToken: string) {
-  const response = await fetch(`${API_BASE_URL}/admin/invoices/${encodeURIComponent(id)}/pdf`, {
-    headers: { Accept: "application/pdf", Authorization: `Bearer ${accessToken}` },
+async function downloadAdminPdf(path: string, accessToken: string) {
+  const send = (token: string) => fetch(`${API_BASE_URL}${path}`, {
+    headers: { Accept: "application/pdf", Authorization: `Bearer ${token}` },
   });
+  const token = sessionRenewal?.currentAccessToken() ?? accessToken;
+  let response = await send(token);
+  if (response.status === 401 && sessionRenewal) {
+    const renewed = await sessionRenewal.renew(token);
+    if (renewed) response = await send(renewed);
+  }
   if (!response.ok) {
     const body = await response.json().catch(() => null) as ApiErrorBody | null;
     throw new AdminApiError(body?.error?.message ?? "Le document n'a pas pu être téléchargé.", response.status, body?.error?.code);
@@ -638,7 +663,19 @@ export async function downloadAdminInvoice(id: string, accessToken: string) {
   link.href = url;
   link.download = filename;
   link.click();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+export function downloadAdminInvoice(id: string, accessToken: string) {
+  return downloadAdminPdf(`/admin/invoices/${encodeURIComponent(id)}/pdf`, accessToken);
+}
+
+export function getMonthlyInvoiceReport(month: string, accessToken: string, signal?: AbortSignal) {
+  return adminRequest<MonthlyInvoiceReport>(`/admin/invoices/monthly?month=${encodeURIComponent(month)}`, { signal }, accessToken);
+}
+
+export function downloadMonthlyInvoiceReport(month: string, accessToken: string) {
+  return downloadAdminPdf(`/admin/invoices/monthly/pdf?month=${encodeURIComponent(month)}`, accessToken);
 }
 
 export function getAdminRooms(filters: RoomFilters, accessToken: string, signal?: AbortSignal) {

@@ -990,6 +990,32 @@ button.admin-planning-slot { font: inherit; }
   .admin-planning-scroll { max-height: 65dvh; }
 }
 
+.admin-accounting-panel { margin-bottom: 22px; }
+.admin-accounting-toolbar { flex-wrap: wrap; }
+.admin-accounting-toolbar label { display: flex; align-items: center; gap: 12px; color: #655c53; font-size: 12px; font-weight: 600; }
+.admin-accounting-toolbar input { min-height: 42px; border: 1px solid #dcd4ca; border-radius: 6px; background: white; padding: 0 12px; color: var(--ink); font: inherit; }
+.admin-accounting-hint { margin: 0; padding: 14px 23px; color: #776e65; font-size: 12px; line-height: 1.6; }
+.admin-accounting-error { margin: 0 0 18px; border: 1px solid #edccc7; border-radius: 7px; background: #fcf3f1; padding: 12px 16px; color: #934b43; font-size: 13px; }
+.admin-accounting-loading { padding: 30px 0; color: #776e65; font-size: 13px; }
+.admin-accounting-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.admin-accounting-table-wrap { overflow-x: auto; }
+.admin-accounting-table { width: 100%; border-collapse: collapse; text-align: left; }
+.admin-accounting-table th { background: #faf8f5; color: #776e65; font-size: 10px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; }
+.admin-accounting-table th, .admin-accounting-table td { border-bottom: 1px solid #eee9e2; padding: 15px 20px; white-space: nowrap; }
+.admin-accounting-table td { font-size: 12px; }
+.admin-accounting-table td strong { font-weight: 650; }
+.admin-accounting-table td small { display: block; margin-top: 4px; color: #8a8177; }
+.admin-accounting-table td a { color: var(--gold-dark); font-weight: 600; }
+.admin-accounting-table td button { display: grid; width: 34px; height: 34px; place-items: center; border: 1px solid #ddd5cb; border-radius: 6px; background: white; color: var(--gold-dark); cursor: pointer; }
+.admin-accounting-table td button:disabled { opacity: .5; cursor: wait; }
+.admin-accounting-table td button svg { width: 17px; }
+
+@media (max-width: 720px) {
+  .admin-accounting-toolbar { align-items: stretch; }
+  .admin-accounting-toolbar label, .admin-accounting-toolbar > button { width: 100%; justify-content: space-between; }
+  .admin-accounting-metrics { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 430px) {
   .admin-login-panel { align-items: start; padding-top: 29px; }
   .admin-login-mobile-brand { margin-bottom: 44px; }

@@ -5,6 +5,7 @@ import { prisma } from "../../src/lib/prisma.js";
 import { AdminApiError } from "../../src/modules/admin/admin.errors.js";
 import { confirmAdminBooking } from "../../src/modules/admin/admin.service.js";
 import { recordManualPayment, refundPayment } from "../../src/modules/billing/billing.service.js";
+import { getMonthlyInvoiceDocuments, monthlyInvoiceSummary } from "../../src/modules/billing/invoice.service.js";
 import { createBooking } from "../../src/modules/booking/booking.service.js";
 import { bookingRequest, createReceptionist, createTestHotel, type TestHotel } from "../support/fixtures.js";
 
@@ -105,4 +106,28 @@ test("rembourse partiellement avec un avoir, sans dépasser le montant encaissé
     }),
     adminError("INVALID_REFUND_AMOUNT"),
   );
+});
+
+test("regroupe les documents émis du mois sans mélanger les établissements", async () => {
+  const hotel = await createTestHotel();
+  const reception = await createReceptionist(hotel);
+  const booking = await confirmedBooking(hotel, reception);
+  const charge = await recordManualPayment(reception.membership, reception.adminUserId, booking.id, `manual:${randomUUID()}`, { paymentMethodType: "Carte bancaire" });
+  await refundPayment(reception.membership, reception.adminUserId, booking.id, `refund:${randomUUID()}`, {
+    paymentId: charge.paymentId, amount: 20, reason: "Geste commercial",
+  });
+  const otherHotel = await createTestHotel();
+  const otherReception = await createReceptionist(otherHotel);
+  const otherBooking = await confirmedBooking(otherHotel, otherReception);
+  await recordManualPayment(otherReception.membership, otherReception.adminUserId, otherBooking.id, `manual:${randomUUID()}`, { paymentMethodType: "Carte bancaire" });
+  const parts = new Intl.DateTimeFormat("en-US", { year: "numeric", month: "2-digit", timeZone: hotel.property.timezone }).formatToParts(new Date());
+  const month = `${parts.find((part) => part.type === "year")?.value}-${parts.find((part) => part.type === "month")?.value}`;
+  const documents = await getMonthlyInvoiceDocuments(hotel.property.id, month, hotel.property.timezone);
+  const summary = monthlyInvoiceSummary(documents);
+
+  assert.equal(summary.invoiceCount, 1);
+  assert.equal(summary.creditNoteCount, 1);
+  assert.equal(summary.netTotal, summary.invoicedTotal - 20);
+  assert.deepEqual(summary.documents.map((item) => item.bookingReference), [booking.reference, booking.reference]);
+  assert.deepEqual(await getMonthlyInvoiceDocuments(hotel.property.id, "2025-01", hotel.property.timezone), []);
 });

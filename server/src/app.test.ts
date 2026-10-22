@@ -91,6 +91,16 @@ test("rejette une recherche de disponibilités trop longue avant le calcul des t
   assert.equal(response.json().error.code, "INVALID_DATES");
 });
 
+test("refuse une recherche de disponibilité pour un séjour passé", async (t) => {
+  const app = await testApp(t);
+  const response = await app.inject({
+    method: "GET",
+    url: "/availability?arrival=2020-01-01&departure=2020-01-02&adults=2&children=0",
+  });
+  assert.equal(response.statusCode, 400);
+  assert.equal(response.json().error.code, "INVALID_DATES");
+});
+
 test("refuse une origine non autorisée sans erreur serveur", async (t) => {
   const app = await testApp(t);
 

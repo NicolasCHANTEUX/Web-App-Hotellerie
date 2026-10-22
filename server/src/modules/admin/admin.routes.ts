@@ -76,7 +76,7 @@ import {
 } from "./admin.tourist-tax.service.js";
 import { parseIdempotencyKey, parseManualPaymentBody, parseRefundBody } from "../billing/billing.validation.js";
 import { recordManualPayment, refundPayment } from "../billing/billing.service.js";
-import { getInvoiceForProperty, listBookingInvoices, renderInvoicePdf } from "../billing/invoice.service.js";
+import { getInvoiceForProperty, getMonthlyInvoiceDocuments, listBookingInvoices, monthlyInvoiceSummary, renderInvoicePdf, renderMonthlyInvoicePdf } from "../billing/invoice.service.js";
 import { storeRoomTypeCover } from "../media/media.service.js";
 import {
   createAdminBooking,
@@ -148,6 +148,10 @@ type BlockParams = {
 
 type InvoiceParams = {
   id: string;
+};
+
+type MonthlyInvoiceQuery = {
+  month?: string;
 };
 
 type ExtraParams = {
@@ -324,6 +328,14 @@ function paymentMembership(request: FastifyRequest) {
   const membership = resolveMembership(request);
   if (!(["ADMIN", "RECEPTION", "ACCOUNTING"] as const).includes(membership.role as "ADMIN" | "RECEPTION" | "ACCOUNTING")) {
     throw new AdminApiError(403, "ROLE_ACCESS_DENIED", "Votre rôle ne permet pas de gérer les règlements.");
+  }
+  return membership;
+}
+
+function accountingMembership(request: FastifyRequest) {
+  const membership = resolveMembership(request);
+  if (membership.role !== "ADMIN" && membership.role !== "ACCOUNTING") {
+    throw new AdminApiError(403, "ROLE_ACCESS_DENIED", "Votre rôle ne permet pas de consulter les dossiers comptables.");
   }
   return membership;
 }
@@ -671,6 +683,33 @@ export async function adminRoutes(app: FastifyInstance) {
       return reply
         .header("content-type", "application/pdf")
         .header("content-disposition", `attachment; filename="${invoice.number}.pdf"`)
+        .header("content-length", pdf.length)
+        .send(pdf);
+    }),
+  );
+
+  app.get<{ Querystring: MonthlyInvoiceQuery }>(
+    "/admin/invoices/monthly",
+    { preHandler: authenticateAdmin },
+    async (request, reply) => handleAdminRoute(reply, async () => {
+      const membership = accountingMembership(request);
+      const month = request.query.month ?? "";
+      const documents = await getMonthlyInvoiceDocuments(membership.propertyId, month, membership.property.timezone);
+      return { data: monthlyInvoiceSummary(documents, membership.property.currency) };
+    }),
+  );
+
+  app.get<{ Querystring: MonthlyInvoiceQuery }>(
+    "/admin/invoices/monthly/pdf",
+    { preHandler: authenticateAdmin, config: { rateLimit: { max: 10, timeWindow: "15 minutes" } } },
+    async (request, reply) => handleAdminRoute(reply, async () => {
+      const membership = accountingMembership(request);
+      const month = request.query.month ?? "";
+      const documents = await getMonthlyInvoiceDocuments(membership.propertyId, month, membership.property.timezone);
+      const pdf = await renderMonthlyInvoicePdf(month, documents, membership.property.timezone, membership.property.currency);
+      return reply
+        .header("content-type", "application/pdf")
+        .header("content-disposition", `attachment; filename="documents-comptables-${month}.pdf"`)
         .header("content-length", pdf.length)
         .send(pdf);
     }),

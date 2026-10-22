@@ -5,6 +5,7 @@ import {
   AdminIndexRedirect,
   AdminRoot,
   RequireAdminAuth,
+  RequireAccountingAccess,
   RequireCatalogAccess,
   RequireContactRequestAccess,
   RequirePlanningAccess,
@@ -39,6 +40,13 @@ export function createAdminRouter() {
                 lazy: async () => {
                   const { AdminBookings } = await import("../pages/admin/AdminBookings");
                   return { Component: () => <RequireReservationAccess><AdminBookings /></RequireReservationAccess> };
+                },
+              },
+              {
+                path: "comptabilite",
+                lazy: async () => {
+                  const { AdminAccounting } = await import("../pages/admin/AdminAccounting");
+                  return { Component: () => <RequireAccountingAccess><AdminAccounting /></RequireAccountingAccess> };
                 },
               },
               {

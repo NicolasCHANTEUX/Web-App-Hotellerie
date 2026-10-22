@@ -124,6 +124,18 @@ test("searches with future dates and adjusts departure when arrival changes", as
   await expect(page).toHaveURL(new RegExp(`/reservation\\?arrival=${dates.later}&departure=${dates.following}&adults=2&children=0&step=2`));
 });
 
+test("returns an invalid booking link to the date step", async ({ page }) => {
+  await mockProperty(page);
+  await page.route("**/api/extras", (route) => route.fulfill({ json: { data: [] } }));
+  let availabilityCalls = 0;
+  await page.route("**/api/availability?*", (route) => { availabilityCalls += 1; return route.fulfill({ json: { data: { roomTypes: [] } } }); });
+
+  await page.goto("/reservation?arrival=2026-08-08&departure=2026-08-09&adults=2&children=0&step=2");
+
+  await expect(page.getByRole("heading", { name: "Dates et voyageurs" })).toBeVisible();
+  expect(availabilityCalls).toBe(0);
+});
+
 test("returns from the admin login to the public site", async ({ page }) => {
   await mockProperty(page);
   await page.route("**/api/room-types", (route) => route.fulfill({ json: { data: [] } }));
@@ -533,6 +545,40 @@ async function signInAs(page: Page, role: "ADMIN" | "RECEPTION") {
     },
   } } }));
 }
+
+test("lists the monthly accounting documents and downloads their combined PDF", async ({ page }) => {
+  await signInAs(page, "ADMIN");
+  const months: string[] = [];
+  await page.route("**/api/admin/invoices/monthly?*", (route) => {
+    months.push(new URL(route.request().url()).searchParams.get("month") ?? "");
+    return route.fulfill({ json: { data: {
+      currency: "EUR", invoiceCount: 1, creditNoteCount: 1,
+      invoicedTotal: 120, creditedTotal: 20, netTotal: 100,
+      documents: [
+        { id: "invoice-1", bookingId: "booking-1", number: "FAC-2026-000001", documentType: "INVOICE", issuedAt: "2026-09-10T10:00:00.000Z", total: 120, bookingReference: "BKG-123", originalInvoiceNumber: null },
+        { id: "credit-1", bookingId: "booking-1", number: "AV-2026-000001", documentType: "CREDIT_NOTE", issuedAt: "2026-09-11T10:00:00.000Z", total: 20, bookingReference: "BKG-123", originalInvoiceNumber: "FAC-2026-000001" },
+      ],
+    } } });
+  });
+  const pdfMonths: string[] = [];
+  await page.route("**/api/admin/invoices/monthly/pdf?*", (route) => {
+    pdfMonths.push(new URL(route.request().url()).searchParams.get("month") ?? "");
+    return route.fulfill({ body: "%PDF-1.4\n%%EOF", contentType: "application/pdf", headers: { "content-disposition": 'attachment; filename="documents-comptables-2026-09.pdf"' } });
+  });
+
+  await page.goto("/admin/comptabilite");
+  await page.getByLabel("Mois d'émission").fill("2026-09");
+  await expect(page.getByRole("heading", { level: 1, name: "Documents comptables" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: /Facture FAC-2026-000001/ })).toBeVisible();
+  await expect(page.getByRole("cell", { name: /Avoir AV-2026-000001/ })).toBeVisible();
+  await expect(page.getByText(/100,00\s*€/)).toBeVisible();
+  expect(months).toContain("2026-09");
+
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Télécharger le dossier mensuel" }).click();
+  expect((await download).suggestedFilename()).toBe("documents-comptables-2026-09.pdf");
+  expect(pdfMonths).toEqual(["2026-09"]);
+});
 
 test("manages the stay options from the administration", async ({ page }) => {
   await signInAs(page, "ADMIN");

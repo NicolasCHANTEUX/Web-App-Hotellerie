@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { AdminMembershipContext } from "./admin.auth.js";
-import { requireDashboardPermission, startOfPropertyDay } from "./admin.dashboard.service.js";
+import { requireDashboardPermission } from "./admin.dashboard.service.js";
+import { startOfPropertyDay } from "../../lib/property-time.js";
 import { AdminApiError } from "./admin.errors.js";
 
 test("fait commencer la journée à minuit, heure de l'établissement", () => {

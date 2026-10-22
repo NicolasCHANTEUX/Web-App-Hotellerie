@@ -1,10 +1,42 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Prisma } from "../../generated/prisma/client.js";
-import { buildCreditNoteLines, buildInvoiceLines, invoiceNumber } from "./invoice.service.js";
+import { buildCreditNoteLines, buildInvoiceLines, invoiceNumber, monthlyInvoicePeriod, monthlyInvoiceSummary, renderInvoicePdf, renderMonthlyInvoicePdf } from "./invoice.service.js";
 
 test("forme un numéro comptable stable et complété", () => {
   assert.equal(invoiceNumber("FAC", 2026, 42), "FAC-2026-000042");
+});
+
+test("sélectionne le mois d'émission dans le fuseau de l'établissement", () => {
+  const period = monthlyInvoicePeriod("2026-10", "Europe/Paris");
+  assert.equal(period.from.toISOString(), "2026-09-30T22:00:00.000Z");
+  assert.equal(period.until.toISOString(), "2026-10-31T23:00:00.000Z");
+  assert.throws(() => monthlyInvoicePeriod("2026-13", "Europe/Paris"));
+});
+
+test("récapitule factures et avoirs et les rassemble dans un PDF", async () => {
+  const invoice = {
+    id: "invoice-1", bookingId: "booking-1", number: "FAC-2026-000001", documentType: "INVOICE",
+    issuedAt: new Date("2026-10-10T10:00:00Z"), currency: "EUR", total: new Prisma.Decimal("120.00"),
+    subtotal: new Prisma.Decimal("109.09"), taxTotal: new Prisma.Decimal("10.91"),
+    issuerSnapshot: { name: "Hôtel test" }, customerSnapshot: { firstName: "Alice", lastName: "Martin" },
+    booking: { reference: "BKG-123", checkIn: new Date("2026-10-10"), checkOut: new Date("2026-10-11") },
+    originalInvoice: null, creditReason: null, lines: [],
+  };
+  const credit = {
+    ...invoice, id: "credit-1", number: "AV-2026-000001", documentType: "CREDIT_NOTE",
+    total: new Prisma.Decimal("20.00"), subtotal: new Prisma.Decimal("18.18"), taxTotal: new Prisma.Decimal("1.82"),
+    originalInvoice: { number: invoice.number }, creditReason: "Geste commercial",
+  };
+  const documents = [invoice, credit] as unknown as Parameters<typeof monthlyInvoiceSummary>[0];
+  const summary = monthlyInvoiceSummary(documents);
+  assert.deepEqual([summary.invoiceCount, summary.creditNoteCount, summary.invoicedTotal, summary.creditedTotal, summary.netTotal], [1, 1, 120, 20, 100]);
+  assert.equal(summary.documents[1]?.originalInvoiceNumber, invoice.number);
+  const pdf = await renderMonthlyInvoicePdf("2026-10", documents, "Europe/Paris");
+  assert.equal(pdf.subarray(0, 5).toString(), "%PDF-");
+  assert.equal((pdf.toString("latin1").match(/\/Type \/Page\b/g) ?? []).length, 3);
+  const original = await renderInvoicePdf(documents[0]!);
+  assert.equal((original.toString("latin1").match(/\/Type \/Page\b/g) ?? []).length, 1);
 });
 
 test("transforme les montants TTC en lignes HT et TVA", () => {

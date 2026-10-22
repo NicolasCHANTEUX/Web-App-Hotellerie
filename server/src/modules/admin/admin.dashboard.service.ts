@@ -1,5 +1,6 @@
 import { BookingStatus, PaymentKind, PaymentStatus } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
+import { startOfPropertyDay } from "../../lib/property-time.js";
 import type { AdminMembershipContext } from "./admin.auth.js";
 import { AdminApiError } from "./admin.errors.js";
 import { bookingListInclude, expirePropertyHolds, propertyDate, serializeBookingListItem } from "./admin.service.js";
@@ -17,22 +18,6 @@ export function requireDashboardPermission(membership: AdminMembershipContext) {
 
 function isoDate(date: Date) {
   return date.toISOString().slice(0, 10);
-}
-
-function timeZoneOffsetMinutes(at: Date, timeZone: string) {
-  const name = new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "longOffset" })
-    .formatToParts(at)
-    .find((part) => part.type === "timeZoneName")?.value ?? "GMT";
-  const match = /GMT([+-])(\d{2}):(\d{2})/.exec(name);
-  if (!match) return 0;
-  const minutes = Number(match[2]) * 60 + Number(match[3]);
-  return match[1] === "-" ? -minutes : minutes;
-}
-
-/** The instant a calendar day begins at the property, payments being timestamped. */
-export function startOfPropertyDay(date: string, timeZone: string) {
-  const utcMidnight = new Date(`${date}T00:00:00.000Z`);
-  return new Date(utcMidnight.getTime() - timeZoneOffsetMinutes(utcMidnight, timeZone) * 60_000);
 }
 
 /** Rooms sold or held and rooms blocked, night by night from `firstNight`. */
