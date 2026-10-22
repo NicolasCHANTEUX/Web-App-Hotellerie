@@ -40,7 +40,7 @@ export function Accommodations() {
       <section className="accommodations-search">
         <div className="page-container search-stage">
           <p>Vérifiez les disponibilités pour vos dates</p>
-          <SearchWidget demoDates />
+          <SearchWidget />
         </div>
       </section>
 

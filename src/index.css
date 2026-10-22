@@ -128,6 +128,7 @@ img { display: block; }
 .search-submit { display: grid; place-items: center; padding: 20px; background: white; }
 .search-submit .btn-primary { width: 100%; min-height: 50px; }
 .search-submit svg { width: 17px; }
+.search-error { grid-column: 1 / -1; margin: 0; padding: 10px 20px; background: #fff4f0; color: #9b3026; font-size: 13px; }
 .search-panel-compact { margin-top: -2rem; }
 
 .home-band { padding: 88px 32px; }

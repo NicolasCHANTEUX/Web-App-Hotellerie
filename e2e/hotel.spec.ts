@@ -95,6 +95,35 @@ test("uses room content in accommodation metadata", async ({ page }) => {
     .not.toBe(accommodation.shortDescription);
 });
 
+test("searches with future dates and adjusts departure when arrival changes", async ({ page }) => {
+  await mockProperty(page);
+  await page.route("**/api/room-types", (route) => route.fulfill({ json: { data: [] } }));
+  await page.route("**/api/extras", (route) => route.fulfill({ json: { data: [] } }));
+  await page.route("**/api/availability?*", (route) => route.fulfill({ json: { data: { roomTypes: [] } } }));
+
+  await page.goto("/hebergements");
+
+  const arrival = page.getByLabel("Date d'arrivée");
+  const departure = page.getByLabel("Date de départ");
+  const dates = await page.evaluate(() => {
+    const format = (days: number) => {
+      const date = new Date();
+      date.setHours(12, 0, 0, 0);
+      date.setDate(date.getDate() + days);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    };
+    return { tomorrow: format(1), afterTomorrow: format(2), later: format(5), following: format(6) };
+  });
+  await expect(arrival).toHaveValue(dates.tomorrow);
+  await expect(arrival).toHaveAttribute("min", /\d{4}-\d{2}-\d{2}/);
+  await expect(departure).toHaveValue(dates.afterTomorrow);
+
+  await arrival.fill(dates.later);
+  await expect(departure).toHaveValue(dates.following);
+  await page.getByRole("button", { name: "Rechercher", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/reservation\\?arrival=${dates.later}&departure=${dates.following}&adults=2&children=0&step=2`));
+});
+
 test("returns from the admin login to the public site", async ({ page }) => {
   await mockProperty(page);
   await page.route("**/api/room-types", (route) => route.fulfill({ json: { data: [] } }));
